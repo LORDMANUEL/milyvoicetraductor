@@ -12,8 +12,8 @@ No se deben subir al repositorio, issues o pull requests:
 
 ## Reporte responsable
 
-Si descubres una vulnerabilidad, evita publicar una prueba que exponga información de terceros. Describe el comportamiento, versión afectada y pasos mínimos de reproducción usando datos sintéticos.
+Si descubres una vulnerabilidad ,Describe el comportamiento, versión afectada y pasos mínimos de reproducción usando datos sintéticos.
 
 ## Diseño local
 
-MilyVoiceTraductor se diseña para procesar voz localmente. La Fase 1 no implementa telemetría ni envío de contenido a servicios externos.
+MilyVoiceTraductor se diseña para procesar voz localmente. 
