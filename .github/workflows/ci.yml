@@ -60,7 +60,7 @@ jobs:
         run: |
           set -o pipefail
           cargo test --workspace 2>&1 | tee cargo-test.log
-      - name: Annotate Rust diagnostics
+      - name: Annotate Rust test diagnostics
         if: failure() && steps.rust_tests.outcome == 'failure'
         shell: bash
         run: |
@@ -79,5 +79,52 @@ jobs:
           print(f'::error title=Rust test diagnostics::{escaped}')
           PY
       - name: Clippy
+        id: clippy
         if: success()
-        run: cargo clippy --workspace --all-targets -- -D warnings
+        shell: bash
+        run: |
+          set -o pipefail
+          cargo clippy --workspace --all-targets -- -D warnings 2>&1 | tee clippy.log
+      - name: Annotate Clippy diagnostics
+        if: failure() && steps.clippy.outcome == 'failure'
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import os
+          import re
+
+          text = Path('clippy.log').read_text(encoding='utf-8', errors='replace')
+          tail = '\n'.join(text.splitlines()[-80:])[-6000:]
+          workspace = os.environ.get('GITHUB_WORKSPACE', '')
+          if workspace:
+              tail = tail.replace(workspace, '<WORKSPACE>')
+          tail = re.sub(r'(?i)(token|password|secret|api[_-]?key)=\S+', r'\1=<REDACTED>', tail)
+          escaped = tail.replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
+          print(f'::error title=Clippy diagnostics::{escaped}')
+          PY
+      - name: Release build
+        id: release_build
+        if: success()
+        shell: bash
+        run: |
+          set -o pipefail
+          cargo build -p milyvoicetraductor-desktop --release 2>&1 | tee cargo-release.log
+      - name: Annotate release build diagnostics
+        if: failure() && steps.release_build.outcome == 'failure'
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import os
+          import re
+
+          text = Path('cargo-release.log').read_text(encoding='utf-8', errors='replace')
+          tail = '\n'.join(text.splitlines()[-80:])[-6000:]
+          workspace = os.environ.get('GITHUB_WORKSPACE', '')
+          if workspace:
+              tail = tail.replace(workspace, '<WORKSPACE>')
+          tail = re.sub(r'(?i)(token|password|secret|api[_-]?key)=\S+', r'\1=<REDACTED>', tail)
+          escaped = tail.replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
+          print(f'::error title=Release build diagnostics::{escaped}')
+          PY
