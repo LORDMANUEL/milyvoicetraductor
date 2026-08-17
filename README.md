@@ -2,7 +2,7 @@
 
 **MilyVoiceTraductor** es una plataforma local de traducción de voz para reuniones, diseñada para convertir audio en inglés o chino a español sin enviar el contenido de la reunión a servicios externos.
 
-> Estado actual: **Fase 1 — Fundación de escritorio (`0.1.0`)**.
+> Estado actual: **Fase 1 completada — Fundación de escritorio (`0.1.0`)**.
 
 ## Objetivo
 
@@ -16,7 +16,7 @@ El proyecto está diseñado para terminar ofreciendo:
 - historial y exportación controlados por el usuario;
 - actualización independiente de aplicación, motor y modelos.
 
-La Fase 1 construye la base segura: aplicación Tauri, backend Rust modular, UI Svelte, configuración persistente, SQLite, logs sanitizados, caché limitada y diagnóstico del equipo. **Todavía no ejecuta modelos ni captura audio.**
+La Fase 1 construye la base segura: aplicación Tauri, backend Rust modular, UI Svelte, configuración persistente, SQLite, logs sanitizados, caché limitada y diagnóstico del equipo. **Todavía no ejecuta modelos ni captura audio:** esas capacidades pertenecen a fases posteriores y la interfaz las muestra como no instaladas, sin simular éxito.
 
 ## Principios del proyecto
 
@@ -104,7 +104,10 @@ python3 scripts/privacy_scan.py .
 ```bash
 cargo fmt --all -- --check
 cargo clippy --workspace --all-targets -- -D warnings
+cargo build -p milyvoicetraductor-desktop --release
 ```
+
+El workflow `CI` ejecuta además un smoke test y build de release en `windows-latest`, porque Windows es el objetivo principal de escritorio.
 
 ## Datos locales
 
@@ -125,13 +128,38 @@ URL esperada del proyecto:
 
 `https://lordmanuel.github.io/milyvoicetraductor/`
 
+### Activación inicial de Pages
+
+GitHub exige habilitar Pages una sola vez a nivel administrativo del repositorio. En GitHub:
+
+1. Abrir **Settings → Pages**.
+2. En **Build and deployment → Source**, seleccionar **GitHub Actions**.
+3. Ejecutar el workflow **Deploy GitHub Pages** o publicar el cambio en `main`.
+
+El workflow no guarda un PAT administrativo ni intenta elevar permisos por sí mismo. Una vez que Pages está habilitado, usa las acciones oficiales actuales para configurar, subir y desplegar el sitio.
+
 La web no incorpora Google Analytics, píxeles, cookies de seguimiento ni JavaScript de terceros.
+
+## Verificación automática de Fase 1
+
+Los gates de CI cubren:
+
+- escaneo de privacidad del repositorio;
+- smoke test de la landing de GitHub Pages;
+- TypeScript typecheck;
+- tests Vitest;
+- build Vite de producción;
+- `cargo fmt --check`;
+- `cargo test --workspace`;
+- `cargo clippy -- -D warnings`;
+- build Rust de release en Linux;
+- build frontend, tests Rust y build de release en Windows.
 
 ## Fases
 
 | Fase | Estado | Alcance |
 |---|---|---|
-| 1 | En desarrollo | Tauri/Rust/Svelte, persistencia, logs, caché, diagnóstico, web |
+| 1 | **Completada** | Tauri/Rust/Svelte, persistencia, logs, caché, diagnóstico, CI y web |
 | 2 | Pendiente | Motor IA local y protocolo |
 | 3 | Pendiente | Extensión Chromium y captura de pestaña |
 | 4 | Pendiente | Descarga/versionado/rollback de modelos |
