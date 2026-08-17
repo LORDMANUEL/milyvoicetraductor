@@ -4,11 +4,8 @@ mod bootstrap;
 mod commands;
 
 use bootstrap::AppState;
-use commands::{
-    clear_cache, get_app_status, get_cache_status, get_config, get_system_info, save_config,
-};
+use commands::*;
 
-/// Construye Tauri con el estado y comandos mínimos de la Fase 1.
 pub fn run() {
     let state = match AppState::initialize() {
         Ok(state) => state,
@@ -18,6 +15,14 @@ pub fn run() {
         }
     };
 
+    // El autoarranque es opt-in y nunca impide abrir la interfaz si el motor
+    // no está instalado o tiene un problema recuperable.
+    if let Ok(config) = state.config.load_or_default()
+        && config.auto_start_engine
+    {
+        let _ = state.engine.start(config.engine_port);
+    }
+
     tauri::Builder::default()
         .manage(state)
         .invoke_handler(tauri::generate_handler![
@@ -26,7 +31,20 @@ pub fn run() {
             get_config,
             save_config,
             get_cache_status,
-            clear_cache
+            clear_cache,
+            get_engine_status,
+            start_engine,
+            stop_engine,
+            get_pairing_token,
+            get_model_catalog,
+            install_model,
+            verify_model,
+            remove_model,
+            rollback_model,
+            list_sessions,
+            get_session_export,
+            delete_session,
+            get_runtime_locations
         ])
         .run(tauri::generate_context!())
         .expect("error no recuperable al ejecutar MilyVoiceTraductor");

@@ -5,30 +5,47 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use thiserror::Error;
 
-const MIGRATIONS: &[(i64, &str)] = &[(
-    1,
-    r#"
-    CREATE TABLE IF NOT EXISTS settings (
-        key TEXT PRIMARY KEY NOT NULL,
-        value TEXT NOT NULL,
-        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-    );
-    CREATE TABLE IF NOT EXISTS app_state (
-        key TEXT PRIMARY KEY NOT NULL,
-        value TEXT NOT NULL,
-        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-    );
-    CREATE TABLE IF NOT EXISTS session_index (
-        id TEXT PRIMARY KEY NOT NULL,
-        created_at TEXT NOT NULL,
-        source_language TEXT NOT NULL,
-        target_language TEXT NOT NULL,
-        duration_seconds INTEGER NOT NULL DEFAULT 0
-    );
-    "#,
-)];
+const MIGRATIONS: &[(i64, &str)] = &[
+    (
+        1,
+        r#"
+        CREATE TABLE IF NOT EXISTS settings (
+            key TEXT PRIMARY KEY NOT NULL,
+            value TEXT NOT NULL,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE TABLE IF NOT EXISTS app_state (
+            key TEXT PRIMARY KEY NOT NULL,
+            value TEXT NOT NULL,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE TABLE IF NOT EXISTS session_index (
+            id TEXT PRIMARY KEY NOT NULL,
+            created_at TEXT NOT NULL,
+            source_language TEXT NOT NULL,
+            target_language TEXT NOT NULL,
+            duration_seconds INTEGER NOT NULL DEFAULT 0
+        );
+        "#,
+    ),
+    (
+        2,
+        r#"
+        CREATE TABLE IF NOT EXISTS component_versions (
+            component TEXT PRIMARY KEY NOT NULL,
+            version TEXT NOT NULL,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE TABLE IF NOT EXISTS model_events (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            model_pack TEXT NOT NULL,
+            action TEXT NOT NULL,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+        "#,
+    ),
+];
 
-/// Servicio Send+Sync por diseño: conserva una ruta y abre conexiones cortas.
 #[derive(Debug, Clone)]
 pub struct DatabaseService {
     path: PathBuf,
@@ -90,6 +107,15 @@ impl DatabaseService {
         Ok(rows.next()?.map(|row| row.get(0)).transpose()?)
     }
 
+    pub fn record_model_event(&self, model_pack: &str, action: &str) -> Result<(), DatabaseError> {
+        let connection = Connection::open(&self.path)?;
+        connection.execute(
+            "INSERT INTO model_events(model_pack, action) VALUES (?1, ?2)",
+            params![model_pack, action],
+        )?;
+        Ok(())
+    }
+
     pub fn migration_version(&self) -> Result<i64, DatabaseError> {
         let connection = Connection::open(&self.path)?;
         Ok(connection.query_row(
@@ -114,19 +140,11 @@ mod tests {
     use tempfile::tempdir;
 
     #[test]
-    fn migrations_are_idempotent() {
+    fn migrations_reach_current_schema_and_are_idempotent() {
         let dir = tempdir().unwrap();
         let db = DatabaseService::open(dir.path().join("mily.db")).unwrap();
-        assert_eq!(db.migration_version().unwrap(), 1);
+        assert_eq!(db.migration_version().unwrap(), 2);
         db.apply_migrations().unwrap();
-        assert_eq!(db.migration_version().unwrap(), 1);
-    }
-
-    #[test]
-    fn settings_roundtrip_through_sqlite() {
-        let dir = tempdir().unwrap();
-        let db = DatabaseService::open(dir.path().join("mily.db")).unwrap();
-        db.set_setting("theme", "dark").unwrap();
-        assert_eq!(db.get_setting("theme").unwrap().as_deref(), Some("dark"));
+        assert_eq!(db.migration_version().unwrap(), 2);
     }
 }

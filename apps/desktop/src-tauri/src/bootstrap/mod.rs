@@ -1,29 +1,31 @@
 //! Composición de dependencias de la aplicación.
 //!
-//! Mantener este módulo pequeño evita que los comandos Tauri construyan o
-//! conozcan detalles internos de cada servicio.
+//! Tauri recibe un único `AppState`; cada servicio mantiene una responsabilidad
+//! concreta y puede probarse fuera de la interfaz.
 
 use mily_cache::CacheService;
 use mily_config::{AppPaths, ConfigService};
-use mily_core::{UnavailableEngineManager, UnavailableModelManager};
 use mily_database::DatabaseService;
+use mily_engine::EngineProcessManager;
 use mily_logging::LogService;
+use mily_models::ModelManagerService;
+use mily_sessions::SessionService;
 use mily_system::SystemInfoService;
 
-/// Estado compartido e inmutable en estructura. Los servicios realizan I/O
-/// breve bajo demanda y no mantienen threads de fondo en Fase 1.
+#[derive(Clone)]
 pub struct AppState {
+    pub paths: AppPaths,
     pub config: ConfigService,
     pub database: DatabaseService,
     pub cache: CacheService,
     pub logger: LogService,
     pub system: SystemInfoService,
-    pub engine: UnavailableEngineManager,
-    pub models: UnavailableModelManager,
+    pub engine: EngineProcessManager,
+    pub models: ModelManagerService,
+    pub sessions: SessionService,
 }
 
 impl AppState {
-    /// Inicializa directorios, migraciones y servicios con defaults seguros.
     pub fn initialize() -> Result<Self, String> {
         let paths = AppPaths::discover().map_err(|_| "APP_PATHS".to_string())?;
         paths
@@ -34,28 +36,35 @@ impl AppState {
         let loaded = config
             .load_or_default()
             .map_err(|_| "CONFIG_READ".to_string())?;
-        // Persistir defaults desde el primer inicio deja el esquema explícito.
         config
             .save(&loaded)
             .map_err(|_| "CONFIG_WRITE".to_string())?;
+        config
+            .save_engine_config(&loaded)
+            .map_err(|_| "ENGINE_CONFIG_WRITE".to_string())?;
 
         let database = DatabaseService::open(paths.data_dir.join("milyvoice.db"))
             .map_err(|_| "DATABASE_OPEN".to_string())?;
         let cache = CacheService::new(
-            paths.cache_dir,
+            paths.cache_dir.clone(),
             loaded.cache_limit_mb.saturating_mul(1024 * 1024),
         );
-        let logger = LogService::new(paths.log_dir, 2 * 1024 * 1024, 4);
-        let _ = logger.write("info", "MilyVoiceTraductor inició la Fase 1.");
+        let logger = LogService::new(paths.log_dir.clone(), 2 * 1024 * 1024, 4);
+        let _ = logger.write("info", "MilyVoiceTraductor inició su plataforma local.");
+        let engine = EngineProcessManager::new(paths.clone());
+        let models = ModelManagerService::new(paths.clone());
+        let sessions = SessionService::new(paths.clone());
 
         Ok(Self {
+            paths,
             config,
             database,
             cache,
             logger,
             system: SystemInfoService,
-            engine: UnavailableEngineManager,
-            models: UnavailableModelManager,
+            engine,
+            models,
+            sessions,
         })
     }
 }

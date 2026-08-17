@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main, "feat/**"]
+    branches: [main, "agent/**", "feat/**", "release/**"]
   pull_request:
     branches: [main]
 
@@ -11,17 +11,41 @@ permissions:
 
 jobs:
   repository-guards:
-    name: Privacy and site guards
+    name: Privacy, extension and site guards
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v6
         with:
           python-version: "3.13"
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+      - name: Source verification
+        run: python3 scripts/verify_source.py
       - name: Privacy scan
         run: python3 scripts/privacy_scan.py .
+      - name: Chromium extension guard
+        run: python3 scripts/test_extension.py
       - name: GitHub Pages smoke test
         run: python3 scripts/test_site.py
+
+  ai-engine:
+    name: Local AI engine
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+      - name: Install lightweight test dependencies
+        run: python -m pip install --disable-pip-version-check "fastapi>=0.116,<1" "httpx>=0.28,<1"
+      - name: Unit and local server tests
+        env:
+          PYTHONPATH: services/ai
+        run: python -m unittest discover -s services/ai/tests -v
+      - name: Compile Python sources
+        run: python -m compileall -q services/ai
 
   frontend:
     name: Frontend
@@ -31,15 +55,14 @@ jobs:
       - uses: actions/setup-node@v5
         with:
           node-version: "22"
-      - name: Install dependencies
-        run: npm install --no-audit --no-fund
-      - name: Upload generated npm lockfile
-        uses: actions/upload-artifact@v6
-        with:
-          name: npm-lockfile-${{ github.sha }}
-          path: package-lock.json
-          retention-days: 1
-          if-no-files-found: error
+      - name: Install frontend dependencies
+        shell: bash
+        run: |
+          if [ -f package-lock.json ]; then
+            npm ci --no-audit --no-fund
+          else
+            npm install --no-audit --no-fund
+          fi
       - name: Typecheck
         run: npm run typecheck
       - name: Tests
@@ -48,7 +71,7 @@ jobs:
         run: npm run build
 
   rust:
-    name: Rust
+    name: Rust / Tauri Linux
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -60,96 +83,126 @@ jobs:
         with:
           components: rustfmt, clippy
       - name: Format
-        run: cargo fmt --all -- --check
+        id: rustfmt
+        shell: bash
+        run: |
+          set -o pipefail
+          cargo fmt --all -- --check 2>&1 | tee rustfmt.log
+      - name: Annotate rustfmt diagnostics
+        if: failure() && steps.rustfmt.outcome == 'failure'
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import os
+          text = Path('rustfmt.log').read_text(encoding='utf-8', errors='replace')
+          tail = '\n'.join(text.splitlines()[-120:])[-9000:]
+          workspace = os.environ.get('GITHUB_WORKSPACE', '')
+          if workspace:
+              tail = tail.replace(workspace, '<WORKSPACE>')
+          escaped = tail.replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
+          print(f'::error title=rustfmt diagnostics::{escaped}')
+          PY
+      - name: Generate formatted Rust snapshot
+        if: failure() && steps.rustfmt.outcome == 'failure'
+        shell: bash
+        run: |
+          cargo fmt --all
+          tar -czf rustfmt-source.tar.gz crates apps/desktop/src-tauri/src
+      - name: Upload formatted Rust snapshot
+        if: failure() && steps.rustfmt.outcome == 'failure'
+        uses: actions/upload-artifact@v6
+        with:
+          name: rustfmt-source-${{ github.sha }}
+          path: rustfmt-source.tar.gz
+          retention-days: 1
+          if-no-files-found: error
       - name: Tests
-        id: rust_tests
-        shell: bash
-        run: |
-          set -o pipefail
-          cargo test --workspace 2>&1 | tee cargo-test.log
-      - name: Annotate Rust test diagnostics
-        if: failure() && steps.rust_tests.outcome == 'failure'
-        shell: bash
-        run: |
-          python3 - <<'PY'
-          from pathlib import Path
-          import os
-          import re
-
-          text = Path('cargo-test.log').read_text(encoding='utf-8', errors='replace')
-          tail = '\n'.join(text.splitlines()[-80:])[-6000:]
-          workspace = os.environ.get('GITHUB_WORKSPACE', '')
-          if workspace:
-              tail = tail.replace(workspace, '<WORKSPACE>')
-          tail = re.sub(r'(?i)(token|password|secret|api[_-]?key)=\S+', r'\1=<REDACTED>', tail)
-          escaped = tail.replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
-          print(f'::error title=Rust test diagnostics::{escaped}')
-          PY
+        if: success()
+        run: cargo test --workspace
       - name: Clippy
-        id: clippy
         if: success()
-        shell: bash
-        run: |
-          set -o pipefail
-          cargo clippy --workspace --all-targets -- -D warnings 2>&1 | tee clippy.log
-      - name: Annotate Clippy diagnostics
-        if: failure() && steps.clippy.outcome == 'failure'
-        shell: bash
-        run: |
-          python3 - <<'PY'
-          from pathlib import Path
-          import os
-          import re
-
-          text = Path('clippy.log').read_text(encoding='utf-8', errors='replace')
-          tail = '\n'.join(text.splitlines()[-80:])[-6000:]
-          workspace = os.environ.get('GITHUB_WORKSPACE', '')
-          if workspace:
-              tail = tail.replace(workspace, '<WORKSPACE>')
-          tail = re.sub(r'(?i)(token|password|secret|api[_-]?key)=\S+', r'\1=<REDACTED>', tail)
-          escaped = tail.replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
-          print(f'::error title=Clippy diagnostics::{escaped}')
-          PY
+        run: cargo clippy --workspace --all-targets -- -D warnings
       - name: Release build
-        id: release_build
         if: success()
-        shell: bash
-        run: |
-          set -o pipefail
-          cargo build -p milyvoicetraductor-desktop --release 2>&1 | tee cargo-release.log
-      - name: Annotate release build diagnostics
-        if: failure() && steps.release_build.outcome == 'failure'
-        shell: bash
-        run: |
-          python3 - <<'PY'
-          from pathlib import Path
-          import os
-          import re
-
-          text = Path('cargo-release.log').read_text(encoding='utf-8', errors='replace')
-          tail = '\n'.join(text.splitlines()[-80:])[-6000:]
-          workspace = os.environ.get('GITHUB_WORKSPACE', '')
-          if workspace:
-              tail = tail.replace(workspace, '<WORKSPACE>')
-          tail = re.sub(r'(?i)(token|password|secret|api[_-]?key)=\S+', r'\1=<REDACTED>', tail)
-          escaped = tail.replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
-          print(f'::error title=Release build diagnostics::{escaped}')
-          PY
+        run: cargo build -p milyvoicetraductor-desktop --release
 
   windows-smoke:
-    name: Windows smoke
+    name: Windows release smoke
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
         with:
           node-version: "22"
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
       - name: Install frontend dependencies
-        run: npm install --no-audit --no-fund
+        shell: pwsh
+        run: |
+          if (Test-Path package-lock.json) { npm ci --no-audit --no-fund } else { npm install --no-audit --no-fund }
       - name: Frontend build
         run: npm run build
+      - name: Install lightweight AI test dependencies
+        run: python -m pip install --disable-pip-version-check "fastapi>=0.116,<1" "httpx>=0.28,<1"
+      - name: AI unit tests
+        id: windows_ai
+        shell: pwsh
+        run: |
+          Push-Location services/ai
+          try {
+            $output = & python -m unittest discover -s tests -v 2>&1
+            $code = $LASTEXITCODE
+            $output | Tee-Object -FilePath ../../ai-windows.log
+            if ($code -ne 0) { exit $code }
+          } finally {
+            Pop-Location
+          }
+      - name: Annotate Windows AI diagnostics
+        if: failure() && steps.windows_ai.outcome == 'failure'
+        shell: pwsh
+        run: |
+          python -c "from pathlib import Path; import os; text=Path('ai-windows.log').read_text(encoding='utf-8', errors='replace'); tail='\n'.join(text.splitlines()[-100:])[-8000:]; ws=os.environ.get('GITHUB_WORKSPACE',''); tail=tail.replace(ws,'<WORKSPACE>') if ws else tail; esc=tail.replace('%','%25').replace('\r','%0D').replace('\n','%0A'); print(f'::error title=Windows AI diagnostics::{esc}')"
       - name: Rust tests
+        if: success()
         run: cargo test --workspace
+      - name: Clippy
+        if: success()
+        run: cargo clippy --workspace --all-targets -- -D warnings
       - name: Windows release build
+        if: success()
         run: cargo build -p milyvoicetraductor-desktop --release
+      - name: Tauri NSIS bundle
+        if: success()
+        run: npm run tauri -- build
+      - name: Package Chromium extension
+        if: success()
+        run: python scripts/build_extension_zip.py
+      - name: Prepare release bundle and SHA-256 checksums
+        if: success()
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force "dist/release" | Out-Null
+          $installer = Get-ChildItem "target/release/bundle/nsis/*-setup.exe" | Select-Object -First 1
+          if (-not $installer) { throw "No se encontró el instalador NSIS generado." }
+          $extension = Get-Item "dist/MilyVoiceTraductor-Chromium-Extension.zip"
+          Copy-Item $installer.FullName "dist/release/$($installer.Name)"
+          Copy-Item $extension.FullName "dist/release/$($extension.Name)"
+          $lines = foreach ($file in Get-ChildItem "dist/release" -File) {
+            $hash = (Get-FileHash $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+            "$hash *$($file.Name)"
+          }
+          $lines | Set-Content -Encoding ascii "dist/release/SHA256SUMS.txt"
+      - name: Upload Windows installer and Chromium extension
+        if: success()
+        uses: actions/upload-artifact@v6
+        with:
+          name: MilyVoiceTraductor-RC1-Windows-x64-${{ github.sha }}
+          path: dist/release/*
+          retention-days: 30
+          compression-level: 0
+          if-no-files-found: error

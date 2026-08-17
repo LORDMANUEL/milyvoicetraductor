@@ -1,6 +1,6 @@
 {
   "name": "milyvoicetraductor",
-  "version": "0.1.0",
+  "version": "1.0.0-rc.1",
   "private": true,
   "workspaces": [
     "apps/desktop"
@@ -12,7 +12,10 @@
     "test": "npm run test --workspace @milyvoice/desktop",
     "tauri": "npm run tauri --workspace @milyvoice/desktop",
     "site:test": "python3 scripts/test_site.py",
-    "privacy:scan": "python3 scripts/privacy_scan.py ."
+    "privacy:scan": "python3 scripts/privacy_scan.py .",
+    "verify:source": "python3 scripts/verify_source.py",
+    "package:source": "python3 scripts/package_source.py",
+    "package:extension": "python3 scripts/build_extension_zip.py"
   },
   "engines": {
     "node": ">=22.12.0"

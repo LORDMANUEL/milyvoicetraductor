@@ -1,0 +1,11 @@
+# Dependencias directas del motor. El build de producción debe congelar el
+# entorno exacto que haya pasado CI (pip freeze/uv lock) antes de publicar.
+fastapi>=0.116,<1
+uvicorn[standard]>=0.35,<1
+numpy>=2.2,<3
+faster-whisper>=1.1,<2
+transformers>=4.51,<6
+torch>=2.7,<3
+huggingface-hub>=0.34,<2
+sentencepiece>=0.2,<1
+safetensors>=0.5,<1
