@@ -3,20 +3,25 @@
 import asyncio
 import json
 import os
+import secrets
 import time
 from contextlib import asynccontextmanager
-from pathlib import Path
 
 from .audio import decode_pcm16_base64
 from .logging_safe import build_logger, close_logger
-from .models import HuggingFacePackInstaller, ModelCatalog
+from .models import HuggingFacePackInstaller, ModelCatalog, ModelOperationError
 from .pipeline import RealtimePipeline
 from .protocol import ClientMessage, ProtocolError, event
 from .runtime import EngineSettings, RuntimePaths, parent_process_alive
-from .security import PairingTokenService
+from .security import EphemeralCredentialService, PairingTokenService
 from .sessions import SessionRecorder
 
-ALLOWED_ORIGIN_PREFIXES = ("chrome-extension://", "edge-extension://", "http://localhost", "http://127.0.0.1")
+ALLOWED_ORIGIN_PREFIXES = (
+    "chrome-extension://",
+    "edge-extension://",
+    "http://localhost",
+    "http://127.0.0.1",
+)
 
 
 def create_app(paths: RuntimePaths, port: int = 8765, parent_pid: int | None = None):
@@ -31,7 +36,10 @@ def create_app(paths: RuntimePaths, port: int = 8765, parent_pid: int | None = N
     settings = EngineSettings.load(paths.config_dir)
     logger = build_logger(paths.logs_dir, settings.log_level)
     token_service = PairingTokenService(paths.config_dir / "bridge-token.txt")
-    token = token_service.get_or_create()
+    internal_token = token_service.get_or_create()
+    ephemeral_credentials = EphemeralCredentialService(
+        paths.config_dir / "native-credential.json"
+    )
     catalog = ModelCatalog(paths.models_dir)
     installer = HuggingFacePackInstaller(catalog)
     heartbeat_path = paths.data_dir / "extension-heartbeat.json"
@@ -60,8 +68,21 @@ def create_app(paths: RuntimePaths, port: int = 8765, parent_pid: int | None = N
         lifespan=lifespan,
     )
 
+    def valid_token(candidate: str | None) -> bool:
+        if not candidate:
+            return False
+        # El token persistente queda reservado al desktop/diagnóstico; la extensión
+        # recibe únicamente credenciales efímeras emitidas por Native Messaging.
+        if len(candidate) == len(internal_token) and secrets.compare_digest(
+            candidate, internal_token
+        ):
+            return True
+        return ephemeral_credentials.is_valid(candidate)
+
     def authenticated(request: Request) -> None:
-        if request.headers.get("authorization") != f"Bearer {token}":
+        authorization = request.headers.get("authorization", "")
+        candidate = authorization[7:] if authorization.startswith("Bearer ") else ""
+        if not valid_token(candidate):
             raise HTTPException(status_code=401, detail="No autorizado")
 
     @app.get("/health")
@@ -99,11 +120,21 @@ def create_app(paths: RuntimePaths, port: int = 8765, parent_pid: int | None = N
         loop = asyncio.get_running_loop()
         try:
             pack = await loop.run_in_executor(None, installer.install, pack_id)
-        except (KeyError, RuntimeError, OSError) as exc:
+        except ModelOperationError as exc:
+            logger.warning("Fallo de instalación de modelo: %s", exc.code)
+            return JSONResponse(
+                status_code=400,
+                content={"ok": False, "code": exc.code, "message": exc.message},
+            )
+        except Exception as exc:
             logger.warning("Fallo de instalación de modelo: %s", exc.__class__.__name__)
             return JSONResponse(
                 status_code=400,
-                content={"ok": False, "error": "No se pudo instalar el pack."},
+                content={
+                    "ok": False,
+                    "code": "MODEL_PROVIDER_ERROR",
+                    "message": "El proveedor de modelos no pudo completar la operación.",
+                },
             )
         return {"ok": True, "id": pack.id, "version": pack.version}
 
@@ -113,7 +144,7 @@ def create_app(paths: RuntimePaths, port: int = 8765, parent_pid: int | None = N
         if origin and not origin.startswith(ALLOWED_ORIGIN_PREFIXES):
             await websocket.close(code=4403)
             return
-        if websocket.query_params.get("token") != token:
+        if not valid_token(websocket.query_params.get("token")):
             await websocket.close(code=4401)
             return
         await websocket.accept()
@@ -138,14 +169,16 @@ def create_app(paths: RuntimePaths, port: int = 8765, parent_pid: int | None = N
                     continue
 
                 if message.type == "client.hello":
-                    heartbeat_path.write_text(json.dumps({"at": time.time()}), encoding="utf-8")
+                    heartbeat_path.write_text(
+                        json.dumps({"at": time.time()}), encoding="utf-8"
+                    )
                     active = catalog.active_pack()
                     if active is None:
                         await websocket.send_json(
                             event(
                                 "engine.error",
                                 code="MODEL_NOT_INSTALLED",
-                                message="Instala un pack de modelos desde MilyVoiceTraductor.",
+                                message="El modelo se está preparando en MilyVoiceTraductor.",
                             )
                         )
                         continue
@@ -211,7 +244,9 @@ def create_app(paths: RuntimePaths, port: int = 8765, parent_pid: int | None = N
                             )
                         )
                         continue
-                    heartbeat_path.write_text(json.dumps({"at": time.time()}), encoding="utf-8")
+                    heartbeat_path.write_text(
+                        json.dumps({"at": time.time()}), encoding="utf-8"
+                    )
                     for segment in segments:
                         await websocket.send_json(
                             event(
