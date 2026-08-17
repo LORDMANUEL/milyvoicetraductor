@@ -50,9 +50,40 @@ for pack in catalog_a.get("packs", []):
 # Las versiones públicas deben permanecer sincronizadas.
 version = (ROOT / "VERSION").read_text(encoding="utf-8").strip()
 package_version = json.loads((ROOT / "package.json").read_text(encoding="utf-8")).get("version")
-tauri_version = json.loads((ROOT / "apps/desktop/src-tauri/tauri.conf.json").read_text(encoding="utf-8")).get("version")
+tauri_config = json.loads((ROOT / "apps/desktop/src-tauri/tauri.conf.json").read_text(encoding="utf-8"))
+tauri_version = tauri_config.get("version")
 if package_version != version or tauri_version != version:
     fail(f"Versiones divergentes: VERSION={version}, package={package_version}, tauri={tauri_version}")
+
+# El instalador NSIS debe incluir el bootstrap local real y el hook post-install.
+bundle = tauri_config.get("bundle", {})
+resources = bundle.get("resources", {})
+expected_resources = {
+    "../../../services/ai/": "bootstrap/ai/",
+    "../../extension/": "bootstrap/extension/",
+    "../../../installer/windows/setup-installed.ps1": "bootstrap/setup-installed.ps1",
+}
+if resources != expected_resources:
+    fail("El bundle Tauri no contiene exactamente los recursos de bootstrap requeridos.")
+nsis = bundle.get("windows", {}).get("nsis", {})
+if nsis.get("installerHooks") != "./windows/hooks.nsh":
+    fail("El instalador NSIS no referencia windows/hooks.nsh.")
+hooks_path = ROOT / "apps/desktop/src-tauri/windows/hooks.nsh"
+bootstrap_path = ROOT / "installer/windows/setup-installed.ps1"
+if not hooks_path.is_file():
+    fail("Falta apps/desktop/src-tauri/windows/hooks.nsh.")
+else:
+    hooks_text = hooks_path.read_text(encoding="utf-8")
+    for marker in ("NSIS_HOOK_POSTINSTALL", "setup-installed.ps1", "business-qwen"):
+        if marker not in hooks_text:
+            fail(f"Hook NSIS incompleto: falta {marker}.")
+if not bootstrap_path.is_file():
+    fail("Falta installer/windows/setup-installed.ps1.")
+else:
+    bootstrap_text = bootstrap_path.read_text(encoding="utf-8")
+    for marker in ("Python.Python.3.13", "mily_ai", "business-qwen", "manifest.json", "HF_HUB_DISABLE_TELEMETRY"):
+        if marker not in bootstrap_text:
+            fail(f"Bootstrap Windows incompleto: falta {marker}.")
 
 # Guardia sintáctica mínima de Rust útil cuando el host no trae cargo.
 # Detecta una cadena de métodos cortada por ';' justo antes de otro `.metodo()`.

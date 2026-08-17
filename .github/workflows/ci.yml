@@ -167,6 +167,18 @@ jobs:
         shell: pwsh
         run: |
           python -c "from pathlib import Path; import os; text=Path('ai-windows.log').read_text(encoding='utf-8', errors='replace'); tail='\n'.join(text.splitlines()[-100:])[-8000:]; ws=os.environ.get('GITHUB_WORKSPACE',''); tail=tail.replace(ws,'<WORKSPACE>') if ws else tail; esc=tail.replace('%','%25').replace('\r','%0D').replace('\n','%0A'); print(f'::error title=Windows AI diagnostics::{esc}')"
+      - name: Validate bootstrap PowerShell syntax
+        if: success()
+        shell: pwsh
+        run: |
+          $tokens = $null
+          $errors = $null
+          $path = (Resolve-Path "installer/windows/setup-installed.ps1").Path
+          [System.Management.Automation.Language.Parser]::ParseFile($path, [ref]$tokens, [ref]$errors) | Out-Null
+          if ($errors.Count -gt 0) {
+            $errors | ForEach-Object { Write-Error $_.Message }
+            exit 1
+          }
       - name: Rust tests
         if: success()
         run: cargo test --workspace
@@ -197,11 +209,11 @@ jobs:
             "$hash *$($file.Name)"
           }
           $lines | Set-Content -Encoding ascii "dist/release/SHA256SUMS.txt"
-      - name: Upload Windows installer and Chromium extension
+      - name: Upload full Windows installer and Chromium extension
         if: success()
         uses: actions/upload-artifact@v6
         with:
-          name: MilyVoiceTraductor-RC1-Windows-x64-${{ github.sha }}
+          name: MilyVoiceTraductor-Full-RC1-Windows-x64-${{ github.sha }}
           path: dist/release/*
           retention-days: 30
           compression-level: 0
