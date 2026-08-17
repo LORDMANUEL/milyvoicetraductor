@@ -1,13 +1,82 @@
-"""Gestor de packs de modelos con staging, activación atómica y rollback."""
+"""Gestor de packs de modelos con staging, reanudación y activación atómica."""
 
 from __future__ import annotations
 
+import errno
 import hashlib
 import json
 import shutil
+import socket
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+
+
+@dataclass(slots=True)
+class ModelOperationError(RuntimeError):
+    """Error público estable; no contiene URLs privadas, tokens ni rutas del usuario."""
+
+    code: str
+    message: str
+
+    def __str__(self) -> str:
+        return self.message
+
+
+def classify_model_exception(exc: BaseException) -> ModelOperationError:
+    """Convierte excepciones de SO/red/HuggingFace a un contrato público estable."""
+    if isinstance(exc, PermissionError):
+        return ModelOperationError(
+            "MODEL_PERMISSION_ERROR",
+            "Windows no permitió escribir en la carpeta local de modelos.",
+        )
+    if isinstance(exc, OSError) and getattr(exc, "errno", None) == errno.ENOSPC:
+        return ModelOperationError(
+            "MODEL_NO_SPACE",
+            "No hay suficiente espacio libre para completar el modelo.",
+        )
+    if isinstance(exc, (ConnectionError, socket.gaierror)):
+        return ModelOperationError(
+            "MODEL_NO_NETWORK",
+            "No hay conexión disponible para continuar la descarga del modelo.",
+        )
+    if isinstance(exc, (TimeoutError, InterruptedError, KeyboardInterrupt)):
+        return ModelOperationError(
+            "MODEL_DOWNLOAD_INTERRUPTED",
+            "La descarga se interrumpió. Puedes reintentar sin perder los archivos válidos.",
+        )
+    if isinstance(exc, ImportError):
+        return ModelOperationError(
+            "MODEL_RUNTIME_ERROR",
+            "El runtime local no contiene una dependencia requerida para descargar modelos.",
+        )
+
+    name = exc.__class__.__name__.lower()
+    text = str(exc).lower()
+    if any(marker in name for marker in ("connection", "connect", "timeout")):
+        return ModelOperationError(
+            "MODEL_NO_NETWORK",
+            "No se pudo conectar con el proveedor de modelos.",
+        )
+    if any(marker in name for marker in ("repositorynotfound", "revisionnotfound", "hfhubhttp")):
+        return ModelOperationError(
+            "MODEL_PROVIDER_ERROR",
+            "El proveedor no pudo entregar la revisión fijada del modelo.",
+        )
+    if "no space left" in text or "disk full" in text:
+        return ModelOperationError(
+            "MODEL_NO_SPACE",
+            "No hay suficiente espacio libre para completar el modelo.",
+        )
+    if any(marker in text for marker in ("connection", "network is unreachable", "name resolution", "offline")):
+        return ModelOperationError(
+            "MODEL_NO_NETWORK",
+            "No hay conexión disponible para continuar la descarga del modelo.",
+        )
+    return ModelOperationError(
+        "MODEL_PROVIDER_ERROR",
+        "El proveedor de modelos no pudo completar la operación.",
+    )
 
 
 def _sha256(path: Path) -> str:
@@ -77,12 +146,16 @@ class ModelCatalog:
                 continue
             pack_id, version = metadata.get("id"), metadata.get("version")
             definition = definitions.get(pack_id, {})
-            installed.append(InstalledPack(
-                id=str(pack_id), version=str(version), path=metadata_path.parent,
-                active=active == f"{pack_id}@{version}",
-                title=str(definition.get("title", pack_id)),
-                commercial_use=bool(definition.get("commercialUse", False)),
-            ))
+            installed.append(
+                InstalledPack(
+                    id=str(pack_id),
+                    version=str(version),
+                    path=metadata_path.parent,
+                    active=active == f"{pack_id}@{version}",
+                    title=str(definition.get("title", pack_id)),
+                    commercial_use=bool(definition.get("commercialUse", False)),
+                )
+            )
         return sorted(installed, key=lambda item: (item.id, item.version))
 
     def active_pack(self) -> InstalledPack | None:
@@ -90,7 +163,7 @@ class ModelCatalog:
 
 
 class HuggingFacePackInstaller:
-    """Descarga snapshots completos a staging y solo activa cuando finalizan."""
+    """Descarga a staging y conserva parciales para reanudación en reintentos."""
 
     def __init__(self, catalog: ModelCatalog):
         self.catalog = catalog
@@ -99,19 +172,28 @@ class HuggingFacePackInstaller:
         try:
             from huggingface_hub import snapshot_download
         except ImportError as exc:
-            raise RuntimeError("huggingface_hub no está instalado") from exc
+            raise classify_model_exception(exc) from exc
 
-        definition = self.catalog.definition(pack_id)
-        version = str(definition["version"])
-        final_dir = self.catalog.packs_dir / pack_id / version
-        staging = self.catalog.models_dir / ".staging" / f"{pack_id}-{version}"
-        if final_dir.exists():
-            self.activate(pack_id, version)
-            return next(item for item in self.catalog.installed() if item.id == pack_id and item.version == version)
-
-        shutil.rmtree(staging, ignore_errors=True)
-        staging.mkdir(parents=True, exist_ok=True)
         try:
+            definition = self.catalog.definition(pack_id)
+            version = str(definition["version"])
+            final_dir = self.catalog.packs_dir / pack_id / version
+            staging = self.catalog.models_dir / ".staging" / f"{pack_id}-{version}"
+            if final_dir.exists():
+                if not self.verify(pack_id, version):
+                    raise ModelOperationError(
+                        "MODEL_HASH_MISMATCH",
+                        "El modelo instalado no pasó la verificación de integridad.",
+                    )
+                self.activate(pack_id, version)
+                return next(
+                    item
+                    for item in self.catalog.installed()
+                    if item.id == pack_id and item.version == version
+                )
+
+            # No borramos staging: huggingface_hub reutiliza archivos válidos y continúa.
+            staging.mkdir(parents=True, exist_ok=True)
             for component_name, component in definition["components"].items():
                 target = staging / "components" / component_name
                 snapshot_download(
@@ -120,22 +202,39 @@ class HuggingFacePackInstaller:
                     local_dir=target,
                 )
             (staging / "pack.json").write_text(
-                json.dumps({
-                    "schemaVersion": 1,
-                    "id": pack_id,
-                    "version": version,
-                    "components": definition["components"],
-                    "files": _file_manifest(staging),
-                }, indent=2, ensure_ascii=False),
+                json.dumps(
+                    {
+                        "schemaVersion": 1,
+                        "id": pack_id,
+                        "version": version,
+                        "components": definition["components"],
+                        "files": _file_manifest(staging),
+                    },
+                    indent=2,
+                    ensure_ascii=False,
+                ),
                 encoding="utf-8",
             )
             final_dir.parent.mkdir(parents=True, exist_ok=True)
+            if final_dir.exists():
+                shutil.rmtree(final_dir)
             staging.replace(final_dir)
-        except Exception:
-            shutil.rmtree(staging, ignore_errors=True)
+            if not self.verify(pack_id, version):
+                raise ModelOperationError(
+                    "MODEL_HASH_MISMATCH",
+                    "La descarga terminó, pero la verificación de integridad falló.",
+                )
+            self.activate(pack_id, version)
+            return next(
+                item
+                for item in self.catalog.installed()
+                if item.id == pack_id and item.version == version
+            )
+        except ModelOperationError:
             raise
-        self.activate(pack_id, version)
-        return next(item for item in self.catalog.installed() if item.id == pack_id and item.version == version)
+        except BaseException as exc:
+            # Staging se conserva deliberadamente para que el siguiente intento pueda reanudar.
+            raise classify_model_exception(exc) from exc
 
     def verify(self, pack_id: str, version: str) -> bool:
         pack_dir = self.catalog.packs_dir / pack_id / version
@@ -156,7 +255,10 @@ class HuggingFacePackInstaller:
         }
         if set(actual_files) != set(expected):
             return False
-        return all(_sha256(actual_files[relative]) == digest for relative, digest in expected.items())
+        return all(
+            _sha256(actual_files[relative]) == digest
+            for relative, digest in expected.items()
+        )
 
     def activate(self, pack_id: str, version: str) -> None:
         pack_dir = self.catalog.packs_dir / pack_id / version
@@ -165,9 +267,18 @@ class HuggingFacePackInstaller:
         self.catalog.models_dir.mkdir(parents=True, exist_ok=True)
         state = self.catalog._state()
         new_ref = f"{pack_id}@{version}"
-        previous = state.get("active") if state.get("active") != new_ref else state.get("previous")
+        previous = (
+            state.get("active")
+            if state.get("active") != new_ref
+            else state.get("previous")
+        )
         temp = self.catalog.state_path.with_suffix(".tmp")
-        temp.write_text(json.dumps({"schemaVersion": 1, "active": new_ref, "previous": previous}, indent=2), encoding="utf-8")
+        temp.write_text(
+            json.dumps(
+                {"schemaVersion": 1, "active": new_ref, "previous": previous}, indent=2
+            ),
+            encoding="utf-8",
+        )
         temp.replace(self.catalog.state_path)
 
     def rollback(self) -> InstalledPack:
@@ -180,7 +291,9 @@ class HuggingFacePackInstaller:
         self.activate(pack_id, version)
         new_state = self.catalog._state()
         new_state["previous"] = current
-        self.catalog.state_path.write_text(json.dumps(new_state, indent=2), encoding="utf-8")
+        self.catalog.state_path.write_text(
+            json.dumps(new_state, indent=2), encoding="utf-8"
+        )
         return self.catalog.active_pack()  # type: ignore[return-value]
 
     def remove(self, pack_id: str, version: str) -> None:
