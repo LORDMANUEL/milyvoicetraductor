@@ -36,7 +36,9 @@ impl AppState {
         let loaded = config
             .load_or_default()
             .map_err(|_| "CONFIG_READ".to_string())?;
-        config.save(&loaded).map_err(|_| "CONFIG_WRITE".to_string())?;
+        config
+            .save(&loaded)
+            .map_err(|_| "CONFIG_WRITE".to_string())?;
         config
             .save_engine_config(&loaded)
             .map_err(|_| "ENGINE_CONFIG_WRITE".to_string())?;

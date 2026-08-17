@@ -50,7 +50,8 @@ impl ModelManagerService {
     }
 
     pub fn catalog(&self) -> Vec<ModelPackInfo> {
-        let parsed: Catalog = serde_json::from_str(MODEL_CATALOG).unwrap_or(Catalog { packs: vec![] });
+        let parsed: Catalog =
+            serde_json::from_str(MODEL_CATALOG).unwrap_or(Catalog { packs: vec![] });
         let installed = self.installed();
         parsed
             .packs
@@ -75,8 +76,14 @@ impl ModelManagerService {
         let state = fs::read_to_string(self.paths.models_dir.join("current.json"))
             .ok()
             .and_then(|text| serde_json::from_str::<serde_json::Value>(&text).ok())
-            .and_then(|value| value.get("active").and_then(|item| item.as_str()).map(str::to_owned));
-        let parsed: Catalog = serde_json::from_str(MODEL_CATALOG).unwrap_or(Catalog { packs: vec![] });
+            .and_then(|value| {
+                value
+                    .get("active")
+                    .and_then(|item| item.as_str())
+                    .map(str::to_owned)
+            });
+        let parsed: Catalog =
+            serde_json::from_str(MODEL_CATALOG).unwrap_or(Catalog { packs: vec![] });
         let mut output = Vec::new();
         for definition in parsed.packs {
             let metadata = self
@@ -90,7 +97,8 @@ impl ModelManagerService {
                 continue;
             }
             output.push(ModelPackInfo {
-                active: state.as_deref() == Some(&format!("{}@{}", definition.id, definition.version)),
+                active: state.as_deref()
+                    == Some(&format!("{}@{}", definition.id, definition.version)),
                 installed: true,
                 id: definition.id,
                 version: definition.version,

@@ -88,6 +88,9 @@ mod tests {
 
     #[test]
     fn component_state_uses_stable_camel_case_values() {
-        assert_eq!(serde_json::to_string(&ComponentState::NotInstalled).unwrap(), "\"notInstalled\"");
+        assert_eq!(
+            serde_json::to_string(&ComponentState::NotInstalled).unwrap(),
+            "\"notInstalled\""
+        );
     }
 }

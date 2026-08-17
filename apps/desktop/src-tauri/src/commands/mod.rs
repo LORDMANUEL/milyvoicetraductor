@@ -47,7 +47,9 @@ pub fn get_system_info(state: State<'_, AppState>) -> SystemSnapshot {
 #[tauri::command]
 pub fn get_config(state: State<'_, AppState>) -> Result<AppConfig, PublicError> {
     state.config.load_or_default().map_err(|_| {
-        let _ = state.logger.write("error", "No se pudo leer la configuración local.");
+        let _ = state
+            .logger
+            .write("error", "No se pudo leer la configuración local.");
         public_error("CONFIG_READ", "No se pudo leer la configuración.")
     })
 }
@@ -59,12 +61,20 @@ pub fn save_config(
 ) -> Result<AppConfig, PublicError> {
     let normalized = config.normalized();
     state.config.save(&normalized).map_err(|_| {
-        let _ = state.logger.write("error", "No se pudo guardar la configuración local.");
+        let _ = state
+            .logger
+            .write("error", "No se pudo guardar la configuración local.");
         public_error("CONFIG_WRITE", "No se pudo guardar la configuración.")
     })?;
     state.config.save_engine_config(&normalized).map_err(|_| {
-        let _ = state.logger.write("error", "No se pudo sincronizar la configuración del motor.");
-        public_error("ENGINE_CONFIG_WRITE", "No se pudo preparar la configuración del motor.")
+        let _ = state.logger.write(
+            "error",
+            "No se pudo sincronizar la configuración del motor.",
+        );
+        public_error(
+            "ENGINE_CONFIG_WRITE",
+            "No se pudo preparar la configuración del motor.",
+        )
     })?;
     state
         .cache
@@ -78,7 +88,9 @@ pub fn save_config(
 #[tauri::command]
 pub fn get_cache_status(state: State<'_, AppState>) -> Result<CacheStatus, PublicError> {
     state.cache.status().map_err(|_| {
-        let _ = state.logger.write("warn", "No se pudo consultar el estado de caché.");
+        let _ = state
+            .logger
+            .write("warn", "No se pudo consultar el estado de caché.");
         public_error("CACHE_STATUS", "No se pudo consultar la caché.")
     })
 }
@@ -89,11 +101,15 @@ pub fn clear_cache(state: State<'_, AppState>) -> Result<CacheStatus, PublicErro
         let _ = state.logger.write("error", "No se pudo limpiar la caché.");
         public_error("CACHE_CLEAR", "No se pudo limpiar la caché.")
     })?;
-    let _ = state.logger.write("info", "Caché local limpiada por el usuario.");
-    state
-        .cache
-        .status()
-        .map_err(|_| public_error("CACHE_STATUS", "La caché se limpió, pero no se pudo leer su estado."))
+    let _ = state
+        .logger
+        .write("info", "Caché local limpiada por el usuario.");
+    state.cache.status().map_err(|_| {
+        public_error(
+            "CACHE_STATUS",
+            "La caché se limpió, pero no se pudo leer su estado.",
+        )
+    })
 }
 
 #[tauri::command]
@@ -106,8 +122,13 @@ pub fn get_engine_status(state: State<'_, AppState>) -> EngineRuntimeStatus {
 pub fn start_engine(state: State<'_, AppState>) -> Result<EngineRuntimeStatus, PublicError> {
     let config = state.config.load_or_default().unwrap_or_default();
     state.engine.start(config.engine_port).map_err(|error| {
-        let _ = state.logger.write("error", &format!("No se pudo iniciar motor: {}", error));
-        public_error("ENGINE_START", "No se pudo iniciar el motor local. Revisa que el runtime esté instalado.")
+        let _ = state
+            .logger
+            .write("error", &format!("No se pudo iniciar motor: {}", error));
+        public_error(
+            "ENGINE_START",
+            "No se pudo iniciar el motor local. Revisa que el runtime esté instalado.",
+        )
     })
 }
 
@@ -115,7 +136,9 @@ pub fn start_engine(state: State<'_, AppState>) -> Result<EngineRuntimeStatus, P
 pub fn stop_engine(state: State<'_, AppState>) -> Result<EngineRuntimeStatus, PublicError> {
     let config = state.config.load_or_default().unwrap_or_default();
     state.engine.stop(config.engine_port).map_err(|_| {
-        let _ = state.logger.write("warn", "No se pudo detener el motor local.");
+        let _ = state
+            .logger
+            .write("warn", "No se pudo detener el motor local.");
         public_error("ENGINE_STOP", "No se pudo detener el motor local.")
     })
 }
@@ -123,7 +146,10 @@ pub fn stop_engine(state: State<'_, AppState>) -> Result<EngineRuntimeStatus, Pu
 #[tauri::command]
 pub fn get_pairing_token(state: State<'_, AppState>) -> Result<String, PublicError> {
     state.engine.pairing_token().map_err(|_| {
-        public_error("PAIRING_TOKEN", "No se pudo preparar el token local de emparejamiento.")
+        public_error(
+            "PAIRING_TOKEN",
+            "No se pudo preparar el token local de emparejamiento.",
+        )
     })
 }
 
@@ -143,13 +169,23 @@ pub async fn install_model(
     let pack_id_for_task = pack_id.clone();
     tauri::async_runtime::spawn_blocking(move || models.install(&pack_id_for_task))
         .await
-        .map_err(|_| public_error("MODEL_TASK", "La tarea de instalación terminó inesperadamente."))?
+        .map_err(|_| {
+            public_error(
+                "MODEL_TASK",
+                "La tarea de instalación terminó inesperadamente.",
+            )
+        })?
         .map(|pack| {
             let _ = database.record_model_event(&pack_id, "install");
             let _ = logger.write("info", "Pack de modelos instalado correctamente.");
             pack
         })
-        .map_err(|_| public_error("MODEL_INSTALL", "No se pudo instalar el pack. Revisa conexión, espacio y licencia."))
+        .map_err(|_| {
+            public_error(
+                "MODEL_INSTALL",
+                "No se pudo instalar el pack. Revisa conexión, espacio y licencia.",
+            )
+        })
 }
 
 #[tauri::command]
@@ -175,7 +211,12 @@ pub async fn remove_model(
     tauri::async_runtime::spawn_blocking(move || models.remove(&pack_id, &version))
         .await
         .map_err(|_| public_error("MODEL_TASK", "La eliminación terminó inesperadamente."))?
-        .map_err(|_| public_error("MODEL_REMOVE", "No se pudo eliminar el pack. El pack activo está protegido."))
+        .map_err(|_| {
+            public_error(
+                "MODEL_REMOVE",
+                "No se pudo eliminar el pack. El pack activo está protegido.",
+            )
+        })
 }
 
 #[tauri::command]
@@ -183,8 +224,18 @@ pub async fn rollback_model(state: State<'_, AppState>) -> Result<ModelPackInfo,
     let models = state.models.clone();
     tauri::async_runtime::spawn_blocking(move || models.rollback())
         .await
-        .map_err(|_| public_error("MODEL_TASK", "La tarea de rollback terminó inesperadamente."))?
-        .map_err(|_| public_error("MODEL_ROLLBACK", "No existe un pack anterior válido para restaurar."))
+        .map_err(|_| {
+            public_error(
+                "MODEL_TASK",
+                "La tarea de rollback terminó inesperadamente.",
+            )
+        })?
+        .map_err(|_| {
+            public_error(
+                "MODEL_ROLLBACK",
+                "No existe un pack anterior válido para restaurar.",
+            )
+        })
 }
 
 #[tauri::command]
@@ -198,19 +249,23 @@ pub fn get_session_export(
     session_id: String,
     format: String,
 ) -> Result<String, PublicError> {
-    state.sessions.export_text(&session_id, &format).map_err(|_| {
-        public_error("SESSION_EXPORT", "No se pudo leer la exportación solicitada.")
-    })
+    state
+        .sessions
+        .export_text(&session_id, &format)
+        .map_err(|_| {
+            public_error(
+                "SESSION_EXPORT",
+                "No se pudo leer la exportación solicitada.",
+            )
+        })
 }
 
 #[tauri::command]
-pub fn delete_session(
-    state: State<'_, AppState>,
-    session_id: String,
-) -> Result<(), PublicError> {
-    state.sessions.delete(&session_id).map_err(|_| {
-        public_error("SESSION_DELETE", "No se pudo eliminar la sesión.")
-    })
+pub fn delete_session(state: State<'_, AppState>, session_id: String) -> Result<(), PublicError> {
+    state
+        .sessions
+        .delete(&session_id)
+        .map_err(|_| public_error("SESSION_DELETE", "No se pudo eliminar la sesión."))
 }
 
 #[tauri::command]

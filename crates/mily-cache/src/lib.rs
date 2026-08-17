@@ -4,7 +4,10 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, atomic::{AtomicU64, Ordering}};
+use std::sync::{
+    Arc,
+    atomic::{AtomicU64, Ordering},
+};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use thiserror::Error;
 
@@ -69,10 +72,10 @@ impl CacheService {
         Ok(Some(fs::read(data_path)?))
     }
 
-
     /// Actualiza el límite en caliente sin reconstruir el servicio.
     pub fn set_max_bytes(&self, max_bytes: u64) {
-        self.max_bytes.store(max_bytes.max(1024 * 1024), Ordering::Relaxed);
+        self.max_bytes
+            .store(max_bytes.max(1024 * 1024), Ordering::Relaxed);
         let _ = self.prune();
     }
 

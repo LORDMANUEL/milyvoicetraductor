@@ -36,9 +36,11 @@ impl LaunchSpec {
             }
         }
 
-        let compiled = paths
-            .bin_dir
-            .join(if cfg!(windows) { "mily-ai-engine.exe" } else { "mily-ai-engine" });
+        let compiled = paths.bin_dir.join(if cfg!(windows) {
+            "mily-ai-engine.exe"
+        } else {
+            "mily-ai-engine"
+        });
         if compiled.is_file() {
             return Some(Self {
                 program: compiled,
@@ -49,7 +51,11 @@ impl LaunchSpec {
         let python_candidates = if cfg!(windows) {
             vec![
                 paths.engine_dir.join("python").join("python.exe"),
-                paths.engine_dir.join("python").join("Scripts").join("python.exe"),
+                paths
+                    .engine_dir
+                    .join("python")
+                    .join("Scripts")
+                    .join("python.exe"),
             ]
         } else {
             vec![
@@ -59,7 +65,10 @@ impl LaunchSpec {
         };
         let script = paths.engine_dir.join("app").join("main.py");
         if script.is_file() {
-            if let Some(python) = python_candidates.into_iter().find(|candidate| candidate.is_file()) {
+            if let Some(python) = python_candidates
+                .into_iter()
+                .find(|candidate| candidate.is_file())
+            {
                 return Some(Self {
                     program: python,
                     prefix_args: vec![script.to_string_lossy().into_owned()],

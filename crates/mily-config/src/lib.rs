@@ -132,7 +132,10 @@ impl AppConfig {
         if !matches!(self.compute_profile.as_str(), "auto" | "cpu" | "gpu") {
             self.compute_profile = "auto".into();
         }
-        if !matches!(self.active_model_pack.as_str(), "lite-nllb" | "business-qwen") {
+        if !matches!(
+            self.active_model_pack.as_str(),
+            "lite-nllb" | "business-qwen"
+        ) {
             self.active_model_pack = "business-qwen".into();
         }
         self.cache_limit_mb = self.cache_limit_mb.clamp(64, 4096);
