@@ -1,0 +1,82 @@
+name: Publish RC
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  publish:
+    name: Publish verified RC downloads
+    if: ${{ github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main' }}
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REPOSITORY: ${{ github.repository }}
+      RUN_ID: ${{ github.event.workflow_run.id }}
+      VERIFIED_SHA: ${{ github.event.workflow_run.head_sha }}
+      ARTIFACT_NAME: MilyVoiceTraductor-Full-RC1-Windows-x64-${{ github.event.workflow_run.head_sha }}
+      RELEASE_TAG: v1.0.0-rc.1
+      RELEASE_TITLE: MilyVoiceTraductor 1.0.0 RC1
+    steps:
+      - name: Checkout the verified source revision
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - name: Download the exact Windows artifact produced by CI
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf release
+          mkdir -p release
+          gh run download "$RUN_ID" \
+            --repo "$REPOSITORY" \
+            --name "$ARTIFACT_NAME" \
+            --dir release
+
+      - name: Verify published file set and SHA-256 checksums
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f release/MilyVoiceTraductor_1.0.0-rc.1_x64-setup.exe
+          test -f release/MilyVoiceTraductor-Chromium-Extension.zip
+          test -f release/SHA256SUMS.txt
+          cd release
+          sha256sum -c SHA256SUMS.txt
+
+      - name: Create or update the public RC release
+        shell: bash
+        run: |
+          set -euo pipefail
+          if gh release view "$RELEASE_TAG" --repo "$REPOSITORY" >/dev/null 2>&1; then
+            gh release edit "$RELEASE_TAG" \
+              --repo "$REPOSITORY" \
+              --title "$RELEASE_TITLE" \
+              --notes-file docs/release/RELEASE_NOTES_RC1.md \
+              --prerelease
+            gh release upload "$RELEASE_TAG" release/* \
+              --repo "$REPOSITORY" \
+              --clobber
+          else
+            gh release create "$RELEASE_TAG" release/* \
+              --repo "$REPOSITORY" \
+              --target "$VERIFIED_SHA" \
+              --title "$RELEASE_TITLE" \
+              --notes-file docs/release/RELEASE_NOTES_RC1.md \
+              --prerelease
+          fi
+
+      - name: Confirm release assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          assets="$(gh release view "$RELEASE_TAG" --repo "$REPOSITORY" --json assets --jq '.assets[].name')"
+          grep -Fxq 'MilyVoiceTraductor_1.0.0-rc.1_x64-setup.exe' <<<"$assets"
+          grep -Fxq 'MilyVoiceTraductor-Chromium-Extension.zip' <<<"$assets"
+          grep -Fxq 'SHA256SUMS.txt' <<<"$assets"
+          gh release view "$RELEASE_TAG" --repo "$REPOSITORY" --json url --jq '.url'
