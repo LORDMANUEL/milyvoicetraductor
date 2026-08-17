@@ -43,10 +43,14 @@ impl SystemInfoService {
 /// Fase 1 evita librerías GPU pesadas. Solo informa hints confiables disponibles.
 fn detect_optional_gpu_hint() -> Option<String> {
     for variable in ["NVIDIA_VISIBLE_DEVICES", "CUDA_VISIBLE_DEVICES"] {
-        if let Ok(value) = std::env::var(variable) {
-            if !value.trim().is_empty() && value != "void" && value != "-1" {
-                return Some("GPU NVIDIA/CUDA disponible (hint de entorno)".into());
-            }
+        // El patrón combinado mantiene una sola condición legible y cumple el
+        // lint `collapsible_if` sin alterar la política CPU-first.
+        if let Ok(value) = std::env::var(variable)
+            && !value.trim().is_empty()
+            && value != "void"
+            && value != "-1"
+        {
+            return Some("GPU NVIDIA/CUDA disponible (hint de entorno)".into());
         }
     }
     None
