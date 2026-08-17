@@ -27,22 +27,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
       - name: Configure GitHub Pages
-        id: pages
-        continue-on-error: true
         uses: actions/configure-pages@v6
-        with:
-          enablement: true
-      - name: Explain Pages enablement requirement
-        if: steps.pages.outcome != 'success'
-        shell: bash
-        run: |
-          echo "::warning title=GitHub Pages pendiente::GitHub bloqueó la creación inicial del sitio para GITHUB_TOKEN. Habilita Pages una sola vez en Settings > Pages > Source: GitHub Actions; después este workflow desplegará automáticamente."
-      - name: Upload static site
-        if: steps.pages.outcome == 'success'
+      - name: Upload MilyVoiceTraductor product site
         uses: actions/upload-pages-artifact@v5
         with:
           path: apps/site
-      - name: Deploy
-        if: steps.pages.outcome == 'success'
+      - name: Deploy product site
         id: deployment
         uses: actions/deploy-pages@v5
