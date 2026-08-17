@@ -64,16 +64,15 @@ impl LaunchSpec {
             ]
         };
         let script = paths.engine_dir.join("app").join("main.py");
-        if script.is_file() {
-            if let Some(python) = python_candidates
+        if script.is_file()
+            && let Some(python) = python_candidates
                 .into_iter()
                 .find(|candidate| candidate.is_file())
-            {
-                return Some(Self {
-                    program: python,
-                    prefix_args: vec![script.to_string_lossy().into_owned()],
-                });
-            }
+        {
+            return Some(Self {
+                program: python,
+                prefix_args: vec![script.to_string_lossy().into_owned()],
+            });
         }
         None
     }
