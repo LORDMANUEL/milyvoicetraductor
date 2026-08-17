@@ -10,6 +10,7 @@ members = [
   "crates/mily-engine",
   "crates/mily-models",
   "crates/mily-sessions",
+  "crates/mily-bridge",
   "apps/desktop/src-tauri",
 ]
 
