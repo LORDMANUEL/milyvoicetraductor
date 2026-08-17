@@ -9,14 +9,14 @@ use thiserror::Error;
 
 /// Sanitiza datos frecuentes que nunca deben terminar en archivos de log.
 pub fn sanitize_log_message(input: &str) -> String {
-    let secret = Regex::new(r"(?i)\b(token|password|passwd|secret|api[_-]?key)\b\s*[:=]\s*[^\s,;]+")
-        .expect("valid secret regex");
-    let email = Regex::new(r"(?i)\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b")
-        .expect("valid email regex");
-    let windows_home = Regex::new(r"(?i)[A-Z]:\\Users\\[^\\\s]+")
-        .expect("valid windows path regex");
-    let unix_home = Regex::new(r"/(?:home|Users)/[^/\s]+")
-        .expect("valid unix path regex");
+    let secret =
+        Regex::new(r"(?i)\b(token|password|passwd|secret|api[_-]?key)\b\s*[:=]\s*[^\s,;]+")
+            .expect("valid secret regex");
+    let email =
+        Regex::new(r"(?i)\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b").expect("valid email regex");
+    let windows_home =
+        Regex::new(r"(?i)[A-Z]:\\Users\\[^\\\s]+").expect("valid windows path regex");
+    let unix_home = Regex::new(r"/(?:home|Users)/[^/\s]+").expect("valid unix path regex");
 
     let output = secret.replace_all(input, "$1=<REDACTED>");
     let output = email.replace_all(&output, "<EMAIL>");
@@ -46,7 +46,10 @@ impl LogService {
         fs::create_dir_all(&self.directory)?;
         self.rotate_if_needed()?;
         let log_path = self.directory.join("milyvoice.log");
-        let mut file = OpenOptions::new().create(true).append(true).open(log_path)?;
+        let mut file = OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(log_path)?;
         let timestamp = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap_or_default()
@@ -69,7 +72,10 @@ impl LogService {
             .duration_since(UNIX_EPOCH)
             .unwrap_or_default()
             .as_secs();
-        fs::rename(&active, self.directory.join(format!("milyvoice-{stamp}.log")))?;
+        fs::rename(
+            &active,
+            self.directory.join(format!("milyvoice-{stamp}.log")),
+        )?;
         self.prune_old_logs()?;
         Ok(())
     }
@@ -106,7 +112,9 @@ mod tests {
     #[test]
     fn sanitizer_redacts_secrets_emails_and_user_homes() {
         let unix_home = ["", "home", "sample-user", "data"].join("/");
-        let input = format!("token=abc123 contact=user@example.com path=C:\\Users\\SampleUser\\AppData unix={unix_home}");
+        let input = format!(
+            "token=abc123 contact=user@example.com path=C:\\Users\\SampleUser\\AppData unix={unix_home}"
+        );
         let clean = sanitize_log_message(&input);
         assert!(!clean.contains("abc123"));
         assert!(!clean.contains("user@example.com"));
@@ -119,7 +127,9 @@ mod tests {
     fn service_writes_only_sanitized_content() {
         let dir = tempdir().unwrap();
         let service = LogService::new(dir.path(), 64 * 1024, 2);
-        service.write("info", "password=hunter2 user=test@example.com").unwrap();
+        service
+            .write("info", "password=hunter2 user=test@example.com")
+            .unwrap();
         let content = fs::read_to_string(dir.path().join("milyvoice.log")).unwrap();
         assert!(!content.contains("hunter2"));
         assert!(!content.contains("test@example.com"));
