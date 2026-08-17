@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#00a878" />
+  <meta name="description" content="MilyVoiceTraductor: traducción local de reuniones de inglés o chino a español, diseñada con privacidad por defecto." />
+  <title>MilyVoiceTraductor · Traducción local y privada</title>
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <header class="site-header">
+    <a class="brand" href="#inicio" aria-label="MilyVoiceTraductor, inicio">
+      <img src="./assets/logo.svg" alt="Zebra con audífonos, logo de MilyVoiceTraductor" />
+      <span><b>Mily</b><em>Voice</em>Traductor</span>
+    </a>
+    <nav aria-label="Navegación del sitio">
+      <a href="#producto">Producto</a>
+      <a href="#privacidad">Privacidad</a>
+      <a href="#arquitectura">Arquitectura</a>
+      <a href="#estado">Estado</a>
+    </nav>
+    <a class="ghost-button" href="https://github.com/LORDMANUEL/milyvoicetraductor">GitHub</a>
+  </header>
+
+  <main id="inicio">
+    <section class="hero wrap">
+      <div class="hero-copy">
+        <div class="eyebrow">IA local · Privacidad por defecto</div>
+        <h1>Entiende la reunión.<br /><span>Sin regalar el audio.</span></h1>
+        <p>MilyVoiceTraductor está diseñado para traducir reuniones en inglés o chino a español usando modelos locales, con una aplicación ligera y una extensión Chromium.</p>
+        <div class="actions">
+          <a class="primary-button" href="#estado">Ver Fase 1</a>
+          <a class="text-link" href="https://github.com/LORDMANUEL/milyvoicetraductor">Explorar código →</a>
+        </div>
+        <ul class="trust-row" aria-label="Principios principales">
+          <li><span>✓</span> Sin telemetría</li>
+          <li><span>✓</span> CPU-first</li>
+          <li><span>✓</span> GPU opcional</li>
+        </ul>
+      </div>
+      <div class="hero-visual" aria-label="Vista conceptual de MilyVoiceTraductor">
+        <div class="app-window">
+          <div class="window-bar"><i></i><i></i><i></i><span>MilyVoiceTraductor</span></div>
+          <div class="window-body">
+            <div class="mini-sidebar">
+              <img src="./assets/logo.svg" alt="" />
+              <b></b><b></b><b></b><b></b><b></b>
+            </div>
+            <div class="mini-content">
+              <small>TRADUCCIÓN LOCAL</small>
+              <h2>English / 中文</h2>
+              <div class="arrow">↓</div>
+              <div class="subtitle-card">
+                <span>ES</span>
+                <p>Buenos días a todos, comencemos nuestra reunión.</p>
+              </div>
+              <div class="privacy-chip"><i></i>Procesamiento local</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="producto" class="section wrap">
+      <div class="section-heading">
+        <span>Producto</span>
+        <h2>Una plataforma, componentes independientes.</h2>
+        <p>La aplicación, el motor IA, la extensión y los modelos tienen ciclos separados para poder actualizar cada pieza sin romper las demás.</p>
+      </div>
+      <div class="feature-grid">
+        <article><div class="feature-icon emerald">01</div><h3>Escritorio ligero</h3><p>Tauri 2 + Rust para usar el WebView nativo del sistema y mantener bajo el consumo.</p></article>
+        <article><div class="feature-icon sapphire">02</div><h3>Motor local</h3><p>Python se integrará como sidecar únicamente para IA; la app no dependerá de un runtime Python instalado por el usuario.</p></article>
+        <article><div class="feature-icon emerald">03</div><h3>Extensión Chromium</h3><p>Captura explícita de audio de pestaña en Chrome, Edge y navegadores Chromium, con permisos mínimos.</p></article>
+        <article><div class="feature-icon sapphire">04</div><h3>Modelos versionados</h3><p>Descarga, hash, activación y rollback independientes del ejecutable principal.</p></article>
+      </div>
+    </section>
+
+    <section id="privacidad" class="privacy-section">
+      <div class="wrap privacy-layout">
+        <div>
+          <span class="section-label">Privacidad</span>
+          <h2>El contenido de la reunión no es material de diagnóstico.</h2>
+          <p>La arquitectura separa los datos operativos del contenido. Los logs se sanitizan antes de escribirse y la Fase 1 no captura audio, no almacena transcripciones y no incluye telemetría.</p>
+        </div>
+        <div class="privacy-list">
+          <div><span>✓</span><p><b>Sin tracking.</b><br />La web tampoco usa analytics, píxeles o cookies de seguimiento.</p></div>
+          <div><span>✓</span><p><b>Logs sanitizados.</b><br />Tokens, correos y directorios personales comunes se redactan.</p></div>
+          <div><span>✓</span><p><b>Permisos progresivos.</b><br />Micrófono y captura de pestaña no se solicitan hasta que esas funciones existan.</p></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="arquitectura" class="section wrap">
+      <div class="section-heading compact"><span>Arquitectura</span><h2>Rust gobierna. La IA se conecta.</h2></div>
+      <div class="architecture-card">
+        <div class="arch-node"><small>INTERFAZ</small><strong>Svelte + TypeScript</strong><p>Estado, navegación y controles.</p></div>
+        <div class="connector">→</div>
+        <div class="arch-node highlighted"><small>PLATAFORMA</small><strong>Tauri + Rust</strong><p>Seguridad, archivos, SQLite, logs y caché.</p></div>
+        <div class="connector">→</div>
+        <div class="arch-node future"><small>FASE 2</small><strong>Motor IA local</strong><p>ASR + traducción como sidecar sustituible.</p></div>
+      </div>
+    </section>
+
+    <section id="estado" class="section wrap">
+      <div class="section-heading"><span>Roadmap</span><h2>Fase 1 · Fundación 0.1.0</h2><p>El repositorio empieza por estabilidad y privacidad antes de añadir modelos pesados.</p></div>
+      <div class="roadmap">
+        <article class="done"><span>1</span><div><b>Fundación</b><p>Tauri, Rust, Svelte, SQLite, configuración, caché, logs, diagnóstico y GitHub Pages.</p></div></article>
+        <article><span>2</span><div><b>Motor IA</b><p>ASR y traducción local con fallback CPU y aceleración opcional.</p></div></article>
+        <article><span>3</span><div><b>Chromium</b><p>Add-on para captura de pestaña y subtítulos en vivo.</p></div></article>
+        <article><span>4</span><div><b>Model Manager</b><p>Descarga, verificación, versiones y rollback.</p></div></article>
+      </div>
+      <div class="cta-card">
+        <div><small>CÓDIGO ABIERTO</small><h2>Revisa cómo está construido.</h2><p>El repositorio contiene arquitectura, pruebas y lineamientos de privacidad desde el primer release.</p></div>
+        <a class="primary-button" href="https://github.com/LORDMANUEL/milyvoicetraductor">Abrir GitHub</a>
+      </div>
+    </section>
+  </main>
+
+  <footer class="wrap">
+    <div class="brand footer-brand"><img src="./assets/logo.svg" alt="" /><span><b>Mily</b><em>Voice</em>Traductor</span></div>
+    <p>Fase 1 · 0.1.0 · Sin telemetría.</p>
+  </footer>
+  <script src="./app.js" defer></script>
+</body>
+</html>

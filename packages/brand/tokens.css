@@ -1,0 +1,17 @@
+:root {
+  --mily-emerald: #00a878;
+  --mily-emerald-dark: #007f5b;
+  --mily-sapphire: #1769e0;
+  --mily-sapphire-dark: #0c4fae;
+  --mily-bone: #f7f4ea;
+  --mily-navy: #10243e;
+  --mily-surface: #ffffff;
+  --mily-muted: #64748b;
+  --mily-border: #dfe7e4;
+  --mily-danger: #b42318;
+  --mily-warning: #9a6700;
+  --mily-radius-sm: 10px;
+  --mily-radius-md: 16px;
+  --mily-radius-lg: 24px;
+  --mily-shadow: 0 14px 40px rgb(16 36 62 / 8%);
+}

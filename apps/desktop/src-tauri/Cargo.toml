@@ -1,0 +1,23 @@
+[package]
+name = "milyvoicetraductor-desktop"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lib]
+name = "milyvoicetraductor_desktop"
+crate-type = ["lib", "cdylib", "staticlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+serde = { version = "1", features = ["derive"] }
+mily-core = { path = "../../../crates/mily-core" }
+mily-config = { path = "../../../crates/mily-config" }
+mily-database = { path = "../../../crates/mily-database" }
+mily-logging = { path = "../../../crates/mily-logging" }
+mily-cache = { path = "../../../crates/mily-cache" }
+mily-system = { path = "../../../crates/mily-system" }
