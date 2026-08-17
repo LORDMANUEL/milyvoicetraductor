@@ -33,6 +33,13 @@ jobs:
           node-version: "22"
       - name: Install dependencies
         run: npm install --no-audit --no-fund
+      - name: Upload generated npm lockfile
+        uses: actions/upload-artifact@v4
+        with:
+          name: npm-lockfile-${{ github.sha }}
+          path: package-lock.json
+          retention-days: 1
+          if-no-files-found: error
       - name: Typecheck
         run: npm run typecheck
       - name: Tests
@@ -128,3 +135,21 @@ jobs:
           escaped = tail.replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
           print(f'::error title=Release build diagnostics::{escaped}')
           PY
+
+  windows-smoke:
+    name: Windows smoke
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install frontend dependencies
+        run: npm install --no-audit --no-fund
+      - name: Frontend build
+        run: npm run build
+      - name: Rust tests
+        run: cargo test --workspace
+      - name: Windows release build
+        run: cargo build -p milyvoicetraductor-desktop --release
