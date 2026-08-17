@@ -26,12 +26,18 @@ impl AppState {
     /// Inicializa directorios, migraciones y servicios con defaults seguros.
     pub fn initialize() -> Result<Self, String> {
         let paths = AppPaths::discover().map_err(|_| "APP_PATHS".to_string())?;
-        paths.ensure_exists().map_err(|_| "APP_PATHS_CREATE".to_string())?;
+        paths
+            .ensure_exists()
+            .map_err(|_| "APP_PATHS_CREATE".to_string())?;
 
         let config = ConfigService::new(paths.config_dir.join("config.json"));
-        let loaded = config.load_or_default().map_err(|_| "CONFIG_READ".to_string())?;
+        let loaded = config
+            .load_or_default()
+            .map_err(|_| "CONFIG_READ".to_string())?;
         // Persistir defaults desde el primer inicio deja el esquema explícito.
-        config.save(&loaded).map_err(|_| "CONFIG_WRITE".to_string())?;
+        config
+            .save(&loaded)
+            .map_err(|_| "CONFIG_WRITE".to_string())?;
 
         let database = DatabaseService::open(paths.data_dir.join("milyvoice.db"))
             .map_err(|_| "DATABASE_OPEN".to_string())?;
