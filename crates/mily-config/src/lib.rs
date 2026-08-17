@@ -167,19 +167,23 @@ mod tests {
     fn config_roundtrip_persists_normalized_values() {
         let dir = tempdir().unwrap();
         let service = ConfigService::new(dir.path().join("config.json"));
-        let mut config = AppConfig::default();
-        config.source_language = "zh".into();
-        config.cache_limit_mb = 512;
+        let config = AppConfig {
+            source_language: "zh".into(),
+            cache_limit_mb: 512,
+            ..AppConfig::default()
+        };
         service.save(&config).unwrap();
         assert_eq!(service.load_or_default().unwrap(), config);
     }
 
     #[test]
     fn invalid_values_are_replaced_by_safe_defaults() {
-        let mut config = AppConfig::default();
-        config.theme = "neon".into();
-        config.source_language = "xx".into();
-        config.cache_limit_mb = 1;
+        let config = AppConfig {
+            theme: "neon".into(),
+            source_language: "xx".into(),
+            cache_limit_mb: 1,
+            ..AppConfig::default()
+        };
         let normalized = config.normalized();
         assert_eq!(normalized.theme, "system");
         assert_eq!(normalized.source_language, "auto");
