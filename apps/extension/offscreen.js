@@ -48,6 +48,9 @@ async function cleanup() {
 
 async function startCapture(message) {
   await cleanup();
+  if (!message.credential || !message.enginePort) {
+    throw new Error('No se recibió una sesión segura desde MilyVoiceTraductor.');
+  }
   activeTabId = message.tabId;
   const constraints = {
     audio: {
@@ -60,7 +63,6 @@ async function startCapture(message) {
   };
   mediaStream = await navigator.mediaDevices.getUserMedia(constraints);
 
-  // Chrome resamplea el MediaStream al sampleRate del contexto.
   audioContext = new AudioContext({ sampleRate: 16000, latencyHint: 'interactive' });
   await audioContext.audioWorklet.addModule('audio-worklet.js');
   const source = audioContext.createMediaStreamSource(mediaStream);
@@ -71,13 +73,13 @@ async function startCapture(message) {
   });
   source.connect(workletNode);
 
-  // tabCapture silencia la salida original; reenviarla al destino mantiene la reunión audible.
+  // tabCapture puede silenciar la salida original; este enlace mantiene audible la reunión.
   const playbackGain = audioContext.createGain();
   playbackGain.gain.value = 1;
   source.connect(playbackGain).connect(audioContext.destination);
 
   const localPort = Math.min(65535, Math.max(1024, Number(message.enginePort) || 8765));
-  const wsUrl = `ws://127.0.0.1:${localPort}/ws?token=${encodeURIComponent(message.token)}`;
+  const wsUrl = `ws://127.0.0.1:${localPort}/ws?token=${encodeURIComponent(message.credential)}`;
   websocket = new WebSocket(wsUrl);
   websocket.addEventListener('open', () => {
     websocket.send(JSON.stringify({
