@@ -71,7 +71,9 @@ jobs:
 
           text = Path('cargo-test.log').read_text(encoding='utf-8', errors='replace')
           tail = '\n'.join(text.splitlines()[-80:])[-6000:]
-          tail = re.sub(r'/home/runner/work/[^\s:]+', '<WORKSPACE>', tail)
+          workspace = os.environ.get('GITHUB_WORKSPACE', '')
+          if workspace:
+              tail = tail.replace(workspace, '<WORKSPACE>')
           tail = re.sub(r'(?i)(token|password|secret|api[_-]?key)=\S+', r'\1=<REDACTED>', tail)
           escaped = tail.replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
           print(f'::error title=Rust test diagnostics::{escaped}')
