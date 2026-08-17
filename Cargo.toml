@@ -7,11 +7,14 @@ members = [
   "crates/mily-logging",
   "crates/mily-cache",
   "crates/mily-system",
+  "crates/mily-engine",
+  "crates/mily-models",
+  "crates/mily-sessions",
   "apps/desktop/src-tauri",
 ]
 
 [workspace.package]
-version = "0.1.0"
+version = "1.0.0-rc.1"
 edition = "2024"
 license = "MIT"
 repository = "https://github.com/LORDMANUEL/milyvoicetraductor"

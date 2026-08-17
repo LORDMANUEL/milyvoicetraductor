@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=75", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "milyvoice-ai-engine"
+version = "1.0.0rc1"
+description = "Motor local de ASR y traducción de MilyVoiceTraductor"
+requires-python = ">=3.13"
+dependencies = [
+  "fastapi>=0.116,<1",
+  "uvicorn[standard]>=0.35,<1",
+  "numpy>=2.2,<3",
+  "faster-whisper>=1.1,<2",
+  "transformers>=4.51,<6",
+  "torch>=2.7,<3",
+  "huggingface-hub>=0.34,<2",
+  "sentencepiece>=0.2,<1",
+  "safetensors>=0.5,<1"
+]
+
+[project.optional-dependencies]
+build = ["nuitka>=2.7,<3", "ordered-set>=4.1", "zstandard>=0.23"]
+
+[project.scripts]
+mily-ai-engine = "mily_ai.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["mily_ai*"]
+
+[tool.setuptools.package-data]
+mily_ai = ["model-packs.json"]

@@ -7,6 +7,40 @@ export interface AppStatus {
   models: ComponentState;
   installedModels: number;
   extensionConnected: boolean;
+  activeModelPack: string | null;
+}
+
+export interface EngineRuntimeStatus {
+  state: ComponentState;
+  pid: number | null;
+  port: number;
+  message: string;
+}
+
+export interface ModelPackInfo {
+  id: string;
+  version: string;
+  title: string;
+  installed: boolean;
+  active: boolean;
+  recommendedRamGb: number;
+  commercialUse: boolean;
+  licenseNote: string;
+}
+
+export interface SessionSummary {
+  id: string;
+  createdAt: string;
+  sourceLanguage: string;
+  targetLanguage: string;
+  durationSeconds: number;
+  segmentCount: number;
+}
+
+export interface RuntimeLocations {
+  models: string;
+  sessions: string;
+  extension: string;
 }
 
 export interface SystemSnapshot {
@@ -28,6 +62,11 @@ export interface AppConfig {
   cacheLimitMb: number;
   logLevel: 'error' | 'warn' | 'info' | 'debug';
   microphoneConsent: boolean;
+  persistTranscripts: boolean;
+  computeProfile: 'auto' | 'cpu' | 'gpu';
+  enginePort: number;
+  activeModelPack: 'lite-nllb' | 'business-qwen';
+  showOriginalSubtitle: boolean;
 }
 
 export interface CacheStatus {

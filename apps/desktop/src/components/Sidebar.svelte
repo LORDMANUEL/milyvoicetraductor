@@ -10,7 +10,7 @@
     <img src="/logo.svg" alt="Zebra con audífonos, logo de MilyVoiceTraductor" />
     <div>
       <strong><span>Mily</span><em>Voice</em>Traductor</strong>
-      <small>IA local · Fase 1</small>
+      <small>IA local · Release candidate</small>
     </div>
   </div>
 
@@ -32,7 +32,7 @@
     <span class="dot"></span>
     <div>
       <strong>Privacidad local</strong>
-      <small>Sin telemetría en Fase 1</small>
+      <small>Sin telemetría · Procesamiento local</small>
     </div>
   </div>
 </aside>

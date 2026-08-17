@@ -1,0 +1,2 @@
+/* El overlay real usa Shadow DOM; este archivo solo reserva el host sin afectar la página. */
+#milyvoice-overlay-host { all: initial !important; }

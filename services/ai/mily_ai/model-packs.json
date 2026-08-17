@@ -1,0 +1,45 @@
+{
+  "schemaVersion": 1,
+  "packs": [
+    {
+      "id": "lite-nllb",
+      "version": "1.0.0",
+      "title": "NLLB investigación (Whisper Small + NLLB 600M)",
+      "recommendedRamGb": 8,
+      "commercialUse": false,
+      "licenseNote": "Systran/faster-whisper-small declara MIT; facebook/nllb-200-distilled-600M declara CC-BY-NC-4.0. Este perfil es para investigación/no comercial.",
+      "components": {
+        "asr": {
+          "provider": "faster-whisper",
+          "repoId": "Systran/faster-whisper-small",
+          "revision": "536b0662742c02347bc0e980a01041f333bce120"
+        },
+        "translation": {
+          "provider": "nllb",
+          "repoId": "facebook/nllb-200-distilled-600M",
+          "revision": "f8d333a098d19b4fd9a8b18f94170487ad3f821d"
+        }
+      }
+    },
+    {
+      "id": "business-qwen",
+      "version": "1.0.0",
+      "title": "Local recomendado (Whisper Small + Qwen3 0.6B)",
+      "recommendedRamGb": 10,
+      "commercialUse": true,
+      "licenseNote": "Systran/faster-whisper-small declara MIT y Qwen/Qwen3-0.6B declara Apache-2.0; ambos snapshots quedan fijados por commit en este pack.",
+      "components": {
+        "asr": {
+          "provider": "faster-whisper",
+          "repoId": "Systran/faster-whisper-small",
+          "revision": "536b0662742c02347bc0e980a01041f333bce120"
+        },
+        "translation": {
+          "provider": "qwen",
+          "repoId": "Qwen/Qwen3-0.6B",
+          "revision": "c1899de289a04d12100db370d81485cdf75e47ca"
+        }
+      }
+    }
+  ]
+}

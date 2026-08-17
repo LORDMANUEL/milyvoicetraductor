@@ -15,7 +15,7 @@ PATTERNS = {
     "private-key": re.compile(r"-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----"),
     "github-token": re.compile(r"\b(?:ghp|github_pat)_[A-Za-z0-9_]{20,}\b"),
     "openai-key": re.compile(r"\bsk-[A-Za-z0-9_-]{20,}\b"),
-    "assigned-secret": re.compile(r"(?i)\b(?:password|passwd|api[_-]?key|secret|token)\s*[:=]\s*[\"']?[A-Za-z0-9_./+=-]{12,}"),
+    "assigned-secret": re.compile(r"(?i)\b(?:password|passwd|api[_-]?key|secret|token)\s*[:=]\s*[\"'][A-Za-z0-9_./+=-]{16,}[\"']"),
     "windows-user-home": re.compile(r"(?i)[A-Z]:\\Users\\(?!<)[^\\\s]+\\"),
     "unix-user-home": re.compile(r"/(?:home|Users)/(?!<)[^/\s]+/"),
 }

@@ -21,3 +21,6 @@ mily-database = { path = "../../../crates/mily-database" }
 mily-logging = { path = "../../../crates/mily-logging" }
 mily-cache = { path = "../../../crates/mily-cache" }
 mily-system = { path = "../../../crates/mily-system" }
+mily-engine = { path = "../../../crates/mily-engine" }
+mily-models = { path = "../../../crates/mily-models" }
+mily-sessions = { path = "../../../crates/mily-sessions" }

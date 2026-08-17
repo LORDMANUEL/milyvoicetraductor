@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>MilyVoiceTraductor</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <main>
+    <header><img src="icons/icon48.png" alt=""><div><strong>MilyVoiceTraductor</strong><small>Traducción local</small></div></header>
+    <label>Token de emparejamiento<input id="token" type="password" autocomplete="off" placeholder="Pegar token desde la app"></label>
+    <label>Puerto local<input id="port" type="number" min="1024" max="65535" value="8765"></label>
+    <div class="row"><label>Origen<select id="source"><option value="auto">Automático</option><option value="en">Inglés</option><option value="zh">Chino</option></select></label><label>Destino<select disabled><option>Español</option></select></label></div>
+    <label class="check"><input id="persist" type="checkbox"><span>Guardar transcripción local</span></label>
+    <label class="check"><input id="showOriginal" type="checkbox" checked><span>Mostrar texto original</span></label>
+    <button id="toggle" class="primary">Iniciar traducción</button>
+    <p id="status" class="status" role="status">Motor: verificando…</p>
+    <p class="privacy">Audio → solo <code>127.0.0.1</code>. Sin nube.</p>
+  </main>
+  <script type="module" src="popup.js"></script>
+</body>
+</html>

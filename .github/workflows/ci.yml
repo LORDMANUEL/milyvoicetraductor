@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main, "feat/**"]
+    branches: [main, "agent/**", "feat/**", "release/**"]
   pull_request:
     branches: [main]
 
@@ -11,17 +11,41 @@ permissions:
 
 jobs:
   repository-guards:
-    name: Privacy and site guards
+    name: Privacy, extension and site guards
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v6
         with:
           python-version: "3.13"
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+      - name: Source verification
+        run: python3 scripts/verify_source.py
       - name: Privacy scan
         run: python3 scripts/privacy_scan.py .
+      - name: Chromium extension guard
+        run: python3 scripts/test_extension.py
       - name: GitHub Pages smoke test
         run: python3 scripts/test_site.py
+
+  ai-engine:
+    name: Local AI engine
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+      - name: Install lightweight test dependencies
+        run: python -m pip install --disable-pip-version-check "fastapi>=0.116,<1" "httpx>=0.28,<1"
+      - name: Unit and local server tests
+        env:
+          PYTHONPATH: services/ai
+        run: python -m unittest discover -s services/ai/tests -v
+      - name: Compile Python sources
+        run: python -m compileall -q services/ai
 
   frontend:
     name: Frontend
@@ -31,15 +55,14 @@ jobs:
       - uses: actions/setup-node@v5
         with:
           node-version: "22"
-      - name: Install dependencies
-        run: npm install --no-audit --no-fund
-      - name: Upload generated npm lockfile
-        uses: actions/upload-artifact@v6
-        with:
-          name: npm-lockfile-${{ github.sha }}
-          path: package-lock.json
-          retention-days: 1
-          if-no-files-found: error
+      - name: Install frontend dependencies
+        shell: bash
+        run: |
+          if [ -f package-lock.json ]; then
+            npm ci --no-audit --no-fund
+          else
+            npm install --no-audit --no-fund
+          fi
       - name: Typecheck
         run: npm run typecheck
       - name: Tests
@@ -48,7 +71,7 @@ jobs:
         run: npm run build
 
   rust:
-    name: Rust
+    name: Rust / Tauri Linux
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -62,94 +85,43 @@ jobs:
       - name: Format
         run: cargo fmt --all -- --check
       - name: Tests
-        id: rust_tests
-        shell: bash
-        run: |
-          set -o pipefail
-          cargo test --workspace 2>&1 | tee cargo-test.log
-      - name: Annotate Rust test diagnostics
-        if: failure() && steps.rust_tests.outcome == 'failure'
-        shell: bash
-        run: |
-          python3 - <<'PY'
-          from pathlib import Path
-          import os
-          import re
-
-          text = Path('cargo-test.log').read_text(encoding='utf-8', errors='replace')
-          tail = '\n'.join(text.splitlines()[-80:])[-6000:]
-          workspace = os.environ.get('GITHUB_WORKSPACE', '')
-          if workspace:
-              tail = tail.replace(workspace, '<WORKSPACE>')
-          tail = re.sub(r'(?i)(token|password|secret|api[_-]?key)=\S+', r'\1=<REDACTED>', tail)
-          escaped = tail.replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
-          print(f'::error title=Rust test diagnostics::{escaped}')
-          PY
+        run: cargo test --workspace
       - name: Clippy
-        id: clippy
-        if: success()
-        shell: bash
-        run: |
-          set -o pipefail
-          cargo clippy --workspace --all-targets -- -D warnings 2>&1 | tee clippy.log
-      - name: Annotate Clippy diagnostics
-        if: failure() && steps.clippy.outcome == 'failure'
-        shell: bash
-        run: |
-          python3 - <<'PY'
-          from pathlib import Path
-          import os
-          import re
-
-          text = Path('clippy.log').read_text(encoding='utf-8', errors='replace')
-          tail = '\n'.join(text.splitlines()[-80:])[-6000:]
-          workspace = os.environ.get('GITHUB_WORKSPACE', '')
-          if workspace:
-              tail = tail.replace(workspace, '<WORKSPACE>')
-          tail = re.sub(r'(?i)(token|password|secret|api[_-]?key)=\S+', r'\1=<REDACTED>', tail)
-          escaped = tail.replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
-          print(f'::error title=Clippy diagnostics::{escaped}')
-          PY
+        run: cargo clippy --workspace --all-targets -- -D warnings
       - name: Release build
-        id: release_build
-        if: success()
-        shell: bash
-        run: |
-          set -o pipefail
-          cargo build -p milyvoicetraductor-desktop --release 2>&1 | tee cargo-release.log
-      - name: Annotate release build diagnostics
-        if: failure() && steps.release_build.outcome == 'failure'
-        shell: bash
-        run: |
-          python3 - <<'PY'
-          from pathlib import Path
-          import os
-          import re
-
-          text = Path('cargo-release.log').read_text(encoding='utf-8', errors='replace')
-          tail = '\n'.join(text.splitlines()[-80:])[-6000:]
-          workspace = os.environ.get('GITHUB_WORKSPACE', '')
-          if workspace:
-              tail = tail.replace(workspace, '<WORKSPACE>')
-          tail = re.sub(r'(?i)(token|password|secret|api[_-]?key)=\S+', r'\1=<REDACTED>', tail)
-          escaped = tail.replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
-          print(f'::error title=Release build diagnostics::{escaped}')
-          PY
+        run: cargo build -p milyvoicetraductor-desktop --release
 
   windows-smoke:
-    name: Windows smoke
+    name: Windows release smoke
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
         with:
           node-version: "22"
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
       - name: Install frontend dependencies
-        run: npm install --no-audit --no-fund
+        shell: pwsh
+        run: |
+          if (Test-Path package-lock.json) { npm ci --no-audit --no-fund } else { npm install --no-audit --no-fund }
       - name: Frontend build
         run: npm run build
+      - name: AI unit tests
+        shell: pwsh
+        run: |
+          python -m pip install --disable-pip-version-check "fastapi>=0.116,<1" "httpx>=0.28,<1"
+          $env:PYTHONPATH = "services/ai"
+          python -m unittest discover -s services/ai/tests -v
       - name: Rust tests
         run: cargo test --workspace
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
       - name: Windows release build
         run: cargo build -p milyvoicetraductor-desktop --release
+      - name: Tauri NSIS bundle
+        run: npm run tauri -- build

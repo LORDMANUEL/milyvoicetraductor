@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "channel": "stable",
+  "version": "1.0.0",
+  "publishedAt": "YYYY-MM-DDTHH:MM:SSZ",
+  "notes": "",
+  "artifacts": {
+    "windows-x86_64": {
+      "url": "",
+      "sha256": "",
+      "signature": ""
+    }
+  }
+}

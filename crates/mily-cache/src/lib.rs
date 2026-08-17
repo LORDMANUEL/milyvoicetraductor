@@ -3,7 +3,8 @@
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+use std::sync::{Arc, atomic::{AtomicU64, Ordering}};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use thiserror::Error;
 
@@ -26,14 +27,14 @@ pub struct CacheStatus {
 #[derive(Debug, Clone)]
 pub struct CacheService {
     directory: PathBuf,
-    max_bytes: u64,
+    max_bytes: Arc<AtomicU64>,
 }
 
 impl CacheService {
     pub fn new(directory: impl Into<PathBuf>, max_bytes: u64) -> Self {
         Self {
             directory: directory.into(),
-            max_bytes: max_bytes.max(1024 * 1024),
+            max_bytes: Arc::new(AtomicU64::new(max_bytes.max(1024 * 1024))),
         }
     }
 
@@ -68,6 +69,13 @@ impl CacheService {
         Ok(Some(fs::read(data_path)?))
     }
 
+
+    /// Actualiza el límite en caliente sin reconstruir el servicio.
+    pub fn set_max_bytes(&self, max_bytes: u64) {
+        self.max_bytes.store(max_bytes.max(1024 * 1024), Ordering::Relaxed);
+        let _ = self.prune();
+    }
+
     pub fn clear(&self) -> Result<(), CacheError> {
         if self.directory.exists() {
             fs::remove_dir_all(&self.directory)?;
@@ -81,7 +89,7 @@ impl CacheService {
         Ok(CacheStatus {
             bytes: entries.iter().map(|(_, meta)| meta.size).sum(),
             entries: entries.len(),
-            max_bytes: self.max_bytes,
+            max_bytes: self.max_bytes.load(Ordering::Relaxed),
         })
     }
 
@@ -100,8 +108,9 @@ impl CacheService {
         entries = self.load_entries()?;
         entries.sort_by_key(|(_, meta)| meta.created_at);
         let mut total: u64 = entries.iter().map(|(_, meta)| meta.size).sum();
+        let max_bytes = self.max_bytes.load(Ordering::Relaxed);
         for (stem, meta) in entries {
-            if total <= self.max_bytes {
+            if total <= max_bytes {
                 break;
             }
             self.remove_pair(&stem);

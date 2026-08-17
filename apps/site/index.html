@@ -30,7 +30,7 @@
         <h1>Entiende la reunión.<br /><span>Sin regalar el audio.</span></h1>
         <p>MilyVoiceTraductor está diseñado para traducir reuniones en inglés o chino a español usando modelos locales, con una aplicación ligera y una extensión Chromium.</p>
         <div class="actions">
-          <a class="primary-button" href="#estado">Ver Fase 1</a>
+          <a class="primary-button" href="#estado">Ver plataforma</a>
           <a class="text-link" href="https://github.com/LORDMANUEL/milyvoicetraductor">Explorar código →</a>
         </div>
         <ul class="trust-row" aria-label="Principios principales">
@@ -70,9 +70,9 @@
       </div>
       <div class="feature-grid">
         <article><div class="feature-icon emerald">01</div><h3>Escritorio ligero</h3><p>Tauri 2 + Rust para usar el WebView nativo del sistema y mantener bajo el consumo.</p></article>
-        <article><div class="feature-icon sapphire">02</div><h3>Motor local</h3><p>Python se integrará como sidecar únicamente para IA; la app no dependerá de un runtime Python instalado por el usuario.</p></article>
-        <article><div class="feature-icon emerald">03</div><h3>Extensión Chromium</h3><p>Captura explícita de audio de pestaña en Chrome, Edge y navegadores Chromium, con permisos mínimos.</p></article>
-        <article><div class="feature-icon sapphire">04</div><h3>Modelos versionados</h3><p>Descarga, hash, activación y rollback independientes del ejecutable principal.</p></article>
+        <article><div class="feature-icon sapphire">02</div><h3>Motor local</h3><p>Python se ejecuta como motor desacoplado y puede instalarse como runtime aislado o sidecar compilado.</p></article>
+        <article><div class="feature-icon emerald">03</div><h3>Extensión Chromium</h3><p>Captura explícita de audio de pestaña en Chrome, Edge y Chromium, con permisos mínimos y conexión localhost autenticada.</p></article>
+        <article><div class="feature-icon sapphire">04</div><h3>Modelos versionados</h3><p>Descarga a staging, activación atómica, versiones y rollback independientes del ejecutable principal.</p></article>
       </div>
     </section>
 
@@ -81,12 +81,12 @@
         <div>
           <span class="section-label">Privacidad</span>
           <h2>El contenido de la reunión no es material de diagnóstico.</h2>
-          <p>La arquitectura separa los datos operativos del contenido. Los logs se sanitizan antes de escribirse y la Fase 1 no captura audio, no almacena transcripciones y no incluye telemetría.</p>
+          <p>La arquitectura separa los datos operativos del contenido. Los logs se sanitizan antes de escribirse, no hay telemetría y las transcripciones solo persisten si el usuario lo habilita.</p>
         </div>
         <div class="privacy-list">
           <div><span>✓</span><p><b>Sin tracking.</b><br />La web tampoco usa analytics, píxeles o cookies de seguimiento.</p></div>
           <div><span>✓</span><p><b>Logs sanitizados.</b><br />Tokens, correos y directorios personales comunes se redactan.</p></div>
-          <div><span>✓</span><p><b>Permisos progresivos.</b><br />Micrófono y captura de pestaña no se solicitan hasta que esas funciones existan.</p></div>
+          <div><span>✓</span><p><b>Permisos progresivos.</b><br />La captura de pestaña requiere una acción explícita del usuario; el micrófono permanece opcional y desactivado por defecto.</p></div>
         </div>
       </div>
     </section>
@@ -98,17 +98,17 @@
         <div class="connector">→</div>
         <div class="arch-node highlighted"><small>PLATAFORMA</small><strong>Tauri + Rust</strong><p>Seguridad, archivos, SQLite, logs y caché.</p></div>
         <div class="connector">→</div>
-        <div class="arch-node future"><small>FASE 2</small><strong>Motor IA local</strong><p>ASR + traducción como sidecar sustituible.</p></div>
+        <div class="arch-node future"><small>MOTOR LOCAL</small><strong>Python + modelos</strong><p>ASR + traducción desacoplados, CPU-first y GPU opcional.</p></div>
       </div>
     </section>
 
     <section id="estado" class="section wrap">
-      <div class="section-heading"><span>Roadmap</span><h2>Fase 1 · Fundación 0.1.0</h2><p>El repositorio empieza por estabilidad y privacidad antes de añadir modelos pesados.</p></div>
+      <div class="section-heading"><span>Release candidate</span><h2>MilyVoiceTraductor 1.0.0-rc.1</h2><p>Desktop, motor local, extensión Chromium, sesiones y gestión de modelos ya forman un flujo integrado.</p></div>
       <div class="roadmap">
         <article class="done"><span>1</span><div><b>Fundación</b><p>Tauri, Rust, Svelte, SQLite, configuración, caché, logs, diagnóstico y GitHub Pages.</p></div></article>
-        <article><span>2</span><div><b>Motor IA</b><p>ASR y traducción local con fallback CPU y aceleración opcional.</p></div></article>
-        <article><span>3</span><div><b>Chromium</b><p>Add-on para captura de pestaña y subtítulos en vivo.</p></div></article>
-        <article><span>4</span><div><b>Model Manager</b><p>Descarga, verificación, versiones y rollback.</p></div></article>
+        <article class="done"><span>2</span><div><b>Motor IA</b><p>ASR y traducción local con fallback CPU y aceleración opcional.</p></div></article>
+        <article class="done"><span>3</span><div><b>Chromium</b><p>Add-on para captura de pestaña y subtítulos en vivo.</p></div></article>
+        <article class="done"><span>4</span><div><b>Model Manager</b><p>Descarga a staging, versiones, activación y rollback.</p></div></article>
       </div>
       <div class="cta-card">
         <div><small>CÓDIGO ABIERTO</small><h2>Revisa cómo está construido.</h2><p>El repositorio contiene arquitectura, pruebas y lineamientos de privacidad desde el primer release.</p></div>
@@ -119,7 +119,7 @@
 
   <footer class="wrap">
     <div class="brand footer-brand"><img src="./assets/logo.svg" alt="" /><span><b>Mily</b><em>Voice</em>Traductor</span></div>
-    <p>Fase 1 · 0.1.0 · Sin telemetría.</p>
+    <p>1.0.0-rc.1 · Procesamiento local · Sin telemetría.</p>
   </footer>
   <script src="./app.js" defer></script>
 </body>

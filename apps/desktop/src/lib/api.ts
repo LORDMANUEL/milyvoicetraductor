@@ -1,8 +1,11 @@
 import { invoke } from '@tauri-apps/api/core';
-import type { AppConfig, AppStatus, CacheStatus, SystemSnapshot } from '../types';
+import type {
+  AppConfig, AppStatus, CacheStatus, EngineRuntimeStatus, ModelPackInfo,
+  RuntimeLocations, SessionSummary, SystemSnapshot
+} from '../types';
 
-const defaultConfig: AppConfig = {
-  schemaVersion: 1,
+export const defaultConfig: AppConfig = {
+  schemaVersion: 2,
   interfaceLanguage: 'es',
   sourceLanguage: 'auto',
   targetLanguage: 'es',
@@ -10,40 +13,33 @@ const defaultConfig: AppConfig = {
   autoStartEngine: false,
   cacheLimitMb: 256,
   logLevel: 'info',
-  microphoneConsent: false
+  microphoneConsent: false,
+  persistTranscripts: false,
+  computeProfile: 'auto',
+  enginePort: 8765,
+  activeModelPack: 'business-qwen',
+  showOriginalSubtitle: true
 };
 
-/** Detecta Tauri sin depender de APIs privadas durante SSR/tests. */
 export function isTauriEnvironment(): boolean {
   return typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
 }
 
-/** Gateway único hacia Rust. En navegador ofrece un preview explícitamente local/dev. */
+/** Gateway único hacia Rust. El fallback web nunca simula disponibilidad. */
 export class DesktopApi {
   async getAppStatus(): Promise<AppStatus> {
-    if (!isTauriEnvironment()) {
-      return {
-        version: '0.1.0-web-preview',
-        engine: 'notInstalled',
-        models: 'notInstalled',
-        installedModels: 0,
-        extensionConnected: false
-      };
-    }
+    if (!isTauriEnvironment()) return {
+      version: '1.0.0-rc.1-web-preview', engine: 'notInstalled', models: 'notInstalled',
+      installedModels: 0, extensionConnected: false, activeModelPack: null
+    };
     return invoke<AppStatus>('get_app_status');
   }
 
   async getSystemInfo(): Promise<SystemSnapshot> {
-    if (!isTauriEnvironment()) {
-      return {
-        operatingSystem: 'Vista previa web',
-        architecture: 'N/D',
-        cpuBrand: 'Disponible únicamente en Tauri',
-        logicalCpus: 0,
-        totalMemoryMb: 0,
-        gpu: null
-      };
-    }
+    if (!isTauriEnvironment()) return {
+      operatingSystem: 'Vista previa web', architecture: 'N/D',
+      cpuBrand: 'Disponible únicamente en Tauri', logicalCpus: 0, totalMemoryMb: 0, gpu: null
+    };
     return invoke<SystemSnapshot>('get_system_info');
   }
 
@@ -65,6 +61,66 @@ export class DesktopApi {
   async clearCache(): Promise<CacheStatus> {
     if (!isTauriEnvironment()) return { bytes: 0, entries: 0, maxBytes: 256 * 1024 * 1024 };
     return invoke<CacheStatus>('clear_cache');
+  }
+
+  async getEngineStatus(): Promise<EngineRuntimeStatus> {
+    if (!isTauriEnvironment()) return { state: 'notInstalled', pid: null, port: 8765, message: 'Vista previa web' };
+    return invoke<EngineRuntimeStatus>('get_engine_status');
+  }
+
+  async startEngine(): Promise<EngineRuntimeStatus> {
+    if (!isTauriEnvironment()) return this.getEngineStatus();
+    return invoke<EngineRuntimeStatus>('start_engine');
+  }
+
+  async stopEngine(): Promise<EngineRuntimeStatus> {
+    if (!isTauriEnvironment()) return this.getEngineStatus();
+    return invoke<EngineRuntimeStatus>('stop_engine');
+  }
+
+  async getPairingToken(): Promise<string> {
+    if (!isTauriEnvironment()) return 'preview-token-not-valid';
+    return invoke<string>('get_pairing_token');
+  }
+
+  async getModelCatalog(): Promise<ModelPackInfo[]> {
+    if (!isTauriEnvironment()) return [];
+    return invoke<ModelPackInfo[]>('get_model_catalog');
+  }
+
+  async installModel(packId: string): Promise<ModelPackInfo> {
+    return invoke<ModelPackInfo>('install_model', { packId });
+  }
+
+  async verifyModel(packId: string, version: string): Promise<boolean> {
+    if (!isTauriEnvironment()) return false;
+    return invoke<boolean>('verify_model', { packId, version });
+  }
+
+  async removeModel(packId: string, version: string): Promise<void> {
+    return invoke<void>('remove_model', { packId, version });
+  }
+
+  async rollbackModel(): Promise<ModelPackInfo> {
+    return invoke<ModelPackInfo>('rollback_model');
+  }
+
+  async listSessions(): Promise<SessionSummary[]> {
+    if (!isTauriEnvironment()) return [];
+    return invoke<SessionSummary[]>('list_sessions');
+  }
+
+  async getSessionExport(sessionId: string, format: 'txt' | 'srt'): Promise<string> {
+    return invoke<string>('get_session_export', { sessionId, format });
+  }
+
+  async deleteSession(sessionId: string): Promise<void> {
+    return invoke<void>('delete_session', { sessionId });
+  }
+
+  async getRuntimeLocations(): Promise<RuntimeLocations> {
+    if (!isTauriEnvironment()) return { models: 'N/D', sessions: 'N/D', extension: 'N/D' };
+    return invoke<RuntimeLocations>('get_runtime_locations');
   }
 }
 

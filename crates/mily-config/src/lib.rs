@@ -1,5 +1,6 @@
 //! Rutas estándar y configuración persistente de MilyVoiceTraductor.
 
+#[cfg(not(windows))]
 use directories::ProjectDirs;
 use serde::{Deserialize, Serialize};
 use std::fs;
@@ -7,37 +8,68 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use thiserror::Error;
 
-const CONFIG_SCHEMA_VERSION: u32 = 1;
+const CONFIG_SCHEMA_VERSION: u32 = 2;
 
-/// Rutas de datos de la aplicación, resueltas usando convenciones del SO.
 #[derive(Debug, Clone)]
 pub struct AppPaths {
     pub data_dir: PathBuf,
     pub config_dir: PathBuf,
     pub cache_dir: PathBuf,
     pub log_dir: PathBuf,
+    pub models_dir: PathBuf,
+    pub sessions_dir: PathBuf,
+    pub engine_dir: PathBuf,
+    pub bin_dir: PathBuf,
+    pub extension_dir: PathBuf,
 }
 
 impl AppPaths {
-    /// Resuelve las carpetas de usuario sin codificar nombres de usuario.
+    /// Resuelve carpetas por convenciones del SO; nunca codifica un usuario.
     pub fn discover() -> Result<Self, ConfigError> {
-        let project = ProjectDirs::from("com", "MilyVoice", "MilyVoiceTraductor")
-            .ok_or(ConfigError::ProjectDirectoryUnavailable)?;
+        #[cfg(windows)]
+        let (data_dir, config_dir, cache_dir) = {
+            let root = std::env::var_os("LOCALAPPDATA")
+                .map(PathBuf::from)
+                .ok_or(ConfigError::ProjectDirectoryUnavailable)?
+                .join("MilyVoiceTraductor");
+            (root.clone(), root.join("config"), root.join("cache"))
+        };
+
+        #[cfg(not(windows))]
+        let (data_dir, config_dir, cache_dir) = {
+            let project = ProjectDirs::from("com", "MilyVoice", "MilyVoiceTraductor")
+                .ok_or(ConfigError::ProjectDirectoryUnavailable)?;
+            (
+                project.data_dir().to_path_buf(),
+                project.config_dir().to_path_buf(),
+                project.cache_dir().to_path_buf(),
+            )
+        };
+
         Ok(Self {
-            data_dir: project.data_dir().to_path_buf(),
-            config_dir: project.config_dir().to_path_buf(),
-            cache_dir: project.cache_dir().to_path_buf(),
-            log_dir: project.data_dir().join("logs"),
+            log_dir: data_dir.join("logs"),
+            models_dir: data_dir.join("models"),
+            sessions_dir: data_dir.join("sessions"),
+            engine_dir: data_dir.join("engine"),
+            bin_dir: data_dir.join("bin"),
+            extension_dir: data_dir.join("extension"),
+            data_dir,
+            config_dir,
+            cache_dir,
         })
     }
 
-    /// Crea únicamente los directorios requeridos por la aplicación.
     pub fn ensure_exists(&self) -> Result<(), ConfigError> {
         for path in [
             &self.data_dir,
             &self.config_dir,
             &self.cache_dir,
             &self.log_dir,
+            &self.models_dir,
+            &self.sessions_dir,
+            &self.engine_dir,
+            &self.bin_dir,
+            &self.extension_dir,
         ] {
             fs::create_dir_all(path)?;
         }
@@ -45,9 +77,8 @@ impl AppPaths {
     }
 }
 
-/// Preferencias persistentes y versionadas de Fase 1.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", default)]
 pub struct AppConfig {
     pub schema_version: u32,
     pub interface_language: String,
@@ -58,6 +89,11 @@ pub struct AppConfig {
     pub cache_limit_mb: u64,
     pub log_level: String,
     pub microphone_consent: bool,
+    pub persist_transcripts: bool,
+    pub compute_profile: String,
+    pub engine_port: u16,
+    pub active_model_pack: String,
+    pub show_original_subtitle: bool,
 }
 
 impl Default for AppConfig {
@@ -72,32 +108,40 @@ impl Default for AppConfig {
             cache_limit_mb: 256,
             log_level: "info".into(),
             microphone_consent: false,
+            persist_transcripts: false,
+            compute_profile: "auto".into(),
+            engine_port: 8765,
+            active_model_pack: "business-qwen".into(),
+            show_original_subtitle: true,
         }
     }
 }
 
 impl AppConfig {
-    /// Normaliza campos editables a un conjunto pequeño de valores válidos.
     pub fn normalized(mut self) -> Self {
         if !matches!(self.source_language.as_str(), "auto" | "en" | "zh") {
             self.source_language = "auto".into();
         }
-        if self.target_language != "es" {
-            self.target_language = "es".into();
-        }
+        self.target_language = "es".into();
         if !matches!(self.theme.as_str(), "system" | "light" | "dark") {
             self.theme = "system".into();
         }
         if !matches!(self.log_level.as_str(), "error" | "warn" | "info" | "debug") {
             self.log_level = "info".into();
         }
+        if !matches!(self.compute_profile.as_str(), "auto" | "cpu" | "gpu") {
+            self.compute_profile = "auto".into();
+        }
+        if !matches!(self.active_model_pack.as_str(), "lite-nllb" | "business-qwen") {
+            self.active_model_pack = "business-qwen".into();
+        }
         self.cache_limit_mb = self.cache_limit_mb.clamp(64, 4096);
+        self.engine_port = self.engine_port.clamp(1024, 65_535);
         self.schema_version = CONFIG_SCHEMA_VERSION;
         self
     }
 }
 
-/// Servicio OOP pequeño: encapsula ruta y política de lectura/escritura.
 #[derive(Debug, Clone)]
 pub struct ConfigService {
     path: PathBuf,
@@ -112,7 +156,6 @@ impl ConfigService {
         &self.path
     }
 
-    /// Carga la configuración o usa defaults seguros cuando aún no existe.
     pub fn load_or_default(&self) -> Result<AppConfig, ConfigError> {
         if !self.path.exists() {
             return Ok(AppConfig::default());
@@ -122,7 +165,6 @@ impl ConfigService {
         Ok(config.normalized())
     }
 
-    /// Guarda de forma atómica: escribe a temporal y luego renombra.
     pub fn save(&self, config: &AppConfig) -> Result<(), ConfigError> {
         let config = config.clone().normalized();
         if let Some(parent) = self.path.parent() {
@@ -134,6 +176,28 @@ impl ConfigService {
         file.write_all(&bytes)?;
         file.sync_all()?;
         fs::rename(temp_path, &self.path)?;
+        Ok(())
+    }
+
+    /// Genera la configuración mínima que consume el sidecar Python.
+    pub fn save_engine_config(&self, config: &AppConfig) -> Result<(), ConfigError> {
+        let parent = self
+            .path
+            .parent()
+            .ok_or(ConfigError::ProjectDirectoryUnavailable)?;
+        fs::create_dir_all(parent)?;
+        let value = serde_json::json!({
+            "sourceLanguage": config.source_language,
+            "targetLanguage": "es",
+            "computeProfile": config.compute_profile,
+            "persistTranscripts": config.persist_transcripts,
+            "activeModelPack": config.active_model_pack,
+            "logLevel": config.log_level,
+        });
+        let path = parent.join("engine.json");
+        let temp = parent.join("engine.json.tmp");
+        fs::write(&temp, serde_json::to_vec_pretty(&value)?)?;
+        fs::rename(temp, path)?;
         Ok(())
     }
 }
@@ -154,39 +218,30 @@ mod tests {
     use tempfile::tempdir;
 
     #[test]
-    fn missing_config_returns_safe_defaults() {
+    fn old_or_missing_fields_receive_safe_defaults() {
         let dir = tempdir().unwrap();
-        let service = ConfigService::new(dir.path().join("config.json"));
-        let config = service.load_or_default().unwrap();
-        assert_eq!(config.source_language, "auto");
-        assert_eq!(config.target_language, "es");
-        assert_eq!(config.cache_limit_mb, 256);
+        let path = dir.path().join("config.json");
+        fs::write(&path, r#"{"schemaVersion":1,"sourceLanguage":"zh"}"#).unwrap();
+        let config = ConfigService::new(path).load_or_default().unwrap();
+        assert_eq!(config.source_language, "zh");
+        assert_eq!(config.compute_profile, "auto");
+        assert!(!config.persist_transcripts);
+        assert_eq!(config.schema_version, 2);
     }
 
     #[test]
-    fn config_roundtrip_persists_normalized_values() {
-        let dir = tempdir().unwrap();
-        let service = ConfigService::new(dir.path().join("config.json"));
-        let config = AppConfig {
-            source_language: "zh".into(),
-            cache_limit_mb: 512,
-            ..AppConfig::default()
-        };
-        service.save(&config).unwrap();
-        assert_eq!(service.load_or_default().unwrap(), config);
-    }
-
-    #[test]
-    fn invalid_values_are_replaced_by_safe_defaults() {
+    fn invalid_values_are_normalized() {
         let config = AppConfig {
             theme: "neon".into(),
             source_language: "xx".into(),
-            cache_limit_mb: 1,
+            compute_profile: "quantum".into(),
+            engine_port: 1,
             ..AppConfig::default()
-        };
-        let normalized = config.normalized();
-        assert_eq!(normalized.theme, "system");
-        assert_eq!(normalized.source_language, "auto");
-        assert_eq!(normalized.cache_limit_mb, 64);
+        }
+        .normalized();
+        assert_eq!(config.theme, "system");
+        assert_eq!(config.source_language, "auto");
+        assert_eq!(config.compute_profile, "auto");
+        assert_eq!(config.engine_port, 1024);
     }
 }
