@@ -6,7 +6,7 @@ license.workspace = true
 repository.workspace = true
 
 [lib]
-name = "milyvoicetraductor_desktop"
+name = "milyvoicetraductor_desktop_lib"
 crate-type = ["lib", "cdylib", "staticlib"]
 
 [build-dependencies]

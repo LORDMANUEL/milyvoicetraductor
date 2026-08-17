@@ -1,3 +1,3 @@
 fn main() {
-    milyvoicetraductor_desktop::run();
+    milyvoicetraductor_desktop_lib::run();
 }

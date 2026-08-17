@@ -179,3 +179,30 @@ jobs:
       - name: Tauri NSIS bundle
         if: success()
         run: npm run tauri -- build
+      - name: Package Chromium extension
+        if: success()
+        run: python scripts/build_extension_zip.py
+      - name: Prepare release bundle and SHA-256 checksums
+        if: success()
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force "dist/release" | Out-Null
+          $installer = Get-ChildItem "target/release/bundle/nsis/*-setup.exe" | Select-Object -First 1
+          if (-not $installer) { throw "No se encontró el instalador NSIS generado." }
+          $extension = Get-Item "dist/MilyVoiceTraductor-Chromium-Extension.zip"
+          Copy-Item $installer.FullName "dist/release/$($installer.Name)"
+          Copy-Item $extension.FullName "dist/release/$($extension.Name)"
+          $lines = foreach ($file in Get-ChildItem "dist/release" -File) {
+            $hash = (Get-FileHash $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+            "$hash *$($file.Name)"
+          }
+          $lines | Set-Content -Encoding ascii "dist/release/SHA256SUMS.txt"
+      - name: Upload Windows installer and Chromium extension
+        if: success()
+        uses: actions/upload-artifact@v6
+        with:
+          name: MilyVoiceTraductor-RC1-Windows-x64-${{ github.sha }}
+          path: dist/release/*
+          retention-days: 30
+          compression-level: 0
+          if-no-files-found: error
