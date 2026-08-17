@@ -1,7 +1,7 @@
-//! Gestión del proceso local de IA y del token de emparejamiento.
+//! Gestión del proceso local de IA y de su arranque.
 //!
-//! Este crate no conoce Tauri. Su responsabilidad es descubrir un runtime,
-//! iniciar/detener el proceso y exponer estados honestos al resto de la app.
+//! Este crate no conoce Tauri. Descubre primero el runtime privado incluido por
+//! el instalador y mantiene compatibilidad de desarrollo con layouts anteriores.
 
 use mily_config::AppPaths;
 use mily_core::{ComponentState, EngineRuntimeStatus};
@@ -24,7 +24,7 @@ pub struct LaunchSpec {
 }
 
 impl LaunchSpec {
-    /// Busca primero un sidecar compilado y luego el runtime Python administrado.
+    /// Busca sidecar explícito/compilado y luego el Python privado del instalador.
     pub fn discover(paths: &AppPaths) -> Option<Self> {
         if let Ok(explicit) = std::env::var("MILYVOICE_ENGINE_PATH") {
             let path = PathBuf::from(explicit);
@@ -48,21 +48,22 @@ impl LaunchSpec {
             });
         }
 
-        let python_candidates = if cfg!(windows) {
-            vec![
-                paths.engine_dir.join("python").join("python.exe"),
-                paths
-                    .engine_dir
-                    .join("python")
-                    .join("Scripts")
-                    .join("python.exe"),
-            ]
-        } else {
-            vec![
-                paths.engine_dir.join("python").join("bin").join("python3"),
-                paths.engine_dir.join("python").join("bin").join("python"),
-            ]
-        };
+        let runtime_root = paths.data_dir.join("runtime").join("python");
+        // Se incluyen ambos layouts para que el detector sea comprobable en CI de
+        // cualquier SO y para conservar compatibilidad con instalaciones antiguas.
+        let python_candidates = vec![
+            runtime_root.join("python.exe"),
+            runtime_root.join("bin").join("python3"),
+            runtime_root.join("bin").join("python"),
+            paths.engine_dir.join("python").join("python.exe"),
+            paths
+                .engine_dir
+                .join("python")
+                .join("Scripts")
+                .join("python.exe"),
+            paths.engine_dir.join("python").join("bin").join("python3"),
+            paths.engine_dir.join("python").join("bin").join("python"),
+        ];
         let script = paths.engine_dir.join("app").join("main.py");
         if script.is_file()
             && let Some(python) = python_candidates
@@ -84,7 +85,7 @@ impl LaunchSpec {
     }
 }
 
-/// Maneja el secreto de puente sin imprimirlo ni incluirlo en diagnósticos.
+/// Token interno de compatibilidad para desktop/diagnóstico. La extensión ya no lo ve.
 #[derive(Debug, Clone)]
 pub struct PairingTokenStore {
     path: PathBuf,
@@ -118,7 +119,6 @@ impl PairingTokenStore {
     }
 }
 
-/// Gestor clonable; el `Child` real queda protegido por un mutex interno.
 #[derive(Debug, Clone)]
 pub struct EngineProcessManager {
     paths: AppPaths,
@@ -207,8 +207,7 @@ impl EngineProcessManager {
         let child_id = child.id();
         *self.child.lock().map_err(|_| EngineError::PoisonedLock)? = Some(child);
 
-        // Espera breve al bind del servidor; cargar modelos ocurre después.
-        for _ in 0..30 {
+        for _ in 0..50 {
             if Self::port_open(port) {
                 return Ok(EngineRuntimeStatus {
                     state: ComponentState::Ready,
@@ -218,6 +217,15 @@ impl EngineProcessManager {
                 });
             }
             std::thread::sleep(Duration::from_millis(100));
+        }
+        // Si no abrió el puerto, se limpia el hijo para no dejar un proceso fallido
+        // registrado como si estuviera administrado correctamente.
+        if let Ok(mut guard) = self.child.lock() {
+            if let Some(child) = guard.as_mut() {
+                let _ = child.kill();
+                let _ = child.wait();
+            }
+            *guard = None;
         }
         Err(EngineError::StartupTimeout)
     }
@@ -270,6 +278,20 @@ mod tests {
     use super::*;
     use tempfile::tempdir;
 
+    fn test_paths(root: &std::path::Path) -> AppPaths {
+        AppPaths {
+            data_dir: root.to_path_buf(),
+            config_dir: root.join("config"),
+            cache_dir: root.join("cache"),
+            log_dir: root.join("logs"),
+            models_dir: root.join("models"),
+            sessions_dir: root.join("sessions"),
+            engine_dir: root.join("engine"),
+            bin_dir: root.join("bin"),
+            extension_dir: root.join("extension"),
+        }
+    }
+
     #[test]
     fn pairing_token_is_stable_and_long() {
         let dir = tempdir().unwrap();
@@ -278,5 +300,21 @@ mod tests {
         let second = store.get_or_create().unwrap();
         assert_eq!(first, second);
         assert!(first.len() >= 40);
+    }
+
+    #[test]
+    fn launch_spec_discovers_embedded_runtime_layout() {
+        let dir = tempdir().unwrap();
+        let paths = test_paths(dir.path());
+        let python = paths.data_dir.join("runtime/python/python.exe");
+        let script = paths.engine_dir.join("app/main.py");
+        fs::create_dir_all(python.parent().unwrap()).unwrap();
+        fs::create_dir_all(script.parent().unwrap()).unwrap();
+        fs::write(&python, b"python").unwrap();
+        fs::write(&script, b"print('engine')").unwrap();
+
+        let spec = LaunchSpec::discover(&paths).expect("embedded runtime must be discovered");
+        assert_eq!(spec.program, python);
+        assert_eq!(spec.prefix_args, vec![script.to_string_lossy().into_owned()]);
     }
 }
