@@ -1,0 +1,43 @@
+# Dependencias frontend
+node_modules/
+**/node_modules/
+
+# Builds
+dist/
+**/dist/
+target/
+**/target/
+
+# Datos locales y secretos
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+credentials*
+secrets*
+
+# MilyVoice runtime
+.milyvoice/
+models/
+cache/
+logs/
+*.db
+*.db-shm
+*.db-wal
+
+# IDE / SO
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Worktrees
+.worktrees/
+
+# Python cache
+__pycache__/
+*.pyc

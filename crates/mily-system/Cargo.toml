@@ -1,0 +1,10 @@
+[package]
+name = "mily-system"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+sysinfo = "0.37"
