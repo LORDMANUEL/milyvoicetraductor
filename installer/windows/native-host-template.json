@@ -1,0 +1,9 @@
+{
+  "name": "com.milyvoice.traductor",
+  "description": "Puente local de MilyVoiceTraductor para navegadores Chromium",
+  "path": "__BRIDGE_PATH__",
+  "type": "stdio",
+  "allowed_origins": [
+    "chrome-extension://edcpjonegaempcifgodcmgejbcpdpddm/"
+  ]
+}
