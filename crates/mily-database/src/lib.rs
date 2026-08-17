@@ -1,6 +1,6 @@
 //! SQLite local y migraciones monotónicas de MilyVoiceTraductor.
 
-use rusqlite::{params, Connection};
+use rusqlite::{Connection, params};
 use std::fs;
 use std::path::{Path, PathBuf};
 use thiserror::Error;
@@ -65,7 +65,10 @@ impl DatabaseService {
             }
             let tx = connection.transaction()?;
             tx.execute_batch(sql)?;
-            tx.execute("INSERT INTO schema_migrations(version) VALUES (?1)", [version])?;
+            tx.execute(
+                "INSERT INTO schema_migrations(version) VALUES (?1)",
+                [version],
+            )?;
             tx.commit()?;
         }
         Ok(())
