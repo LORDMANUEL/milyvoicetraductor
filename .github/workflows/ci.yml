@@ -34,7 +34,7 @@ jobs:
       - name: Install dependencies
         run: npm install --no-audit --no-fund
       - name: Upload generated npm lockfile
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: npm-lockfile-${{ github.sha }}
           path: package-lock.json
