@@ -1,26 +1,44 @@
-"""CLI única del sidecar: servidor, modelos, token y diagnóstico."""
+"""CLI única del motor: servidor, modelos, token y diagnóstico."""
 
 from __future__ import annotations
 
 import argparse
 import json
 import sys
-from pathlib import Path
 
-from .models import HuggingFacePackInstaller, ModelCatalog
+from .models import (
+    HuggingFacePackInstaller,
+    ModelCatalog,
+    ModelOperationError,
+    classify_model_exception,
+)
 from .runtime import RuntimePaths
 from .security import PairingTokenService
 
 
 def _paths(args) -> RuntimePaths:
-    paths = RuntimePaths.discover({
-        "data_dir": getattr(args, "data_dir", None),
-        "config_dir": getattr(args, "config_dir", None),
-        "cache_dir": getattr(args, "cache_dir", None),
-        "models_dir": getattr(args, "models_dir", None),
-    })
+    paths = RuntimePaths.discover(
+        {
+            "data_dir": getattr(args, "data_dir", None),
+            "config_dir": getattr(args, "config_dir", None),
+            "cache_dir": getattr(args, "cache_dir", None),
+            "models_dir": getattr(args, "models_dir", None),
+        }
+    )
     paths.ensure()
     return paths
+
+
+def _emit_model_error(error: ModelOperationError) -> int:
+    """Escribe una única línea JSON estable que Rust puede interpretar sin traceback."""
+    print(
+        json.dumps(
+            {"ok": False, "code": error.code, "message": error.message},
+            ensure_ascii=False,
+        ),
+        file=sys.stderr,
+    )
+    return 10
 
 
 def cmd_serve(args) -> int:
@@ -31,7 +49,14 @@ def cmd_serve(args) -> int:
         print("uvicorn no está instalado", file=sys.stderr)
         return 2
     from .server import create_app
-    uvicorn.run(create_app(paths, args.port, args.parent_pid), host="127.0.0.1", port=args.port, log_level="warning", access_log=False)
+
+    uvicorn.run(
+        create_app(paths, args.port, args.parent_pid),
+        host="127.0.0.1",
+        port=args.port,
+        log_level="warning",
+        access_log=False,
+    )
     return 0
 
 
@@ -45,35 +70,79 @@ def cmd_models(args) -> int:
     paths = _paths(args)
     catalog = ModelCatalog(paths.models_dir)
     installer = HuggingFacePackInstaller(catalog)
-    if args.model_action == "list":
-        print(json.dumps({
-            "definitions": catalog.definitions(),
-            "installed": [{"id": p.id, "version": p.version, "active": p.active} for p in catalog.installed()],
-        }, indent=2, ensure_ascii=False))
-        return 0
-    if args.model_action == "install":
-        pack = installer.install(args.pack_id)
-        print(json.dumps({"ok": True, "id": pack.id, "version": pack.version}, ensure_ascii=False))
-        return 0
-    if args.model_action == "rollback":
-        pack = installer.rollback()
-        print(json.dumps({"ok": True, "active": f"{pack.id}@{pack.version}"}, ensure_ascii=False))
-        return 0
-    if args.model_action == "verify":
-        ok = installer.verify(args.pack_id, args.version)
-        print(json.dumps({"ok": ok, "id": args.pack_id, "version": args.version}, ensure_ascii=False))
-        return 0 if ok else 1
-    if args.model_action == "remove":
-        installer.remove(args.pack_id, args.version)
-        print(json.dumps({"ok": True}, ensure_ascii=False))
-        return 0
-    return 2
+    try:
+        if args.model_action == "list":
+            print(
+                json.dumps(
+                    {
+                        "definitions": catalog.definitions(),
+                        "installed": [
+                            {"id": p.id, "version": p.version, "active": p.active}
+                            for p in catalog.installed()
+                        ],
+                    },
+                    indent=2,
+                    ensure_ascii=False,
+                )
+            )
+            return 0
+        if args.model_action == "install":
+            pack = installer.install(args.pack_id)
+            print(
+                json.dumps(
+                    {"ok": True, "id": pack.id, "version": pack.version},
+                    ensure_ascii=False,
+                )
+            )
+            return 0
+        if args.model_action == "rollback":
+            pack = installer.rollback()
+            print(
+                json.dumps(
+                    {"ok": True, "active": f"{pack.id}@{pack.version}"},
+                    ensure_ascii=False,
+                )
+            )
+            return 0
+        if args.model_action == "verify":
+            ok = installer.verify(args.pack_id, args.version)
+            if not ok:
+                return _emit_model_error(
+                    ModelOperationError(
+                        "MODEL_HASH_MISMATCH",
+                        "El pack local no pasó la verificación de integridad.",
+                    )
+                )
+            print(
+                json.dumps(
+                    {"ok": True, "id": args.pack_id, "version": args.version},
+                    ensure_ascii=False,
+                )
+            )
+            return 0
+        if args.model_action == "remove":
+            installer.remove(args.pack_id, args.version)
+            print(json.dumps({"ok": True}, ensure_ascii=False))
+            return 0
+        return 2
+    except ModelOperationError as exc:
+        return _emit_model_error(exc)
+    except BaseException as exc:
+        return _emit_model_error(classify_model_exception(exc))
 
 
 def cmd_diagnose(args) -> int:
     paths = _paths(args)
     checks = {}
-    for module in ("fastapi", "uvicorn", "numpy", "faster_whisper", "transformers", "torch", "huggingface_hub"):
+    for module in (
+        "fastapi",
+        "uvicorn",
+        "numpy",
+        "faster_whisper",
+        "transformers",
+        "torch",
+        "huggingface_hub",
+    ):
         try:
             __import__(module)
             checks[module] = True
@@ -81,16 +150,22 @@ def cmd_diagnose(args) -> int:
             checks[module] = False
     try:
         import torch
+
         cuda = bool(torch.cuda.is_available())
     except Exception:
         cuda = False
     active = ModelCatalog(paths.models_dir).active_pack()
-    print(json.dumps({
-        "python": sys.version.split()[0],
-        "dependencies": checks,
-        "cuda": cuda,
-        "activeModelPack": f"{active.id}@{active.version}" if active else None,
-    }, indent=2))
+    print(
+        json.dumps(
+            {
+                "python": sys.version.split()[0],
+                "dependencies": checks,
+                "cuda": cuda,
+                "activeModelPack": f"{active.id}@{active.version}" if active else None,
+            },
+            indent=2,
+        )
+    )
     return 0 if all(checks.values()) else 1
 
 
