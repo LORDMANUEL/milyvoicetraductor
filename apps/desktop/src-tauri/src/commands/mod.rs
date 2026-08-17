@@ -175,10 +175,9 @@ pub async fn install_model(
                 "La tarea de instalación terminó inesperadamente.",
             )
         })?
-        .map(|pack| {
+        .inspect(|_| {
             let _ = database.record_model_event(&pack_id, "install");
             let _ = logger.write("info", "Pack de modelos instalado correctamente.");
-            pack
         })
         .map_err(|_| {
             public_error(
