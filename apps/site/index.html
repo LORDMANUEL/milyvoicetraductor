@@ -17,10 +17,10 @@
     <nav aria-label="Navegación del sitio">
       <a href="#producto">Producto</a>
       <a href="#privacidad">Privacidad</a>
-      <a href="#arquitectura">Arquitectura</a>
-      <a href="#estado">Estado</a>
+      <a href="#arquitectura">Cómo funciona</a>
+      <a href="#estado">Descargas</a>
     </nav>
-    <a class="ghost-button" href="https://github.com/LORDMANUEL/milyvoicetraductor">GitHub</a>
+    <a class="ghost-button" href="https://github.com/LORDMANUEL/milyvoicetraductor/releases/download/v1.0.0-rc.1/MilyVoiceTraductor_1.0.0-rc.1_x64-setup.exe">Descargar</a>
   </header>
 
   <main id="inicio">
@@ -28,14 +28,14 @@
       <div class="hero-copy">
         <div class="eyebrow">IA local · Privacidad por defecto</div>
         <h1>Entiende la reunión.<br /><span>Sin regalar el audio.</span></h1>
-        <p>MilyVoiceTraductor está diseñado para traducir reuniones en inglés o chino a español usando modelos locales, con una aplicación ligera y una extensión Chromium.</p>
+        <p>Traduce reuniones web en inglés o chino a español con subtítulos y procesamiento local. Sin APIs de pago, sin telemetría y con tus datos bajo tu control.</p>
         <div class="actions">
-          <a class="primary-button" href="#estado">Ver plataforma</a>
-          <a class="text-link" href="https://github.com/LORDMANUEL/milyvoicetraductor">Explorar código →</a>
+          <a class="primary-button" href="https://github.com/LORDMANUEL/milyvoicetraductor/releases/download/v1.0.0-rc.1/MilyVoiceTraductor_1.0.0-rc.1_x64-setup.exe">Descargar para Windows</a>
+          <a class="text-link" href="https://github.com/LORDMANUEL/milyvoicetraductor/releases/download/v1.0.0-rc.1/MilyVoiceTraductor-Chromium-Extension.zip">Extensión Chromium →</a>
         </div>
         <ul class="trust-row" aria-label="Principios principales">
           <li><span>✓</span> Sin telemetría</li>
-          <li><span>✓</span> CPU-first</li>
+          <li><span>✓</span> Procesamiento local</li>
           <li><span>✓</span> GPU opcional</li>
         </ul>
       </div>
@@ -65,14 +65,14 @@
     <section id="producto" class="section wrap">
       <div class="section-heading">
         <span>Producto</span>
-        <h2>Una plataforma, componentes independientes.</h2>
-        <p>La aplicación, el motor IA, la extensión y los modelos tienen ciclos separados para poder actualizar cada pieza sin romper las demás.</p>
+        <h2>Una forma simple de seguir conversaciones globales.</h2>
+        <p>Instala la aplicación, carga la extensión en tu navegador y traduce el audio de tu reunión a español sin enviar el contenido a un servicio de traducción externo.</p>
       </div>
       <div class="feature-grid">
-        <article><div class="feature-icon emerald">01</div><h3>Escritorio ligero</h3><p>Tauri 2 + Rust para usar el WebView nativo del sistema y mantener bajo el consumo.</p></article>
-        <article><div class="feature-icon sapphire">02</div><h3>Motor local</h3><p>Python se ejecuta como motor desacoplado y puede instalarse como runtime aislado o sidecar compilado.</p></article>
-        <article><div class="feature-icon emerald">03</div><h3>Extensión Chromium</h3><p>Captura explícita de audio de pestaña en Chrome, Edge y Chromium, con permisos mínimos y conexión localhost autenticada.</p></article>
-        <article><div class="feature-icon sapphire">04</div><h3>Modelos versionados</h3><p>Descarga a staging, activación atómica, versiones y rollback independientes del ejecutable principal.</p></article>
+        <article><div class="feature-icon emerald">01</div><h3>Instalación guiada</h3><p>El instalador Windows prepara el motor local y el entorno necesario para comenzar.</p></article>
+        <article><div class="feature-icon sapphire">02</div><h3>IA en tu equipo</h3><p>Reconocimiento y traducción se ejecutan localmente, con CPU como base y aceleración opcional.</p></article>
+        <article><div class="feature-icon emerald">03</div><h3>Subtítulos en Chromium</h3><p>Chrome, Edge, Brave y Chromium pueden mostrar la traducción del audio de la pestaña activa.</p></article>
+        <article><div class="feature-icon sapphire">04</div><h3>Modelos administrados</h3><p>La aplicación descarga, verifica y administra el modelo recomendado sin incluir pesos gigantes dentro del instalador.</p></article>
       </div>
     </section>
 
@@ -80,39 +80,39 @@
       <div class="wrap privacy-layout">
         <div>
           <span class="section-label">Privacidad</span>
-          <h2>El contenido de la reunión no es material de diagnóstico.</h2>
-          <p>La arquitectura separa los datos operativos del contenido. Los logs se sanitizan antes de escribirse, no hay telemetría y las transcripciones solo persisten si el usuario lo habilita.</p>
+          <h2>Tu reunión no debería convertirse en telemetría.</h2>
+          <p>El motor trabaja localmente. Los logs se sanitizan, no hay tracking y las transcripciones solo se guardan cuando el usuario decide habilitarlo.</p>
         </div>
         <div class="privacy-list">
-          <div><span>✓</span><p><b>Sin tracking.</b><br />La web tampoco usa analytics, píxeles o cookies de seguimiento.</p></div>
-          <div><span>✓</span><p><b>Logs sanitizados.</b><br />Tokens, correos y directorios personales comunes se redactan.</p></div>
-          <div><span>✓</span><p><b>Permisos progresivos.</b><br />La captura de pestaña requiere una acción explícita del usuario; el micrófono permanece opcional y desactivado por defecto.</p></div>
+          <div><span>✓</span><p><b>Sin tracking.</b><br />La aplicación y la web no usan analytics, píxeles ni telemetría del contenido.</p></div>
+          <div><span>✓</span><p><b>Sin audio persistente por defecto.</b><br />El contenido no se almacena como requisito para traducir.</p></div>
+          <div><span>✓</span><p><b>Permisos progresivos.</b><br />La captura de pestaña comienza únicamente después de una acción explícita del usuario.</p></div>
         </div>
       </div>
     </section>
 
     <section id="arquitectura" class="section wrap">
-      <div class="section-heading compact"><span>Arquitectura</span><h2>Rust gobierna. La IA se conecta.</h2></div>
+      <div class="section-heading compact"><span>Cómo funciona</span><h2>Reunión web → IA local → español.</h2></div>
       <div class="architecture-card">
-        <div class="arch-node"><small>INTERFAZ</small><strong>Svelte + TypeScript</strong><p>Estado, navegación y controles.</p></div>
+        <div class="arch-node"><small>REUNIÓN</small><strong>Chrome / Edge / Brave</strong><p>La extensión captura el audio de la pestaña que autorizas.</p></div>
         <div class="connector">→</div>
-        <div class="arch-node highlighted"><small>PLATAFORMA</small><strong>Tauri + Rust</strong><p>Seguridad, archivos, SQLite, logs y caché.</p></div>
+        <div class="arch-node highlighted"><small>TU EQUIPO</small><strong>MilyVoiceTraductor</strong><p>El motor local reconoce la voz y procesa la traducción.</p></div>
         <div class="connector">→</div>
-        <div class="arch-node future"><small>MOTOR LOCAL</small><strong>Python + modelos</strong><p>ASR + traducción desacoplados, CPU-first y GPU opcional.</p></div>
+        <div class="arch-node future"><small>RESULTADO</small><strong>Subtítulos en español</strong><p>Lee la conversación mientras la reunión continúa.</p></div>
       </div>
     </section>
 
     <section id="estado" class="section wrap">
-      <div class="section-heading"><span>Release candidate</span><h2>MilyVoiceTraductor 1.0.0-rc.1</h2><p>Desktop, motor local, extensión Chromium, sesiones y gestión de modelos ya forman un flujo integrado.</p></div>
+      <div class="section-heading"><span>Release candidate</span><h2>MilyVoiceTraductor 1.0.0-rc.1</h2><p>Descarga la RC1 para Windows. La preparación inicial necesita Internet para completar dependencias y modelos; la traducción está diseñada para ejecutarse localmente después.</p></div>
       <div class="roadmap">
-        <article class="done"><span>1</span><div><b>Fundación</b><p>Tauri, Rust, Svelte, SQLite, configuración, caché, logs, diagnóstico y GitHub Pages.</p></div></article>
-        <article class="done"><span>2</span><div><b>Motor IA</b><p>ASR y traducción local con fallback CPU y aceleración opcional.</p></div></article>
-        <article class="done"><span>3</span><div><b>Chromium</b><p>Add-on para captura de pestaña y subtítulos en vivo.</p></div></article>
-        <article class="done"><span>4</span><div><b>Model Manager</b><p>Descarga a staging, versiones, activación y rollback.</p></div></article>
+        <article class="done"><span>1</span><div><b>Desktop</b><p>Interfaz, configuración, sesiones, diagnóstico y administración local.</p></div></article>
+        <article class="done"><span>2</span><div><b>Motor IA</b><p>Reconocimiento y traducción local con fallback CPU.</p></div></article>
+        <article class="done"><span>3</span><div><b>Chromium</b><p>Captura autorizada de pestaña y subtítulos en vivo.</p></div></article>
+        <article class="done"><span>4</span><div><b>Instalador</b><p>Runtime, dependencias, extensión y modelo recomendado preparados automáticamente.</p></div></article>
       </div>
       <div class="cta-card">
-        <div><small>CÓDIGO ABIERTO</small><h2>Revisa cómo está construido.</h2><p>El repositorio contiene arquitectura, pruebas y lineamientos de privacidad desde el primer release.</p></div>
-        <a class="primary-button" href="https://github.com/LORDMANUEL/milyvoicetraductor">Abrir GitHub</a>
+        <div><small>WINDOWS X64 · RC1</small><h2>Pruébalo en una reunión real.</h2><p>También puedes descargar la extensión por separado y verificar los archivos con SHA-256.</p></div>
+        <a class="primary-button" href="https://github.com/LORDMANUEL/milyvoicetraductor/releases/download/v1.0.0-rc.1/MilyVoiceTraductor_1.0.0-rc.1_x64-setup.exe">Descargar Windows</a>
       </div>
     </section>
   </main>

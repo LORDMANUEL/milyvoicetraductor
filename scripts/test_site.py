@@ -8,12 +8,23 @@ index = ROOT / "apps" / "site" / "index.html"
 styles = ROOT / "apps" / "site" / "styles.css"
 logo = ROOT / "apps" / "site" / "assets" / "logo.svg"
 
+WINDOWS_DOWNLOAD = "https://github.com/LORDMANUEL/milyvoicetraductor/releases/download/v1.0.0-rc.1/MilyVoiceTraductor_1.0.0-rc.1_x64-setup.exe"
+CHROMIUM_DOWNLOAD = "https://github.com/LORDMANUEL/milyvoicetraductor/releases/download/v1.0.0-rc.1/MilyVoiceTraductor-Chromium-Extension.zip"
+
 errors: list[str] = []
 if not index.exists():
     errors.append("Falta apps/site/index.html")
 else:
     html = index.read_text(encoding="utf-8")
-    for required in ["MilyVoiceTraductor", 'id="privacidad"', 'id="arquitectura"', 'id="estado"', "Sin telemetría"]:
+    for required in [
+        "MilyVoiceTraductor",
+        'id="privacidad"',
+        'id="arquitectura"',
+        'id="estado"',
+        "Sin telemetría",
+        WINDOWS_DOWNLOAD,
+        CHROMIUM_DOWNLOAD,
+    ]:
         if required not in html:
             errors.append(f"Falta contenido requerido: {required}")
     lowered = html.lower()
@@ -30,4 +41,4 @@ if errors:
     for error in errors:
         print(f"- {error}")
     sys.exit(1)
-print("SITE CHECK OK: estructura, branding y marcadores de privacidad presentes.")
+print("SITE CHECK OK: branding, privacidad y descargas RC1 presentes.")
