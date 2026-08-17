@@ -1,14 +1,19 @@
 !include "LogicLib.nsh"
 
 !macro NSIS_HOOK_POSTINSTALL
-  DetailPrint "Preparando motor local de MilyVoiceTraductor..."
-  nsExec::ExecToLog '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$INSTDIR\resources\bootstrap\setup-installed.ps1" -InstallRoot "$INSTDIR" -ModelPack business-qwen'
+  DetailPrint "Preparando runtime, motor y sincronización local de MilyVoiceTraductor..."
+  nsExec::ExecToLog '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$INSTDIR\resources\bootstrap\setup-installed.ps1" -InstallRoot "$INSTDIR"'
   Pop $0
   ${If} $0 == "0"
-    DetailPrint "Motor local, extensión y modelo recomendados preparados."
-  ${ElseIf} $0 == "2"
-    MessageBox MB_OK|MB_ICONEXCLAMATION "MilyVoiceTraductor se instaló y el motor local quedó preparado, pero el modelo no terminó de descargarse. Abra la aplicación y use Modelos para reintentar la descarga."
+    DetailPrint "Runtime, motor, extensión y Native Messaging preparados."
+    ExecShell "open" "$INSTDIR\MilyVoiceTraductor.exe"
   ${Else}
-    MessageBox MB_OK|MB_ICONEXCLAMATION "MilyVoiceTraductor se instaló, pero la preparación automática del motor local no terminó. Revise %LOCALAPPDATA%\MilyVoiceTraductor\bootstrap\status.json. Puede instalar Python 3.13 x64 y ejecutar nuevamente el instalador."
+    MessageBox MB_OK|MB_ICONEXCLAMATION "MilyVoiceTraductor se instaló, pero un componente local no terminó de prepararse. Abre la aplicación para ver el diagnóstico y usar Reparar instalación."
   ${EndIf}
+!macroend
+
+!macro NSIS_HOOK_PREUNINSTALL
+  DetailPrint "Retirando registro Native Messaging de MilyVoiceTraductor..."
+  nsExec::ExecToLog '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$INSTDIR\resources\bootstrap\register-native-host.ps1" -BridgePath "$LOCALAPPDATA\MilyVoiceTraductor\bridge\milyvoice-bridge.exe" -ManifestTemplate "$INSTDIR\resources\bootstrap\native-host-template.json" -ManifestOutput "$LOCALAPPDATA\MilyVoiceTraductor\bridge\com.milyvoice.traductor.json" -Unregister'
+  Pop $0
 !macroend
