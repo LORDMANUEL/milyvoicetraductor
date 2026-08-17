@@ -187,4 +187,14 @@ mod tests {
         assert!(parsed.packs.iter().any(|pack| pack.id == "lite-nllb"));
         assert!(parsed.packs.iter().any(|pack| pack.id == "business-qwen"));
     }
+
+    #[test]
+    fn structured_engine_error_preserves_public_code() {
+        let error = parse_model_cli_error(
+            br#"{"ok":false,"code":"MODEL_NO_NETWORK","message":"No hay conexión a Internet."}"#,
+        )
+        .expect("structured error");
+        assert_eq!(error.public_code(), "MODEL_NO_NETWORK");
+        assert_eq!(error.public_message(), "No hay conexión a Internet.");
+    }
 }
