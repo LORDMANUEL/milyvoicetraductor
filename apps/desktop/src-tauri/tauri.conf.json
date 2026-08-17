@@ -27,18 +27,8 @@
   },
   "bundle": {
     "active": true,
-    "targets": [
-      "nsis"
-    ],
-    "icon": [
-      "icons/icon.png",
-      "icons/icon.ico"
-    ],
-    "resources": {
-      "../../../services/ai/": "bootstrap/ai/",
-      "../../extension/": "bootstrap/extension/",
-      "../../../installer/windows/setup-installed.ps1": "bootstrap/setup-installed.ps1"
-    },
+    "targets": ["nsis"],
+    "icon": ["icons/icon.png", "icons/icon.ico"],
     "shortDescription": "Traductor local de reuniones inglés/chino a español",
     "longDescription": "MilyVoiceTraductor procesa audio y traducción de forma local con motor y modelos administrados por el usuario.",
     "windows": {
