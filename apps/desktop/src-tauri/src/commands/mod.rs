@@ -1,5 +1,4 @@
-//! Adaptadores IPC. Nunca retornan backtraces, SQL, tokens salvo cuando el
-//! usuario solicita explícitamente el token de emparejamiento.
+//! Adaptadores IPC. Nunca retornan backtraces, SQL ni detalles sensibles.
 
 use crate::bootstrap::AppState;
 use mily_cache::CacheStatus;
@@ -171,7 +170,7 @@ pub async fn install_model(
         .await
         .map_err(|_| {
             public_error(
-                "MODEL_TASK",
+                "MODEL_RUNTIME_ERROR",
                 "La tarea de instalación terminó inesperadamente.",
             )
         })?
@@ -179,11 +178,11 @@ pub async fn install_model(
             let _ = database.record_model_event(&pack_id, "install");
             let _ = logger.write("info", "Pack de modelos instalado correctamente.");
         })
-        .map_err(|_| {
-            public_error(
-                "MODEL_INSTALL",
-                "No se pudo instalar el pack. Revisa conexión, espacio y licencia.",
-            )
+        .map_err(|error| {
+            let code = error.public_code();
+            let message = error.public_message();
+            let _ = logger.write("warn", &format!("Instalación de modelo falló: {code}"));
+            public_error(code, message)
         })
 }
 
@@ -196,8 +195,13 @@ pub async fn verify_model(
     let models = state.models.clone();
     tauri::async_runtime::spawn_blocking(move || models.verify(&pack_id, &version))
         .await
-        .map_err(|_| public_error("MODEL_TASK", "La verificación terminó inesperadamente."))?
-        .map_err(|_| public_error("MODEL_VERIFY", "No se pudo verificar el pack local."))
+        .map_err(|_| {
+            public_error(
+                "MODEL_RUNTIME_ERROR",
+                "La verificación terminó inesperadamente.",
+            )
+        })?
+        .map_err(|error| public_error(error.public_code(), error.public_message()))
 }
 
 #[tauri::command]
@@ -209,13 +213,13 @@ pub async fn remove_model(
     let models = state.models.clone();
     tauri::async_runtime::spawn_blocking(move || models.remove(&pack_id, &version))
         .await
-        .map_err(|_| public_error("MODEL_TASK", "La eliminación terminó inesperadamente."))?
         .map_err(|_| {
             public_error(
-                "MODEL_REMOVE",
-                "No se pudo eliminar el pack. El pack activo está protegido.",
+                "MODEL_RUNTIME_ERROR",
+                "La eliminación terminó inesperadamente.",
             )
-        })
+        })?
+        .map_err(|error| public_error(error.public_code(), error.public_message()))
 }
 
 #[tauri::command]
@@ -225,16 +229,11 @@ pub async fn rollback_model(state: State<'_, AppState>) -> Result<ModelPackInfo,
         .await
         .map_err(|_| {
             public_error(
-                "MODEL_TASK",
+                "MODEL_RUNTIME_ERROR",
                 "La tarea de rollback terminó inesperadamente.",
             )
         })?
-        .map_err(|_| {
-            public_error(
-                "MODEL_ROLLBACK",
-                "No existe un pack anterior válido para restaurar.",
-            )
-        })
+        .map_err(|error| public_error(error.public_code(), error.public_message()))
 }
 
 #[tauri::command]
