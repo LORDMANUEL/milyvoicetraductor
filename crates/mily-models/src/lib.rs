@@ -191,7 +191,8 @@ mod tests {
     #[test]
     fn structured_engine_error_preserves_public_code() {
         let error = parse_model_cli_error(
-            br#"{"ok":false,"code":"MODEL_NO_NETWORK","message":"No hay conexión a Internet."}"#,
+            r#"{"ok":false,"code":"MODEL_NO_NETWORK","message":"No hay conexión a Internet."}"#
+                .as_bytes(),
         )
         .expect("structured error");
         assert_eq!(error.public_code(), "MODEL_NO_NETWORK");
