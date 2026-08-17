@@ -30,7 +30,9 @@ pub fn get_system_info(state: State<'_, AppState>) -> SystemSnapshot {
 #[tauri::command]
 pub fn get_config(state: State<'_, AppState>) -> Result<AppConfig, PublicError> {
     state.config.load_or_default().map_err(|_| {
-        let _ = state.logger.write("error", "No se pudo leer la configuración local.");
+        let _ = state
+            .logger
+            .write("error", "No se pudo leer la configuración local.");
         public_error("CONFIG_READ", "No se pudo leer la configuración.")
     })
 }
@@ -42,7 +44,9 @@ pub fn save_config(
 ) -> Result<AppConfig, PublicError> {
     let normalized = config.normalized();
     state.config.save(&normalized).map_err(|_| {
-        let _ = state.logger.write("error", "No se pudo guardar la configuración local.");
+        let _ = state
+            .logger
+            .write("error", "No se pudo guardar la configuración local.");
         public_error("CONFIG_WRITE", "No se pudo guardar la configuración.")
     })?;
     // El valor en SQLite facilita diagnósticos/migraciones sin duplicar secretos.
@@ -55,7 +59,9 @@ pub fn save_config(
 #[tauri::command]
 pub fn get_cache_status(state: State<'_, AppState>) -> Result<CacheStatus, PublicError> {
     state.cache.status().map_err(|_| {
-        let _ = state.logger.write("warn", "No se pudo consultar el estado de caché.");
+        let _ = state
+            .logger
+            .write("warn", "No se pudo consultar el estado de caché.");
         public_error("CACHE_STATUS", "No se pudo consultar la caché.")
     })
 }
@@ -66,9 +72,13 @@ pub fn clear_cache(state: State<'_, AppState>) -> Result<CacheStatus, PublicErro
         let _ = state.logger.write("error", "No se pudo limpiar la caché.");
         public_error("CACHE_CLEAR", "No se pudo limpiar la caché.")
     })?;
-    let _ = state.logger.write("info", "Caché local limpiada por el usuario.");
-    state
-        .cache
-        .status()
-        .map_err(|_| public_error("CACHE_STATUS", "La caché se limpió, pero no se pudo leer su estado."))
+    let _ = state
+        .logger
+        .write("info", "Caché local limpiada por el usuario.");
+    state.cache.status().map_err(|_| {
+        public_error(
+            "CACHE_STATUS",
+            "La caché se limpió, pero no se pudo leer su estado.",
+        )
+    })
 }
