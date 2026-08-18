@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from typing import Literal
 
 from .cpu_budget import detect_cpu_budget
+from .echo_guard import EchoGuard
 from .hypothesis import HypothesisStabilizer
 from .models import InstalledPack
 from .providers import (
@@ -21,6 +22,7 @@ from .providers import (
     Translator,
 )
 from .sessions import SessionRecorder, TranscriptSegment, TranscriptWord
+from .speakers import SpeakerClusterer
 from .streaming import AdaptiveSpeechSegmenter, AudioLevel, StreamingEvent
 from .telemetry import RealtimeTelemetry
 
@@ -41,6 +43,7 @@ class PipelineEvent:
     language: str
     translation: str = ""
     words: tuple[AsrWord, ...] = ()
+    speaker_id: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -53,6 +56,7 @@ class TranslationRequest:
     original: str
     language: str
     words: tuple[AsrWord, ...] = ()
+    speaker_id: str | None = None
 
     @property
     def final(self) -> bool:
@@ -67,6 +71,9 @@ class RealtimePipeline:
         compute_profile: str,
         recorder: SessionRecorder,
         session_mode: str = "meeting",
+        speaker_detection: bool = False,
+        speaker_focus_mode: str = "all",
+        fixed_speaker_id: str | None = None,
     ):
         metadata = __import__("json").loads(
             (pack.path / "pack.json").read_text(encoding="utf-8")
@@ -91,6 +98,14 @@ class RealtimePipeline:
         self.stabilizer = HypothesisStabilizer()
         self.telemetry = RealtimeTelemetry()
         self.recorder = recorder
+        self.echo_guard = EchoGuard()
+        self.speaker_clusterer = (
+            SpeakerClusterer(sample_rate=self.sample_rate) if speaker_detection else None
+        )
+        self.speaker_focus_mode = (
+            speaker_focus_mode if speaker_focus_mode in {"all", "dominant", "fixed"} else "all"
+        )
+        self.fixed_speaker_id = fixed_speaker_id
         self._recent_originals: deque[str] = deque(maxlen=8)
         self._last_partial_translation = ""
 
@@ -122,6 +137,17 @@ class RealtimePipeline:
     def audio_level(self) -> AudioLevel:
         return self.segmenter.level
 
+    @property
+    def known_speakers(self) -> tuple[str, ...]:
+        return self.speaker_clusterer.speaker_ids if self.speaker_clusterer else ()
+
+    def set_speaker_focus(self, mode: str, speaker_id: str | None = None) -> None:
+        self.speaker_focus_mode = mode if mode in {"all", "dominant", "fixed"} else "all"
+        self.fixed_speaker_id = speaker_id if self.speaker_focus_mode == "fixed" else None
+
+    def register_tts(self, text: str) -> None:
+        self.echo_guard.register(text)
+
     def warm_up_asr(self) -> None:
         warm_up = getattr(self.asr, "warm_up", None)
         if callable(warm_up):
@@ -143,6 +169,20 @@ class RealtimePipeline:
         if configured in {"en", "zh"}:
             return configured
         return "zh" if any("\u4e00" <= char <= "\u9fff" for char in text) else "en"
+
+    def _speaker_for_window(self, window: StreamingEvent) -> str | None:
+        clusterer = self.speaker_clusterer
+        if clusterer is None:
+            return None
+        speaker_id = clusterer.assign(window.samples, update=window.kind == "final")
+        if self.speaker_focus_mode == "fixed":
+            if self.fixed_speaker_id and speaker_id != self.fixed_speaker_id:
+                return ""
+        elif self.speaker_focus_mode == "dominant":
+            dominant = clusterer.dominant_id
+            if dominant and speaker_id != dominant:
+                return ""
+        return speaker_id
 
     def ingest(self, samples) -> tuple[list[PipelineEvent], list[TranslationRequest]]:
         """Ejecuta únicamente segmentación + ASR; nunca llama al traductor."""
@@ -179,6 +219,7 @@ class RealtimePipeline:
                     end=request.end,
                     original=request.original,
                     translation=translated,
+                    speaker_id=request.speaker_id,
                     words=tuple(
                         TranscriptWord(word.start, word.end, word.text)
                         for word in request.words
@@ -193,6 +234,7 @@ class RealtimePipeline:
             language=request.language,
             translation=translated,
             words=request.words,
+            speaker_id=request.speaker_id,
         )
 
     def push(self, samples) -> list[PipelineEvent]:
@@ -246,7 +288,13 @@ class RealtimePipeline:
     def _ingest_window(
         self, window: StreamingEvent
     ) -> tuple[list[PipelineEvent], list[TranslationRequest]]:
+        speaker_id = self._speaker_for_window(window)
+        if speaker_id == "":
+            return [], []
+
         original, detected, words = self._transcribe_window(window)
+        if original and self.echo_guard.matches(original):
+            return [], []
         start = window.start_sample / self.sample_rate
         end = window.end_sample / self.sample_rate
 
@@ -262,6 +310,7 @@ class RealtimePipeline:
                     original=state.partial,
                     language=detected,
                     words=words,
+                    speaker_id=speaker_id,
                 )
             ]
             requests: list[TranslationRequest] = []
@@ -280,6 +329,7 @@ class RealtimePipeline:
                         original=state.stable,
                         language=detected,
                         words=words,
+                        speaker_id=speaker_id,
                     )
                 )
             return events, requests
@@ -300,6 +350,7 @@ class RealtimePipeline:
                 original=final_original,
                 language=detected,
                 words=words,
+                speaker_id=speaker_id,
             )
         ], [
             TranslationRequest(
@@ -309,5 +360,6 @@ class RealtimePipeline:
                 original=final_original,
                 language=detected,
                 words=words,
+                speaker_id=speaker_id,
             )
         ]
