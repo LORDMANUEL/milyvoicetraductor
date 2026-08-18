@@ -9,8 +9,31 @@ línea de defensa contra ruido y falsos positivos.
 from __future__ import annotations
 
 import math
+import os
 from dataclasses import dataclass
 from typing import Literal, Sequence
+
+
+def _positive_int(value: object) -> int | None:
+    try:
+        parsed = int(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return None
+    return parsed if parsed > 0 else None
+
+
+def default_partial_step_ms(physical_cores: int | None = None) -> int:
+    """Cadencia de ASR parcial ajustada al presupuesto físico.
+
+    El primer decode sigue ocurriendo alrededor de 900 ms. En uno o dos cores
+    evitamos repetir Whisper cada 450 ms sobre casi el mismo buffer, reduciendo
+    carga sostenida sin retrasar el cierre final de la utterance.
+    """
+
+    cores = _positive_int(physical_cores)
+    if cores is None:
+        cores = _positive_int(os.environ.get("MILY_PHYSICAL_CPUS"))
+    return 700 if cores is not None and cores <= 2 else 450
 
 
 @dataclass(frozen=True, slots=True)
@@ -46,11 +69,14 @@ class AdaptiveSpeechSegmenter:
         *,
         sample_rate: int = 16000,
         first_decode_ms: int = 900,
-        partial_step_ms: int = 450,
+        partial_step_ms: int | None = None,
         finalize_silence_ms: int = 250,
         max_utterance_ms: int = 2400,
         energy_threshold: float = 0.012,
     ) -> None:
+        partial_step_ms = (
+            default_partial_step_ms() if partial_step_ms is None else partial_step_ms
+        )
         if sample_rate <= 0:
             raise ValueError("sample_rate debe ser positivo")
         if not 0 < first_decode_ms < max_utterance_ms:
