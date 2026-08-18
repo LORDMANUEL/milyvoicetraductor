@@ -7,7 +7,7 @@ $Root = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 $FixtureRoot = Join-Path $Root '.build\installed-flow'
 $InstallRoot = Join-Path $FixtureRoot 'install'
 $FakeLocalAppData = Join-Path $FixtureRoot 'localappdata'
-$Bootstrap = Join-Path $InstallRoot 'resources\bootstrap'
+$Bootstrap = Join-Path $InstallRoot 'bootstrap'
 $OriginalLocalAppData = $env:LOCALAPPDATA
 
 function Assert-File([string]$Path, [string]$Message) {
@@ -45,6 +45,7 @@ try {
     $StatusPath = Join-Path $AppRoot 'bootstrap\status.json'
     $NativeCredential = Join-Path $AppRoot 'config\native-credential.json'
 
+    Assert-File (Join-Path $Bootstrap 'setup-installed.ps1') 'El fixture no replica el bootstrap al lado del ejecutable.'
     Assert-File $Python 'El flujo instalado no dejó python.exe privado.'
     Assert-File $EngineMain 'El flujo instalado no dejó main.py del motor.'
     Assert-File $EnginePackage 'El flujo instalado perdió el paquete mily_ai del motor.'
@@ -70,7 +71,6 @@ try {
         }
     }
 
-    # Ejecuta el Python que irá en el equipo del usuario, no el Python del runner.
     & $Python $EngineMain diagnose `
         --data-dir $AppRoot `
         --config-dir (Join-Path $AppRoot 'config') `
@@ -78,8 +78,6 @@ try {
         --models-dir (Join-Path $AppRoot 'models') | Out-Host
     if ($LASTEXITCODE -ne 0) { throw 'El motor instalado no pasó diagnose.' }
 
-    # Prueba el framing Native Messaging contra el binario real instalado. Una consulta
-    # `status` debe ser completamente pasiva: nunca devuelve ni escribe credenciales.
     Remove-Item $NativeCredential -Force -ErrorAction SilentlyContinue
     $Probe = Join-Path $FixtureRoot 'probe_native.py'
     @'
