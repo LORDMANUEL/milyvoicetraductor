@@ -18,6 +18,7 @@ from .queueing import enqueue_translation
 from .runtime import EngineSettings, RuntimePaths, parent_process_alive
 from .security import EphemeralCredentialService, PairingTokenService
 from .sessions import SessionRecorder
+from .system_loopback import LoopbackError, WasapiLoopbackSource
 from .telemetry import LatencyController
 
 PINNED_EXTENSION_ORIGIN = "chrome-extension://edcpjonegaempcifgodcmgejbcpdpddm"
@@ -171,6 +172,8 @@ def create_app(paths: RuntimePaths, port: int = 8765, parent_pid: int | None = N
         translation_executor: ThreadPoolExecutor | None = None
         audio_task: asyncio.Task | None = None
         translation_task: asyncio.Task | None = None
+        loopback_source: WasapiLoopbackSource | None = None
+        loopback_task: asyncio.Task | None = None
         send_lock = asyncio.Lock()
         latency_controller = LatencyController()
         last_telemetry_emit = 0.0
@@ -317,6 +320,57 @@ def create_app(paths: RuntimePaths, port: int = 8765, parent_pid: int | None = N
                 finally:
                     translation_queue.task_done()
 
+        async def enqueue_audio(samples) -> None:
+            if pipeline is None or audio_task is None:
+                await safe_send(
+                    event(
+                        "engine.error",
+                        code="SESSION_NOT_STARTED",
+                        message="Inicia una sesión antes de enviar audio.",
+                    )
+                )
+                return
+            await audio_queue.put(samples)
+
+        async def loopback_worker(source: WasapiLoopbackSource) -> None:
+            loop = asyncio.get_running_loop()
+            try:
+                while True:
+                    samples = await loop.run_in_executor(None, source.read_chunk)
+                    await enqueue_audio(samples)
+            except asyncio.CancelledError:
+                raise
+            except LoopbackError as exc:
+                logger.warning("WASAPI loopback terminó: %s", exc.code)
+                await safe_send(event("engine.error", code=exc.code, message=exc.message))
+            except Exception as exc:
+                logger.warning("WASAPI loopback terminó: %s", exc.__class__.__name__)
+                await safe_send(event("engine.error", code="LOOPBACK_CAPTURE", message="Se perdió la captura del audio reproducido por Windows."))
+
+        async def start_loopback() -> tuple[bool, str | None]:
+            nonlocal loopback_source, loopback_task
+            source = WasapiLoopbackSource()
+            try:
+                info = await asyncio.get_running_loop().run_in_executor(None, source.open_default)
+            except LoopbackError as exc:
+                source.close()
+                await safe_send(event("engine.error", code=exc.code, message=exc.message))
+                return False, None
+            loopback_source = source
+            loopback_task = asyncio.create_task(loopback_worker(source), name="mily-wasapi-loopback")
+            return True, info.name
+
+        async def stop_loopback() -> None:
+            nonlocal loopback_source, loopback_task
+            task, source = loopback_task, loopback_source
+            loopback_task = None
+            loopback_source = None
+            if task is not None:
+                task.cancel()
+                await asyncio.gather(task, return_exceptions=True)
+            if source is not None:
+                await asyncio.get_running_loop().run_in_executor(None, source.close)
+
         async def start_workers() -> None:
             nonlocal audio_queue, translation_queue
             nonlocal asr_executor, translation_executor, audio_task, translation_task
@@ -363,6 +417,7 @@ def create_app(paths: RuntimePaths, port: int = 8765, parent_pid: int | None = N
 
         async def finish_workers(*, flush: bool) -> None:
             nonlocal audio_task, translation_task
+            await stop_loopback()
             current = pipeline
             executor = asr_executor
             if audio_task is None and translation_task is None:
@@ -394,6 +449,7 @@ def create_app(paths: RuntimePaths, port: int = 8765, parent_pid: int | None = N
 
         async def abort_workers() -> None:
             nonlocal audio_task, translation_task
+            await stop_loopback()
             for task in (audio_task, translation_task):
                 if task is not None:
                     task.cancel()
@@ -404,18 +460,6 @@ def create_app(paths: RuntimePaths, port: int = 8765, parent_pid: int | None = N
             audio_task = None
             translation_task = None
             shutdown_executors(wait=False)
-
-        async def enqueue_audio(samples) -> None:
-            if pipeline is None or audio_task is None:
-                await safe_send(
-                    event(
-                        "engine.error",
-                        code="SESSION_NOT_STARTED",
-                        message="Inicia una sesión antes de enviar audio.",
-                    )
-                )
-                return
-            await audio_queue.put(samples)
 
         try:
             await safe_send(event("engine.ready", version="1.0.5", protocolVersion=1))
@@ -557,6 +601,19 @@ def create_app(paths: RuntimePaths, port: int = 8765, parent_pid: int | None = N
                             )
                         )
                         continue
+
+                    loopback_device = None
+                    native_loopback = (
+                        message.source_mode == "system_loopback" and not message.external_pcm
+                    )
+                    if native_loopback:
+                        loopback_ready, loopback_device = await start_loopback()
+                        if not loopback_ready:
+                            await finish_workers(flush=False)
+                            pipeline = None
+                            recorder = None
+                            continue
+
                     last_telemetry_emit = 0.0
                     last_speaker_event = None
                     binary_pcm_enabled = message.binary_pcm
@@ -566,6 +623,8 @@ def create_app(paths: RuntimePaths, port: int = 8765, parent_pid: int | None = N
                             sessionId=session_id,
                             sessionMode=message.session_mode,
                             sourceMode=message.source_mode,
+                            nativeLoopback=native_loopback,
+                            loopbackDevice=loopback_device,
                             speakerDetection=message.speaker_detection,
                             binaryPcm=binary_pcm_enabled,
                             parallelStages=pipeline.cpu_budget.parallel_stages,
