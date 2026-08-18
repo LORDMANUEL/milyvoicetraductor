@@ -46,6 +46,7 @@ try {
     $Bridge = Join-Path $AppRoot 'bridge\milyvoice-bridge.exe'
     $NativeManifest = Join-Path $AppRoot 'bridge\com.milyvoice.traductor.json'
     $StatusPath = Join-Path $AppRoot 'bootstrap\status.json'
+    $NativeCredential = Join-Path $AppRoot 'config\native-credential.json'
 
     Assert-File $Python 'El flujo instalado no dejó python.exe privado.'
     Assert-File $EngineMain 'El flujo instalado no dejó el motor Python.'
@@ -79,7 +80,9 @@ try {
         --models-dir (Join-Path $AppRoot 'models') | Out-Host
     if ($LASTEXITCODE -ne 0) { throw 'El motor instalado no pasó diagnose.' }
 
-    # Prueba el framing Native Messaging contra el binario real instalado.
+    # Prueba el framing Native Messaging contra el binario real instalado. Una consulta
+    # `status` debe ser completamente pasiva: nunca devuelve ni escribe credenciales.
+    Remove-Item $NativeCredential -Force -ErrorAction SilentlyContinue
     $Probe = Join-Path $FixtureRoot 'probe_native.py'
     @'
 import json
@@ -100,13 +103,18 @@ body = proc.stdout.read(length)
 reply = json.loads(body.decode("utf-8"))
 if reply.get("type") != "bridge.ready" or reply.get("desktop") != "ready":
     raise SystemExit(f"Respuesta bridge inesperada: {reply}")
+if "credential" in reply or "expiresAt" in reply:
+    raise SystemExit("Una consulta status no debe emitir credenciales efímeras")
 proc.terminate()
 proc.wait(timeout=5)
-print("NATIVE_BRIDGE_OK")
+print("NATIVE_BRIDGE_PASSIVE_STATUS_OK")
 '@ | Set-Content -Path $Probe -Encoding UTF8
 
     & python $Probe $Bridge 'chrome-extension://edcpjonegaempcifgodcmgejbcpdpddm/'
-    if ($LASTEXITCODE -ne 0) { throw 'El bridge instalado no respondió a Native Messaging.' }
+    if ($LASTEXITCODE -ne 0) { throw 'El bridge instalado no respondió correctamente a Native Messaging.' }
+    if (Test-Path $NativeCredential) {
+        throw 'La consulta status escribió native-credential.json sin iniciar captura.'
+    }
 
     Write-Host 'INSTALLED FLOW OK' -ForegroundColor Green
 }
