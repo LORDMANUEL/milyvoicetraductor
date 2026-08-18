@@ -1,7 +1,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import type {
-  AppConfig, AppStatus, CacheStatus, EngineRuntimeStatus, LocalEngineSession, ModelPackInfo,
-  OnboardingStatus, RuntimeLocations, SessionSummary, SystemSnapshot
+  AppConfig, AppStatus, CacheStatus, EngineRuntimeStatus, HardwareAdvisor, LocalEngineSession,
+  ModelPackInfo, OnboardingStatus, RuntimeLocations, SessionSummary, SystemSnapshot
 } from '../types';
 
 export const defaultConfig: AppConfig = {
@@ -59,10 +59,38 @@ export class DesktopApi {
 
   async getSystemInfo(): Promise<SystemSnapshot> {
     if (!isTauriEnvironment()) return {
-      operatingSystem: 'Vista previa web', architecture: 'N/D',
-      cpuBrand: 'Disponible únicamente en Tauri', logicalCpus: 0, totalMemoryMb: 0, gpu: null
+      operatingSystem: 'Vista previa web',
+      architecture: 'N/D',
+      cpuBrand: 'Disponible únicamente en Tauri',
+      logicalCpus: 0,
+      physicalCpus: 0,
+      totalMemoryMb: 0,
+      availableMemoryMb: 0,
+      cpuFeatures: { sse42: false, avx: false, avx2: false, fma: false, avx512f: false, neon: false },
+      gpu: null
     };
     return invoke<SystemSnapshot>('get_system_info');
+  }
+
+  async getHardwareAdvisor(): Promise<HardwareAdvisor> {
+    if (!isTauriEnvironment()) {
+      const system = await this.getSystemInfo();
+      return {
+        system,
+        backends: [{
+          backend: 'cpu',
+          runtimeDetected: true,
+          adapterReady: true,
+          evidence: ['fallback de vista previa']
+        }],
+        recommendedBackend: 'cpu',
+        recommendedProfile: 'legacy',
+        legacyHaswellCompatible: false,
+        benchmarkRequired: true,
+        message: 'Instala MilyVoice para medir el hardware real.'
+      };
+    }
+    return invoke<HardwareAdvisor>('get_hardware_advisor');
   }
 
   async getConfig(): Promise<AppConfig> {
