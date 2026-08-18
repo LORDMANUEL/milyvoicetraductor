@@ -2,10 +2,12 @@
 
 mod bootstrap;
 mod commands;
+mod local_session;
 mod repair;
 
 use bootstrap::AppState;
 use commands::*;
+use local_session::*;
 
 pub fn run() {
     let state = match AppState::initialize() {
@@ -38,6 +40,7 @@ pub fn run() {
             get_engine_status,
             start_engine,
             stop_engine,
+            get_local_engine_session,
             get_model_catalog,
             install_model,
             verify_model,
