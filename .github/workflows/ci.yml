@@ -25,6 +25,8 @@ jobs:
       - uses: actions/setup-node@v5
         with:
           node-version: "22"
+      - name: Install source-verification dependencies
+        run: python -m pip install --disable-pip-version-check "fastapi>=0.116,<1" "httpx>=0.28,<1" "numpy>=2.2,<3"
       - name: Release version consistency
         run: python3 scripts/test_release_version.py
       - name: Source verification
@@ -61,15 +63,13 @@ jobs:
       - uses: actions/setup-node@v5
         with:
           node-version: "22"
+      - name: Pin npm
+        run: npm install --global npm@10.9.9
       - name: Install frontend dependencies
         shell: bash
         run: |
           if [ -f package-lock.json ]; then
-            npm ci --no-audit --no-fund || {
-              echo "npm ci falló una vez; limpiando caché y reintentando exactamente una vez."
-              npm cache clean --force
-              npm ci --no-audit --no-fund
-            }
+            npm ci --no-audit --no-fund
           else
             npm install --no-audit --no-fund
           fi
@@ -131,6 +131,8 @@ jobs:
       - uses: actions/setup-node@v5
         with:
           node-version: "22"
+      - name: Pin npm
+        run: npm install --global npm@10.9.9
       - uses: actions/setup-python@v6
         with:
           python-version: "3.13"
@@ -142,16 +144,10 @@ jobs:
         run: |
           if (Test-Path package-lock.json) {
             npm ci --no-audit --no-fund
-            if ($LASTEXITCODE -ne 0) {
-              Write-Host "npm ci falló una vez; limpiando caché y reintentando exactamente una vez."
-              npm cache clean --force
-              npm ci --no-audit --no-fund
-            }
-            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           } else {
             npm install --no-audit --no-fund
-            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           }
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Frontend build
         run: npm run build
       - name: Install lightweight AI test dependencies
