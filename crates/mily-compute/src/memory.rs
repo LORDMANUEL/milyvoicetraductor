@@ -62,9 +62,8 @@ pub fn calculate_memory_budget(input: MemoryBudgetInput) -> MemoryBudget {
         MemoryTier::Spacious
     };
 
-    let allow_parallel_heavy_stages = tier != MemoryTier::Constrained
-        && max_model_resident_mb >= 3072
-        && available >= 4096;
+    let allow_parallel_heavy_stages =
+        tier != MemoryTier::Constrained && max_model_resident_mb >= 3072 && available >= 4096;
 
     MemoryBudget {
         tier,
