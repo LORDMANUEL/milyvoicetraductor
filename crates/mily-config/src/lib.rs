@@ -250,4 +250,35 @@ mod tests {
         assert_eq!(config.engine_port, 1024);
         assert_eq!(config.active_model_pack, "realtime-m2m100");
     }
+
+    #[cfg(windows)]
+    #[test]
+    fn save_replaces_an_existing_config_on_windows() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("config.json");
+        fs::write(&path, r#"{"schemaVersion":2,"sourceLanguage":"zh"}"#).unwrap();
+        let service = ConfigService::new(&path);
+        let desired = AppConfig {
+            source_language: "en".into(),
+            ..AppConfig::default()
+        };
+        service.save(&desired).expect("guardar debe reemplazar config existente");
+        let loaded = service.load_or_default().unwrap();
+        assert_eq!(loaded.source_language, "en");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn engine_config_replaces_an_existing_file_on_windows() {
+        let dir = tempdir().unwrap();
+        let config_path = dir.path().join("config.json");
+        let engine_path = dir.path().join("engine.json");
+        fs::write(&engine_path, br#"{"sourceLanguage":"zh"}"#).unwrap();
+        let service = ConfigService::new(config_path);
+        service
+            .save_engine_config(&AppConfig::default())
+            .expect("guardar engine.json debe reemplazar el archivo existente");
+        let payload = fs::read_to_string(engine_path).unwrap();
+        assert!(payload.contains(r#""sourceLanguage": "auto""#));
+    }
 }
