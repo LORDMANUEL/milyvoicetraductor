@@ -95,6 +95,64 @@ def _file_manifest(root: Path) -> dict[str, str]:
     }
 
 
+def _is_ctranslate2_model(path: Path) -> bool:
+    return (path / "model.bin").is_file() and (path / "config.json").is_file()
+
+
+def _convert_m2m100_to_ctranslate2(source_dir: Path, quantization: str = "int8") -> None:
+    """Convierte el snapshot HF una vez y elimina los pesos PyTorch originales."""
+    if _is_ctranslate2_model(source_dir):
+        return
+    try:
+        import ctranslate2
+    except ImportError as exc:
+        raise ModelOperationError(
+            "MODEL_RUNTIME_ERROR",
+            "El runtime local no contiene CTranslate2 para optimizar el modelo.",
+        ) from exc
+
+    output_dir = source_dir.with_name(source_dir.name + ".ct2")
+    shutil.rmtree(output_dir, ignore_errors=True)
+    copy_files = [
+        "sentencepiece.bpe.model",
+        "vocab.json",
+        "tokenizer_config.json",
+        "special_tokens_map.json",
+        "generation_config.json",
+    ]
+    try:
+        converter = ctranslate2.converters.TransformersConverter(
+            str(source_dir),
+            copy_files=copy_files,
+        )
+        converter.convert(
+            str(output_dir),
+            quantization=quantization,
+            force=True,
+        )
+        if not _is_ctranslate2_model(output_dir):
+            raise RuntimeError("la conversión no produjo model.bin/config.json")
+        shutil.rmtree(source_dir)
+        output_dir.replace(source_dir)
+    except ModelOperationError:
+        raise
+    except BaseException as exc:
+        shutil.rmtree(output_dir, ignore_errors=True)
+        raise ModelOperationError(
+            "MODEL_CONVERSION_ERROR",
+            "El modelo se descargó, pero no pudo optimizarse para ejecución rápida en este equipo.",
+        ) from exc
+
+
+def _prepare_component(component: dict[str, Any], target: Path) -> None:
+    provider = str(component.get("provider", ""))
+    if provider == "m2m100-ct2":
+        _convert_m2m100_to_ctranslate2(
+            target,
+            str(component.get("quantization", "int8")),
+        )
+
+
 @dataclass(slots=True)
 class InstalledPack:
     id: str
@@ -163,7 +221,7 @@ class ModelCatalog:
 
 
 class HuggingFacePackInstaller:
-    """Descarga a staging y conserva parciales para reanudación en reintentos."""
+    """Descarga a staging, reanuda y prepara componentes optimizados antes de activar."""
 
     def __init__(self, catalog: ModelCatalog):
         self.catalog = catalog
@@ -192,15 +250,21 @@ class HuggingFacePackInstaller:
                     if item.id == pack_id and item.version == version
                 )
 
-            # No borramos staging: huggingface_hub reutiliza archivos válidos y continúa.
             staging.mkdir(parents=True, exist_ok=True)
             for component_name, component in definition["components"].items():
                 target = staging / "components" / component_name
-                snapshot_download(
-                    repo_id=component["repoId"],
-                    revision=component.get("revision", "main"),
-                    local_dir=target,
-                )
+                if not (
+                    component.get("provider") == "m2m100-ct2"
+                    and _is_ctranslate2_model(target)
+                ):
+                    snapshot_download(
+                        repo_id=component["repoId"],
+                        revision=component.get("revision", "main"),
+                        local_dir=target,
+                        allow_patterns=component.get("allowPatterns"),
+                    )
+                _prepare_component(component, target)
+
             (staging / "pack.json").write_text(
                 json.dumps(
                     {
@@ -233,7 +297,6 @@ class HuggingFacePackInstaller:
         except ModelOperationError:
             raise
         except BaseException as exc:
-            # Staging se conserva deliberadamente para que el siguiente intento pueda reanudar.
             raise classify_model_exception(exc) from exc
 
     def verify(self, pack_id: str, version: str) -> bool:
