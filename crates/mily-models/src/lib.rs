@@ -228,8 +228,8 @@ impl ModelManagerService {
         if output.status.success() {
             return Ok(());
         }
-        if let Some(error) = parse_model_cli_error(&output.stderr)
-            .or_else(|| parse_model_cli_error(&output.stdout))
+        if let Some(error) =
+            parse_model_cli_error(&output.stderr).or_else(|| parse_model_cli_error(&output.stdout))
         {
             return Err(error);
         }
@@ -293,6 +293,8 @@ mod tests {
 
     #[test]
     fn arbitrary_stderr_never_becomes_public_message() {
-        assert!(parse_model_cli_error(b"C:\\Users\\Alice\\secret token=abc crashed").is_none());
+        assert!(
+            parse_model_cli_error(b"C:\\Users\\Alice\\secret token=abc crashed").is_none()
+        );
     }
 }
