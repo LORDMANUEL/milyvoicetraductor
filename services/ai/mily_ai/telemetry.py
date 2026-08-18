@@ -67,7 +67,7 @@ class RealtimeTelemetry:
 
 
 class LatencyController:
-    """Clasifica presión sin sacrificar nunca las traducciones finales."""
+    """Clasifica presión sin sacrificar trabajo final de ASR o traducción."""
 
     def classify(
         self, audio_queue_ms: int, translation_queue_depth: int, real_time_factor: float
@@ -83,4 +83,10 @@ class LatencyController:
 
     @staticmethod
     def allow_partial_translation(state: str) -> bool:
+        return state == "healthy"
+
+    @staticmethod
+    def allow_partial_asr(state: str) -> bool:
+        """Los parciales son degradables; la frase final nunca pasa por este gate."""
+
         return state == "healthy"
