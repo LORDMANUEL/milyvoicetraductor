@@ -56,12 +56,12 @@ class PipelineStreamingTests(unittest.TestCase):
         pack = InstalledPack(
             id="realtime-m2m100",
             version="1",
-            title="test",
-            commercial_use=True,
             path=pack_root,
             active=True,
+            title="test",
+            commercial_use=True,
         )
-        recorder = SessionRecorder(root / "sessions", enabled=True)
+        recorder = SessionRecorder(root / "sessions", persist_transcripts=True)
         recorder.start("en", "es")
         pipeline = RealtimePipeline(pack, "en", "cpu", recorder)
         fake_asr = FakeAsr()
@@ -87,12 +87,14 @@ class PipelineStreamingTests(unittest.TestCase):
             self.assertIn("translation.final", types)
             self.assertGreaterEqual(len(translator.calls), 2)
 
+            # Los parciales nunca se persisten como si fueran frases definitivas.
+            self.assertEqual(len(recorder.segments), 1)
+            self.assertEqual(recorder.segments[0].original, "I'm going to be there with you")
+
             result = recorder.finish()
             self.assertIsNotNone(result.metadata_path)
             metadata = json.loads(result.metadata_path.read_text(encoding="utf-8"))
-            # Los parciales nunca se persisten como si fueran frases definitivas.
-            self.assertEqual(len(metadata["segments"]), 1)
-            self.assertEqual(metadata["segments"][0]["original"], "I'm going to be there with you")
+            self.assertEqual(metadata["segmentCount"], 1)
 
 
 if __name__ == "__main__":
