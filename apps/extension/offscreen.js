@@ -100,7 +100,9 @@ async function startCapture(message) {
     if (payload.type === 'session.started') {
       binaryPcmActive = payload.binaryPcm === true;
     }
-    if (payload.type === 'translation.final') publishTranslation(payload);
+    if (payload.type === 'translation.final' || payload.type === 'translation.partial') {
+      publishTranslation(payload);
+    }
     publishEngineEvent(payload);
   });
   websocket.addEventListener('close', () => {
