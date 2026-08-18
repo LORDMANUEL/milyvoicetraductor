@@ -9,10 +9,6 @@ on:
 permissions:
   contents: read
 
-concurrency:
-  group: ci-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
-
 jobs:
   repository-guards:
     name: Privacy, extension and site guards
@@ -156,15 +152,6 @@ jobs:
         if: success()
         shell: pwsh
         run: .\installer\windows\test-bootstrap.ps1
-      - name: Rust tests
-        if: success()
-        run: cargo test --workspace
-      - name: Clippy
-        if: success()
-        run: cargo clippy --workspace --all-targets -- -D warnings
-      - name: Windows desktop release build
-        if: success()
-        run: cargo build -p milyvoicetraductor-desktop --release
       - name: Native Messaging bridge release build
         if: success()
         run: cargo build -p mily-bridge --release
@@ -176,6 +163,15 @@ jobs:
         if: success()
         shell: pwsh
         run: .\installer\windows\test-bootstrap.ps1 -RequireRuntime
+      - name: Rust tests
+        if: success()
+        run: cargo test --workspace
+      - name: Clippy
+        if: success()
+        run: cargo clippy --workspace --all-targets -- -D warnings
+      - name: Windows desktop release build
+        if: success()
+        run: cargo build -p milyvoicetraductor-desktop --release
       - name: Tauri NSIS bundle
         if: success()
         run: npm run tauri -- build
