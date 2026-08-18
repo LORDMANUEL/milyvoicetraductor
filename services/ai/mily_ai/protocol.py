@@ -8,6 +8,7 @@ from typing import Any
 
 PROTOCOL_VERSION = 1
 ALLOWED_SOURCES = {"auto", "en", "zh"}
+ALLOWED_SESSION_MODES = {"meeting", "education", "karaoke", "compact"}
 
 
 class ProtocolError(ValueError):
@@ -16,7 +17,7 @@ class ProtocolError(ValueError):
 
 @dataclass(slots=True)
 class ClientMessage:
-    """Mensaje normalizado recibido desde la extensión Chromium."""
+    """Mensaje normalizado recibido desde la extensión Chromium/Desktop."""
 
     type: str
     protocol: int = PROTOCOL_VERSION
@@ -26,6 +27,7 @@ class ClientMessage:
     sample_rate: int = 16000
     persist_transcript: bool = False
     binary_pcm: bool = False
+    session_mode: str = "meeting"
 
     @classmethod
     def parse(cls, raw: str) -> "ClientMessage":
@@ -51,6 +53,10 @@ class ClientMessage:
         if target != "es":
             raise ProtocolError("Esta versión solo admite español como destino")
 
+        session_mode = str(payload.get("sessionMode", "meeting"))
+        if session_mode not in ALLOWED_SESSION_MODES:
+            raise ProtocolError("Modo de sesión no permitido")
+
         audio_base64 = payload.get("audioBase64")
         if message_type == "audio.chunk" and not isinstance(audio_base64, str):
             raise ProtocolError("audio.chunk requiere audioBase64")
@@ -68,6 +74,7 @@ class ClientMessage:
             sample_rate=sample_rate,
             persist_transcript=bool(payload.get("persistTranscript", False)),
             binary_pcm=bool(payload.get("binaryPcm", False)),
+            session_mode=session_mode,
         )
 
 
