@@ -132,7 +132,10 @@ export class DesktopApi {
     return invoke<SessionSummary[]>('list_sessions');
   }
 
-  async getSessionExport(sessionId: string, format: 'txt' | 'srt'): Promise<string> {
+  async getSessionExport(
+    sessionId: string,
+    format: 'txt' | 'srt' | 'srt-bilingual' | 'vtt'
+  ): Promise<string> {
     return invoke<string>('get_session_export', { sessionId, format });
   }
 
