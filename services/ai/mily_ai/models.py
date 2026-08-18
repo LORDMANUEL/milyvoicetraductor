@@ -99,9 +99,38 @@ def _is_ctranslate2_model(path: Path) -> bool:
     return (path / "model.bin").is_file() and (path / "config.json").is_file()
 
 
+def _is_m2m100_ready(path: Path) -> bool:
+    tokenizer = path / "tokenizer"
+    return (
+        _is_ctranslate2_model(path)
+        and (tokenizer / "config.json").is_file()
+        and (tokenizer / "sentencepiece.bpe.model").is_file()
+        and (tokenizer / "vocab.json").is_file()
+    )
+
+
+def _copy_hf_tokenizer(source_dir: Path, output_dir: Path) -> None:
+    tokenizer_dir = output_dir / "tokenizer"
+    tokenizer_dir.mkdir(parents=True, exist_ok=True)
+    required = ("config.json", "sentencepiece.bpe.model", "vocab.json")
+    optional = (
+        "tokenizer_config.json",
+        "special_tokens_map.json",
+        "generation_config.json",
+        "added_tokens.json",
+    )
+    for name in (*required, *optional):
+        source = source_dir / name
+        if source.is_file():
+            shutil.copy2(source, tokenizer_dir / name)
+    missing = [name for name in required if not (tokenizer_dir / name).is_file()]
+    if missing:
+        raise RuntimeError("faltan archivos requeridos del tokenizer M2M100")
+
+
 def _convert_m2m100_to_ctranslate2(source_dir: Path, quantization: str = "int8") -> None:
-    """Convierte el snapshot HF una vez y elimina los pesos PyTorch originales."""
-    if _is_ctranslate2_model(source_dir):
+    """Convierte el snapshot HF una vez y conserva el tokenizer HF por separado."""
+    if _is_m2m100_ready(source_dir):
         return
     try:
         import ctranslate2
@@ -113,18 +142,8 @@ def _convert_m2m100_to_ctranslate2(source_dir: Path, quantization: str = "int8")
 
     output_dir = source_dir.with_name(source_dir.name + ".ct2")
     shutil.rmtree(output_dir, ignore_errors=True)
-    copy_files = [
-        "sentencepiece.bpe.model",
-        "vocab.json",
-        "tokenizer_config.json",
-        "special_tokens_map.json",
-        "generation_config.json",
-    ]
     try:
-        converter = ctranslate2.converters.TransformersConverter(
-            str(source_dir),
-            copy_files=copy_files,
-        )
+        converter = ctranslate2.converters.TransformersConverter(str(source_dir))
         converter.convert(
             str(output_dir),
             quantization=quantization,
@@ -132,6 +151,9 @@ def _convert_m2m100_to_ctranslate2(source_dir: Path, quantization: str = "int8")
         )
         if not _is_ctranslate2_model(output_dir):
             raise RuntimeError("la conversión no produjo model.bin/config.json")
+        _copy_hf_tokenizer(source_dir, output_dir)
+        if not _is_m2m100_ready(output_dir):
+            raise RuntimeError("el pack convertido no contiene tokenizer utilizable")
         shutil.rmtree(source_dir)
         output_dir.replace(source_dir)
     except ModelOperationError:
@@ -253,10 +275,13 @@ class HuggingFacePackInstaller:
             staging.mkdir(parents=True, exist_ok=True)
             for component_name, component in definition["components"].items():
                 target = staging / "components" / component_name
-                if not (
-                    component.get("provider") == "m2m100-ct2"
-                    and _is_ctranslate2_model(target)
-                ):
+                if component.get("provider") == "m2m100-ct2":
+                    if _is_ctranslate2_model(target) and not _is_m2m100_ready(target):
+                        shutil.rmtree(target)
+                    ready = _is_m2m100_ready(target)
+                else:
+                    ready = False
+                if not ready:
                     snapshot_download(
                         repo_id=component["repoId"],
                         revision=component.get("revision", "main"),
