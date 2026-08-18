@@ -23,6 +23,23 @@ class LoopbackDeviceInfo:
     sample_rate: int
 
 
+class _PyAudioPatchBackend:
+    """Adapta las constantes del módulo PyAudioWPatch a la instancia PyAudio."""
+
+    def __init__(self, module) -> None:
+        self._audio = module.PyAudio()
+        self.paFloat32 = module.paFloat32
+
+    def get_default_wasapi_loopback(self):
+        return self._audio.get_default_wasapi_loopback()
+
+    def open(self, **kwargs):
+        return self._audio.open(**kwargs)
+
+    def terminate(self) -> None:
+        self._audio.terminate()
+
+
 class WasapiLoopbackSource:
     """Fuente WASAPI normalizada a PCM float mono 16 kHz en bloques de 100 ms."""
 
@@ -52,7 +69,7 @@ class WasapiLoopbackSource:
                 "LOOPBACK_UNAVAILABLE",
                 "El componente de audio WASAPI no está instalado.",
             ) from exc
-        return pyaudio.PyAudio()
+        return _PyAudioPatchBackend(pyaudio)
 
     @property
     def device(self) -> LoopbackDeviceInfo | None:
@@ -61,6 +78,7 @@ class WasapiLoopbackSource:
     def open_default(self) -> LoopbackDeviceInfo:
         if self._stream is not None and self._device is not None:
             return self._device
+        backend = None
         try:
             backend = self._backend_factory()
             raw = backend.get_default_wasapi_loopback()
@@ -68,8 +86,6 @@ class WasapiLoopbackSource:
             rate = max(1, int(round(float(raw.get("defaultSampleRate") or 0))))
             index = int(raw["index"])
             name = str(raw.get("name") or "Audio del sistema")
-            if rate <= 0:
-                raise ValueError("sample rate inválido")
             frames = max(1, round(rate * self.chunk_ms / 1000))
             stream = backend.open(
                 format=backend.paFloat32,
@@ -82,7 +98,11 @@ class WasapiLoopbackSource:
         except LoopbackError:
             raise
         except Exception as exc:
-            self.close()
+            if backend is not None:
+                try:
+                    backend.terminate()
+                except Exception:
+                    pass
             raise LoopbackError(
                 "LOOPBACK_DEVICE",
                 "Windows no pudo abrir el dispositivo de audio loopback predeterminado.",
@@ -113,14 +133,8 @@ class WasapiLoopbackSource:
             if channels > 1:
                 usable = samples[: samples.size - (samples.size % channels)]
                 samples = usable.reshape(-1, channels).mean(axis=1)
-            samples = self._resample_mono(
-                samples,
-                self._device.sample_rate,
-                self.target_sample_rate,
-            )
+            samples = self._resample_mono(samples, self._device.sample_rate, self.target_sample_rate)
             return samples.tolist()
-        except LoopbackError:
-            raise
         except Exception as exc:
             raise LoopbackError(
                 "LOOPBACK_CAPTURE",
