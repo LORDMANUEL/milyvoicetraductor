@@ -102,6 +102,7 @@ class AdaptiveSpeechSegmenter:
         self._last_partial_samples = 0
         self._silent_ms = 0
         self._speech_active = False
+        self._partial_decoding_enabled = True
         self._absolute_samples = 0
         self._utterance_start_sample = 0
         self._level = AudioLevel(rms=0.0, peak=0.0, silent_ms=0, speech=False)
@@ -120,6 +121,15 @@ class AdaptiveSpeechSegmenter:
     @property
     def level(self) -> AudioLevel:
         return self._level
+
+    @property
+    def partial_decoding_enabled(self) -> bool:
+        return self._partial_decoding_enabled
+
+    def set_partial_decoding(self, enabled: bool) -> None:
+        """Activa/desactiva solo hipótesis parciales; las finales nunca se omiten."""
+
+        self._partial_decoding_enabled = bool(enabled)
 
     @staticmethod
     def _energy(samples: Sequence[float]) -> tuple[float, float]:
@@ -171,7 +181,7 @@ class AdaptiveSpeechSegmenter:
         events: list[StreamingEvent] = []
         current = len(self._buffer)
 
-        if current >= self.first_decode_samples:
+        if self._partial_decoding_enabled and current >= self.first_decode_samples:
             enough_since_last = (
                 self._last_partial_samples == 0
                 or current - self._last_partial_samples >= self.partial_step_samples
