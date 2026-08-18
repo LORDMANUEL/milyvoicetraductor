@@ -14,7 +14,6 @@ from mily_ai.providers import FasterWhisperAsr, M2M100CTranslate2Translator
 BUDGET = CpuBudget(
     profile="legacy",
     physical_cores=2,
-    logical_cores=4,
     asr_threads=1,
     translation_threads=1,
     parallel_stages=False,
