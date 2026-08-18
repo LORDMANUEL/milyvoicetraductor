@@ -1,6 +1,9 @@
 use crate::bootstrap::AppState;
-use mily_compute::{BackendCapability, ComputeBackend, conservative_capability_report};
-use mily_system::SystemSnapshot;
+use mily_compute::{
+    BackendCapability, ComputeBackend, SystemRuntimeProbe, conservative_capability_report,
+    discover_runtime_backends,
+};
+use mily_system::{GpuAdapterInfo, GpuVendor, SystemSnapshot};
 use serde::Serialize;
 use tauri::State;
 
@@ -16,61 +19,55 @@ pub struct HardwareAdvisor {
     pub message: String,
 }
 
-fn truthy_env(name: &str) -> bool {
-    std::env::var(name)
-        .map(|value| {
-            matches!(
-                value.trim().to_ascii_lowercase().as_str(),
-                "1" | "true" | "yes" | "on"
-            )
-        })
-        .unwrap_or(false)
+fn cuda_candidate_is_valid(runtime_detected: bool, adapters: &[GpuAdapterInfo]) -> bool {
+    runtime_detected
+        && adapters
+            .iter()
+            .any(|adapter| !adapter.software && matches!(adapter.vendor, GpuVendor::Nvidia))
 }
 
-fn runtime_hints(snapshot: &SystemSnapshot) -> Vec<(ComputeBackend, bool, String)> {
-    let cuda = snapshot.gpu.is_some() || truthy_env("MILY_BACKEND_CUDA");
-    let direct_ml = truthy_env("MILY_BACKEND_DIRECTML");
-    let open_vino = truthy_env("MILY_BACKEND_OPENVINO");
-    let vulkan = truthy_env("MILY_BACKEND_VULKAN");
+fn runtime_hints(adapters: &[GpuAdapterInfo]) -> Vec<(ComputeBackend, bool, String)> {
+    let registry = discover_runtime_backends(&SystemRuntimeProbe);
+    let physical_gpu = adapters.iter().any(|adapter| !adapter.software);
 
-    vec![
-        (
-            ComputeBackend::Cuda,
-            cuda,
-            if cuda {
-                "hint CUDA/NVIDIA detectado; requiere benchmark del modelo activo".into()
-            } else {
-                "sin evidencia CUDA en el probe ligero".into()
-            },
-        ),
-        (
-            ComputeBackend::DirectMl,
-            direct_ml,
-            if direct_ml {
-                "runtime DirectML reportado por el probe instalado".into()
-            } else {
-                "adaptador DirectML aún no validado en este equipo".into()
-            },
-        ),
-        (
-            ComputeBackend::OpenVino,
-            open_vino,
-            if open_vino {
-                "runtime OpenVINO reportado por el probe instalado".into()
-            } else {
-                "adaptador OpenVINO aún no validado en este equipo".into()
-            },
-        ),
-        (
-            ComputeBackend::Vulkan,
-            vulkan,
-            if vulkan {
-                "runtime Vulkan reportado por el probe instalado".into()
-            } else {
-                "adaptador Vulkan aún no validado en este equipo".into()
-            },
-        ),
+    [
+        ComputeBackend::Cuda,
+        ComputeBackend::WindowsMl,
+        ComputeBackend::DirectMl,
+        ComputeBackend::OpenVino,
+        ComputeBackend::Vulkan,
     ]
+    .into_iter()
+    .map(|backend| {
+        let capability = registry.capability(backend);
+        let raw_detected = capability
+            .map(|item| item.runtime_detected)
+            .unwrap_or(false);
+        let detected = match backend {
+            ComputeBackend::Cuda => cuda_candidate_is_valid(raw_detected, adapters),
+            ComputeBackend::DirectMl | ComputeBackend::Vulkan => raw_detected && physical_gpu,
+            _ => raw_detected,
+        };
+        let mut evidence = capability
+            .map(|item| item.evidence.join("; "))
+            .filter(|item| !item.trim().is_empty())
+            .unwrap_or_else(|| "runtime no detectado".into());
+
+        if backend == ComputeBackend::Cuda && raw_detected && !detected {
+            evidence.push_str("; no hay adaptador NVIDIA físico asociado");
+        }
+        if matches!(backend, ComputeBackend::DirectMl | ComputeBackend::Vulkan)
+            && raw_detected
+            && !physical_gpu
+        {
+            evidence.push_str("; no hay adaptador GPU físico asociado");
+        }
+        if detected {
+            evidence.push_str("; adapter de modelo todavía requiere ejecución/benchmark");
+        }
+        (backend, detected, evidence)
+    })
+    .collect()
 }
 
 fn recommended_profile(snapshot: &SystemSnapshot) -> &'static str {
@@ -84,19 +81,27 @@ fn recommended_profile(snapshot: &SystemSnapshot) -> &'static str {
 #[tauri::command]
 pub fn get_hardware_advisor(state: State<'_, AppState>) -> HardwareAdvisor {
     let system = state.system.snapshot();
+    let adapters = state.system.gpu_inventory();
     let legacy_haswell_compatible = system.physical_cpus >= 2 && system.cpu_features.avx2;
-    let backends = conservative_capability_report(&runtime_hints(&system));
+    let backends = conservative_capability_report(&runtime_hints(&adapters));
     let profile = recommended_profile(&system);
+    let detected_candidates = backends
+        .iter()
+        .filter(|item| item.backend != ComputeBackend::Cpu && item.runtime_detected)
+        .count();
 
     HardwareAdvisor {
         system,
         backends,
+        // CPU es el único backend que se puede declarar listo antes de que el
+        // modelo activo ejecute un benchmark real. El motor Python puede elegir
+        // CUDA en Auto únicamente cuando CTranslate2 lo inicializa con éxito.
         recommended_backend: ComputeBackend::Cpu,
         recommended_profile: profile,
         legacy_haswell_compatible,
         benchmark_required: true,
         message: format!(
-            "Perfil {profile}: CPU es el fallback verificado; otros backends se habilitan solo tras benchmark real."
+            "Perfil {profile}: CPU es fallback verificado; {detected_candidates} runtime(s) acelerado(s) son candidatos y deben superar ejecución/benchmark."
         ),
     }
 }
@@ -104,7 +109,7 @@ pub fn get_hardware_advisor(state: State<'_, AppState>) -> HardwareAdvisor {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use mily_system::{CpuFeatures, GpuAdapterInfo, GpuVendor};
+    use mily_system::CpuFeatures;
 
     fn snapshot(physical_cpus: usize, avx2: bool) -> SystemSnapshot {
         SystemSnapshot {
