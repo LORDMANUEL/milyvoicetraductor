@@ -90,6 +90,10 @@ async function startCapture(message) {
       sourceLanguage: message.sourceLanguage || 'auto',
       targetLanguage: 'es',
       sessionMode: message.sessionMode || 'meeting',
+      sourceMode: 'browser_tab',
+      speakerDetection: Boolean(message.speakerDetection),
+      speakerFocusMode: message.speakerFocusMode || 'all',
+      speakerId: message.speakerId || null,
       persistTranscript: Boolean(message.persistTranscript),
       binaryPcm: true
     }));
@@ -105,7 +109,9 @@ async function startCapture(message) {
       payload.type === 'translation.final' ||
       payload.type === 'translation.partial' ||
       payload.type === 'transcription.partial' ||
-      payload.type === 'transcription.final'
+      payload.type === 'transcription.final' ||
+      payload.type === 'pipeline.metrics' ||
+      payload.type === 'speaker.changed'
     ) {
       publishTranslation(payload);
     }
