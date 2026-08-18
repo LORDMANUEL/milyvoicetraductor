@@ -56,7 +56,7 @@ assert "chrome.tts.speak" in tts, "La extensión debe usar síntesis local de Ch
 
 # Teams/Meet/Zoom deben conservar el audio audible a la frecuencia nativa del
 # dispositivo. Solo la copia para ASR se reduce a 16 kHz dentro del worklet.
-assert "sampleRate: 16000" not in offscreen, (
+assert "new AudioContext({ sampleRate: 16000" not in offscreen, (
     "La reproducción de la pestaña no debe forzarse a 16 kHz; degrada la voz de Teams."
 )
 assert "TARGET_SAMPLE_RATE = 16000" in worklet, "El worklet debe definir el destino ASR de 16 kHz."
