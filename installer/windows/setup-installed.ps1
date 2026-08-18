@@ -9,7 +9,7 @@ Set-StrictMode -Version Latest
 $env:HF_HUB_DISABLE_TELEMETRY = '1'
 
 $InstallRoot = [System.IO.Path]::GetFullPath($InstallRoot)
-$BootstrapRoot = Join-Path $InstallRoot 'resources\bootstrap'
+$BootstrapRoot = Join-Path $InstallRoot 'bootstrap'
 $RuntimeZip = Join-Path $BootstrapRoot 'runtime\milyvoice-python-runtime.zip'
 $RuntimeHash = Join-Path $BootstrapRoot 'runtime\milyvoice-python-runtime.zip.sha256'
 $EngineSource = Join-Path $BootstrapRoot 'ai'
