@@ -17,6 +17,8 @@ export interface OnboardingStatus {
   modelState: ComponentState;
   downloadedBytes: number;
   totalBytes: number | null;
+  modelPhase: 'idle' | 'prepare' | 'download' | 'optimize' | 'verify' | 'ready' | 'failed' | string;
+  modelMessage: string | null;
   bootstrapState: 'ready' | 'model-pending' | 'installing' | 'failed' | 'unknown';
   errorCode: string | null;
   errorMessage: string | null;
@@ -77,7 +79,7 @@ export interface AppConfig {
   persistTranscripts: boolean;
   computeProfile: 'auto' | 'cpu' | 'gpu';
   enginePort: number;
-  activeModelPack: 'lite-nllb' | 'business-qwen';
+  activeModelPack: 'realtime-m2m100' | 'lite-nllb' | 'business-qwen';
   showOriginalSubtitle: boolean;
 }
 
