@@ -11,6 +11,7 @@ ext = root / "apps" / "extension"
 manifest = json.loads((ext / "manifest.json").read_text(encoding="utf-8"))
 popup = (ext / "popup.html").read_text(encoding="utf-8")
 background = (ext / "background.js").read_text(encoding="utf-8")
+offscreen = (ext / "offscreen.js").read_text(encoding="utf-8")
 settings = (root / "apps" / "desktop" / "src" / "pages" / "Settings.svelte").read_text(encoding="utf-8")
 
 EXPECTED_EXTENSION_ID = "edcpjonegaempcifgodcmgejbcpdpddm"
@@ -50,6 +51,15 @@ start_capture_function = background.split("async function startCapture", 1)[1].s
     "async function stopCapture", 1
 )[0]
 assert "requestBridge('hello'" in start_capture_function, "START_CAPTURE debe solicitar sesión efímera"
+
+# El camino caliente negociado debe enviar el ArrayBuffer PCM directamente.
+# Base64 queda únicamente como fallback de compatibilidad hasta que el motor
+# confirme `binaryPcm` en `session.started`.
+assert "binaryPcm: true" in offscreen, "La extensión debe negociar PCM binario"
+assert "websocket.send(event.data)" in offscreen, "El camino caliente debe enviar PCM binario directo"
+assert "payload.binaryPcm === true" in offscreen, "No se debe activar binario sin confirmación del motor"
+binary_block = offscreen.split("if (binaryPcmActive)", 1)[1].split("websocket.send(JSON.stringify", 1)[0]
+assert "arrayBufferToBase64" not in binary_block, "PCM binario no debe pasar por Base64"
 
 for path in ext.glob("*.js"):
     text = path.read_text(encoding="utf-8")
