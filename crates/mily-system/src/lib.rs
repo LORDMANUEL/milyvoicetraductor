@@ -64,5 +64,33 @@ mod tests {
         assert!(!snapshot.operating_system.is_empty());
         assert!(!snapshot.architecture.is_empty());
         assert!(snapshot.logical_cpus >= 1);
+        assert!(snapshot.physical_cpus >= 1);
+        assert!(snapshot.physical_cpus <= snapshot.logical_cpus);
+        assert!(snapshot.available_memory_mb <= snapshot.total_memory_mb);
+    }
+
+    #[test]
+    fn cpu_feature_contract_is_always_serializable() {
+        let snapshot = SystemInfoService.snapshot();
+        let json = serde_json::to_string(&snapshot.cpu_features).unwrap();
+        assert!(json.contains("avx2"));
+        assert!(json.contains("fma"));
+    }
+
+    #[test]
+    fn runtime_environment_contains_real_cpu_topology() {
+        let env = SystemInfoService.runtime_environment();
+        let physical = env
+            .iter()
+            .find(|(key, _)| key == "MILY_PHYSICAL_CPUS")
+            .map(|(_, value)| value.parse::<usize>().unwrap())
+            .unwrap();
+        let logical = env
+            .iter()
+            .find(|(key, _)| key == "MILY_LOGICAL_CPUS")
+            .map(|(_, value)| value.parse::<usize>().unwrap())
+            .unwrap();
+        assert!(physical >= 1);
+        assert!(logical >= physical);
     }
 }
