@@ -30,6 +30,10 @@ check(
 ai_project = tomllib.loads((ROOT / "services/ai/pyproject.toml").read_text(encoding="utf-8"))
 check("services/ai/pyproject.toml", ai_project.get("project", {}).get("version"))
 
+ai_init = (ROOT / "services/ai/mily_ai/__init__.py").read_text(encoding="utf-8")
+internal_match = re.search(r'(?m)^__version__\s*=\s*"([^"]+)"', ai_init)
+check("mily_ai.__version__", internal_match.group(1) if internal_match else None)
+
 extension = json.loads((ROOT / "apps/extension/manifest.json").read_text(encoding="utf-8"))
 check("extension manifest version", extension.get("version"))
 check("extension manifest version_name", extension.get("version_name"))
@@ -79,18 +83,12 @@ for marker in required_publish_markers:
         FAILURES.append(f"Publish workflow: falta {marker}")
 
 readme = (ROOT / "README.md").read_text(encoding="utf-8")
-for marker in (
-    "MilyVoiceTraductor 2.0.1",
-    "2.0.1",
-):
+for marker in ("MilyVoiceTraductor 2.0.1", "2.0.1"):
     if marker not in readme:
         FAILURES.append(f"README: falta {marker}")
 
 site = (ROOT / "apps/site/index.html").read_text(encoding="utf-8")
-for marker in (
-    "MilyVoiceTraductor 2.0.1",
-    "2.0.1 · Runtime privado",
-):
+for marker in ("MilyVoiceTraductor 2.0.1", "2.0.1 · Runtime privado"):
     if marker not in site:
         FAILURES.append(f"Sitio: falta {marker}")
 for stale in ("2.0 RC", "Candidata actual", "v2.0.0/MilyVoiceTraductor_2.0.0_x64-setup.exe"):
