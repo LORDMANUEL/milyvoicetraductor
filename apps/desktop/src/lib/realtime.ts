@@ -2,6 +2,7 @@ import { desktopApi } from './api';
 import type { RealtimeEvent } from '../types';
 
 export type RealtimeEventHandler = (event: RealtimeEvent) => void;
+export type SessionMode = 'meeting' | 'education' | 'karaoke' | 'compact';
 
 function arrayBufferToBase64(buffer: ArrayBuffer): string {
   const bytes = new Uint8Array(buffer);
@@ -25,7 +26,8 @@ export class LocalRealtimeClient {
 
   async connect(
     sourceLanguage: 'auto' | 'en' | 'zh',
-    persistTranscript: boolean
+    persistTranscript: boolean,
+    sessionMode: SessionMode = 'meeting'
   ): Promise<void> {
     await this.close();
     const session = await desktopApi.getLocalEngineSession();
@@ -51,6 +53,7 @@ export class LocalRealtimeClient {
           sourceLanguage,
           targetLanguage: 'es',
           persistTranscript,
+          sessionMode,
           binaryPcm: true
         }));
       });
@@ -180,10 +183,11 @@ export class DesktopAudioCapture {
 
   async startMicrophone(
     sourceLanguage: 'auto' | 'en' | 'zh',
-    persistTranscript: boolean
+    persistTranscript: boolean,
+    sessionMode: SessionMode = 'meeting'
   ): Promise<void> {
     await this.stop();
-    await this.client.connect(sourceLanguage, persistTranscript);
+    await this.client.connect(sourceLanguage, persistTranscript, sessionMode);
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: {
@@ -206,10 +210,11 @@ export class DesktopAudioCapture {
 
   async startSystemAudio(
     sourceLanguage: 'auto' | 'en' | 'zh',
-    persistTranscript: boolean
+    persistTranscript: boolean,
+    sessionMode: SessionMode = 'meeting'
   ): Promise<void> {
     await this.stop();
-    await this.client.connect(sourceLanguage, persistTranscript);
+    await this.client.connect(sourceLanguage, persistTranscript, sessionMode);
     try {
       if (!navigator.mediaDevices.getDisplayMedia) {
         throw new Error('Este WebView no admite captura de audio del sistema.');
@@ -237,10 +242,11 @@ export class DesktopAudioCapture {
   async startMediaElement(
     element: HTMLMediaElement,
     sourceLanguage: 'auto' | 'en' | 'zh',
-    persistTranscript: boolean
+    persistTranscript: boolean,
+    sessionMode: SessionMode = 'meeting'
   ): Promise<void> {
     await this.stop();
-    await this.client.connect(sourceLanguage, persistTranscript);
+    await this.client.connect(sourceLanguage, persistTranscript, sessionMode);
     try {
       const context = await this.createAudioGraph();
       this.elementSource = context.createMediaElementSource(element);
