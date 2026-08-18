@@ -34,6 +34,8 @@ pub struct OnboardingStatus {
     pub model_state: ComponentState,
     pub downloaded_bytes: u64,
     pub total_bytes: Option<u64>,
+    pub model_phase: String,
+    pub model_message: Option<String>,
     pub bootstrap_state: String,
     pub error_code: Option<String>,
     pub error_message: Option<String>,
@@ -45,6 +47,15 @@ struct BootstrapStatusFile {
     state: String,
     #[serde(default)]
     code: String,
+    #[serde(default)]
+    message: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ModelOperationStatusFile {
+    #[serde(default)]
+    phase: String,
     #[serde(default)]
     message: String,
 }
@@ -82,6 +93,24 @@ fn bootstrap_status(state: &AppState) -> (String, Option<String>, Option<String>
     }
 }
 
+fn model_operation_status(state: &AppState) -> (String, Option<String>) {
+    let path = state.paths.models_dir.join("operation.json");
+    let parsed = fs::read_to_string(path)
+        .ok()
+        .and_then(|text| serde_json::from_str::<ModelOperationStatusFile>(&text).ok());
+    match parsed {
+        Some(status) => (
+            if status.phase.is_empty() {
+                "idle".into()
+            } else {
+                status.phase
+            },
+            (!status.message.is_empty()).then_some(status.message),
+        ),
+        None => ("idle".into(), None),
+    }
+}
+
 #[tauri::command]
 pub fn get_app_status(state: State<'_, AppState>) -> AppStatus {
     let config = state.config.load_or_default().unwrap_or_default();
@@ -103,6 +132,7 @@ pub fn get_app_status(state: State<'_, AppState>) -> AppStatus {
 #[tauri::command]
 pub fn get_onboarding_status(state: State<'_, AppState>) -> OnboardingStatus {
     let (bootstrap_state, error_code, error_message) = bootstrap_status(&state);
+    let (model_phase, model_message) = model_operation_status(&state);
     let bridge_name = if cfg!(windows) {
         "milyvoice-bridge.exe"
     } else {
@@ -120,6 +150,8 @@ pub fn get_onboarding_status(state: State<'_, AppState>) -> OnboardingStatus {
         model_state: state.models.status(),
         downloaded_bytes: directory_size(&state.paths.models_dir.join(".staging")),
         total_bytes: None,
+        model_phase,
+        model_message,
         bootstrap_state,
         error_code,
         error_message,
