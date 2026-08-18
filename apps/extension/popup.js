@@ -37,7 +37,9 @@ function speakerLabel(id) {
 }
 
 function renderBridge(state, connected = true) {
-  bridgeReady = Boolean(connected && state?.engine === 'ready' && state?.modelPack);
+  // El motor puede estar detenido cuando se abre el popup. START_CAPTURE usa
+  // Native Messaging `hello`, que lo arranca y entrega la credencial efímera.
+  bridgeReady = Boolean(connected && state?.modelPack);
   appState.textContent = connected ? 'Detectada' : 'No instalada';
   engineState.textContent = state?.engine === 'ready' ? 'Activo' : state?.engine === 'stopped' ? 'Detenido' : 'No disponible';
   modelState.textContent = state?.modelPack ? 'Listo' : connected ? 'Preparando…' : 'No disponible';
