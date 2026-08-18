@@ -1,7 +1,15 @@
 import { desktopApi } from './api';
+import { shouldUseProtectedSystemAudioFallback } from './audio-source-policy';
 import type { AudioSourceMode, RealtimeEvent, SessionMode, SpeakerFocusMode } from '../types';
 
 export type RealtimeEventHandler = (event: RealtimeEvent) => void;
+
+export class LocalEngineError extends Error {
+  constructor(public readonly code: string | undefined, message: string) {
+    super(message);
+    this.name = 'LocalEngineError';
+  }
+}
 
 function arrayBufferToBase64(buffer: ArrayBuffer): string {
   const bytes = new Uint8Array(buffer);
@@ -36,7 +44,8 @@ export class LocalRealtimeClient {
     sourceMode: AudioSourceMode = 'microphone',
     speakerDetection = false,
     speakerFocusMode: SpeakerFocusMode = 'all',
-    speakerId: string | null = null
+    speakerId: string | null = null,
+    externalPcm = false
   ): Promise<void> {
     await this.close();
     const session = await desktopApi.getLocalEngineSession();
@@ -64,6 +73,7 @@ export class LocalRealtimeClient {
           persistTranscript,
           sessionMode,
           sourceMode,
+          externalPcm,
           speakerDetection,
           speakerFocusMode,
           speakerId,
@@ -89,7 +99,7 @@ export class LocalRealtimeClient {
         } else if (payload.type === 'engine.error' && !settled) {
           settled = true;
           window.clearTimeout(timeout);
-          reject(new Error(payload.message || 'El motor local rechazó la sesión.'));
+          reject(new LocalEngineError(payload.code, payload.message || 'El motor local rechazó la sesión.'));
         }
       });
 
@@ -255,10 +265,41 @@ export class DesktopAudioCapture {
     speakerId: string | null = null
   ): Promise<void> {
     await this.stop();
-    await this.client.connect(sourceLanguage, persistTranscript, sessionMode, 'system_loopback', speakerDetection, speakerFocusMode, speakerId);
+
+    try {
+      await this.client.connect(
+        sourceLanguage,
+        persistTranscript,
+        sessionMode,
+        'system_loopback',
+        speakerDetection,
+        speakerFocusMode,
+        speakerId,
+        false
+      );
+      // El motor ya está capturando WASAPI. No crear otro stream PCM en Desktop.
+      return;
+    } catch (error) {
+      const code = error instanceof LocalEngineError ? error.code : undefined;
+      if (!shouldUseProtectedSystemAudioFallback(code)) throw error;
+      await this.client.close();
+    }
+
+    // Recuperación explícita: el motor mantiene sourceMode=system_loopback pero
+    // recibe PCM externo desde el selector protegido de Windows/WebView2.
+    await this.client.connect(
+      sourceLanguage,
+      persistTranscript,
+      sessionMode,
+      'system_loopback',
+      speakerDetection,
+      speakerFocusMode,
+      speakerId,
+      true
+    );
     try {
       if (!navigator.mediaDevices.getDisplayMedia) {
-        throw new Error('Este WebView no admite captura de audio del sistema.');
+        throw new Error('Este WebView no admite el selector alternativo de audio del sistema.');
       }
       const stream = await navigator.mediaDevices.getDisplayMedia({
         video: true,
