@@ -8,11 +8,7 @@ use thiserror::Error;
 pub fn bundled_bootstrap_from_exe(executable: &Path) -> Option<PathBuf> {
     executable
         .parent()
-        .map(|root| {
-            root.join("resources")
-                .join("bootstrap")
-                .join("setup-installed.ps1")
-        })
+        .map(|root| root.join("bootstrap").join("setup-installed.ps1"))
         .filter(|path| path.is_file())
 }
 
@@ -81,7 +77,7 @@ mod tests {
     fn repair_only_resolves_the_bundled_bootstrap_beside_the_executable() {
         let root = tempdir().unwrap();
         let exe = root.path().join("MilyVoiceTraductor.exe");
-        let script = root.path().join("resources/bootstrap/setup-installed.ps1");
+        let script = root.path().join("bootstrap").join("setup-installed.ps1");
         std::fs::create_dir_all(script.parent().unwrap()).unwrap();
         std::fs::write(&exe, b"exe").unwrap();
         std::fs::write(&script, b"script").unwrap();
