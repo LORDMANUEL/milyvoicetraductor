@@ -151,7 +151,15 @@ export interface RealtimeEvent {
   audioQueueMs?: number;
   realTimeFactor?: number;
   asrP50Ms?: number;
+  asrP95Ms?: number;
   translationP50Ms?: number;
+  translationP95Ms?: number;
+  translationQueueDepth?: number;
+  cpuProfile?: string;
+  physicalCores?: number;
+  asrThreads?: number;
+  translationThreads?: number;
+  parallelStages?: boolean;
   message?: string;
   code?: string;
   binaryPcm?: boolean;
