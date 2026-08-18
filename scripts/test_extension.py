@@ -12,6 +12,7 @@ manifest = json.loads((ext / "manifest.json").read_text(encoding="utf-8"))
 popup = (ext / "popup.html").read_text(encoding="utf-8")
 background = (ext / "background.js").read_text(encoding="utf-8")
 offscreen = (ext / "offscreen.js").read_text(encoding="utf-8")
+worklet = (ext / "audio-worklet.js").read_text(encoding="utf-8")
 tts = (ext / "tts.js").read_text(encoding="utf-8")
 settings = (root / "apps" / "desktop" / "src" / "pages" / "Settings.svelte").read_text(encoding="utf-8")
 
@@ -52,6 +53,16 @@ assert "ensureOverlay(tab.id)" in background, "START_CAPTURE debe preparar overl
 assert "speakTranslation" in background, "La traducción final debe poder activar TTS local"
 assert "tts.started" in offscreen and "tts.finished" in offscreen, "TTS debe avisar al motor para anti-feedback"
 assert "chrome.tts.speak" in tts, "La extensión debe usar síntesis local de Chromium/Windows"
+
+# Teams/Meet/Zoom deben conservar el audio audible a la frecuencia nativa del
+# dispositivo. Solo la copia para ASR se reduce a 16 kHz dentro del worklet.
+assert "sampleRate: 16000" not in offscreen, (
+    "La reproducción de la pestaña no debe forzarse a 16 kHz; degrada la voz de Teams."
+)
+assert "TARGET_SAMPLE_RATE = 16000" in worklet, "El worklet debe definir el destino ASR de 16 kHz."
+assert "sampleRate / TARGET_SAMPLE_RATE" in worklet, (
+    "El worklet debe remuestrear desde la frecuencia nativa del AudioContext hacia 16 kHz."
+)
 
 # Consultar el popup debe ser pasivo. Solo START_CAPTURE puede usar `hello`, que
 # arranca el motor y solicita una credencial efímera al bridge.
