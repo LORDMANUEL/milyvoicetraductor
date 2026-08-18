@@ -14,10 +14,6 @@ function Assert-File([string]$Path, [string]$Message) {
     if (-not (Test-Path $Path -PathType Leaf)) { throw $Message }
 }
 
-function Assert-Directory([string]$Path, [string]$Message) {
-    if (-not (Test-Path $Path -PathType Container)) { throw $Message }
-}
-
 Remove-Item $FixtureRoot -Recurse -Force -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Force -Path `
     $Bootstrap, `
@@ -42,6 +38,7 @@ try {
     $AppRoot = Join-Path $FakeLocalAppData 'MilyVoiceTraductor'
     $Python = Join-Path $AppRoot 'runtime\python\python.exe'
     $EngineMain = Join-Path $AppRoot 'engine\app\main.py'
+    $EnginePackage = Join-Path $AppRoot 'engine\app\mily_ai\__init__.py'
     $ExtensionManifest = Join-Path $AppRoot 'extension\manifest.json'
     $Bridge = Join-Path $AppRoot 'bridge\milyvoice-bridge.exe'
     $NativeManifest = Join-Path $AppRoot 'bridge\com.milyvoice.traductor.json'
@@ -49,7 +46,8 @@ try {
     $NativeCredential = Join-Path $AppRoot 'config\native-credential.json'
 
     Assert-File $Python 'El flujo instalado no dejó python.exe privado.'
-    Assert-File $EngineMain 'El flujo instalado no dejó el motor Python.'
+    Assert-File $EngineMain 'El flujo instalado no dejó main.py del motor.'
+    Assert-File $EnginePackage 'El flujo instalado perdió el paquete mily_ai del motor.'
     Assert-File $ExtensionManifest 'El flujo instalado no dejó la extensión.'
     Assert-File $Bridge 'El flujo instalado no dejó el bridge Native Messaging.'
     Assert-File $NativeManifest 'El flujo instalado no generó el manifiesto Native Messaging.'
