@@ -1,0 +1,64 @@
+{
+  "schemaVersion": 1,
+  "packId": "milyvoice-4mt-legacy-v0.3",
+  "status": "READY_FOR_TRAINING_NOT_ACTIVATED",
+  "hardwareGate": {
+    "reference": "Intel Core i3 4th gen / Haswell",
+    "cores": 2,
+    "threads": 4,
+    "avx2": true,
+    "gpuRequired": false,
+    "quantization": "int8",
+    "beamSize": 1,
+    "mtP95MsMax": 500,
+    "pipelineP95MsMax": 1500,
+    "rtfP95Max": 0.8
+  },
+  "models": [
+    {
+      "id": "milymt-en-es-legacy-v0.3",
+      "source": "en",
+      "target": "es",
+      "base": "Helsinki-NLP/opus-mt_tiny_eng-spa",
+      "params": "25.4M",
+      "finalDirect": true,
+      "enabled": false
+    },
+    {
+      "id": "milymt-es-en-legacy-v0.3",
+      "source": "es",
+      "target": "en",
+      "base": "Helsinki-NLP/opus-mt_tiny_spa-eng",
+      "params": "25.4M",
+      "finalDirect": true,
+      "enabled": false
+    },
+    {
+      "id": "milymt-zh-es-legacy-v0.3",
+      "source": "zh",
+      "target": "es",
+      "base": "distilled-direct-marian-tiny",
+      "teacherPath": [
+        "Helsinki-NLP/opus-mt_tiny_zho-eng",
+        "Helsinki-NLP/opus-mt_tiny_eng-spa"
+      ],
+      "targetParams": "~25-26M",
+      "finalDirect": true,
+      "enabled": false
+    },
+    {
+      "id": "milymt-es-zh-legacy-v0.3",
+      "source": "es",
+      "target": "zh",
+      "base": "distilled-direct-marian-tiny",
+      "teacherPath": [
+        "Helsinki-NLP/opus-mt_tiny_spa-eng",
+        "Helsinki-NLP/opus-mt-en-zh"
+      ],
+      "targetParams": "~25-26M",
+      "finalDirect": true,
+      "enabled": false
+    }
+  ],
+  "activationRule": "Only enable a model after real checkpoint exists, INT8 export passes, quality gate passes, and Haswell benchmark passes."
+}
