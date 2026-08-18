@@ -2,7 +2,7 @@
 
 !macro NSIS_HOOK_POSTINSTALL
   DetailPrint "Preparando runtime, motor y sincronización local de MilyVoiceTraductor..."
-  nsExec::ExecToLog '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$INSTDIR\bootstrap\setup-installed.ps1" -InstallRoot "$INSTDIR"'
+  nsExec::ExecToLog '\"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe\" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"$INSTDIR\bootstrap\setup-installed.ps1\" -InstallRoot \"$INSTDIR\" -AppRoot \"$LOCALAPPDATA\MilyVoiceTraductor\"'
   Pop $0
   ${If} $0 == "0"
     DetailPrint "Runtime, motor, extensión y Native Messaging preparados."
@@ -20,6 +20,6 @@
 
 !macro NSIS_HOOK_PREUNINSTALL
   DetailPrint "Retirando registro Native Messaging de MilyVoiceTraductor..."
-  nsExec::ExecToLog '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$INSTDIR\bootstrap\register-native-host.ps1" -BridgePath "$LOCALAPPDATA\MilyVoiceTraductor\bridge\milyvoice-bridge.exe" -ManifestTemplate "$INSTDIR\bootstrap\native-host-template.json" -ManifestOutput "$LOCALAPPDATA\MilyVoiceTraductor\bridge\com.milyvoice.traductor.json" -Unregister'
+  nsExec::ExecToLog '\"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe\" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"$INSTDIR\bootstrap\register-native-host.ps1\" -BridgePath \"$LOCALAPPDATA\MilyVoiceTraductor\bridge\milyvoice-bridge.exe\" -ManifestTemplate \"$INSTDIR\bootstrap\native-host-template.json\" -ManifestOutput \"$LOCALAPPDATA\MilyVoiceTraductor\bridge\com.milyvoice.traductor.json\" -Unregister'
   Pop $0
 !macroend
