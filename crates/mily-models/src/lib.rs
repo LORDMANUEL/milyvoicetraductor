@@ -293,8 +293,6 @@ mod tests {
 
     #[test]
     fn arbitrary_stderr_never_becomes_public_message() {
-        assert!(
-            parse_model_cli_error(b"C:\\Users\\Alice\\secret token=abc crashed").is_none()
-        );
+        assert!(parse_model_cli_error(b"C:\\Users\\Alice\\secret token=abc crashed").is_none());
     }
 }
