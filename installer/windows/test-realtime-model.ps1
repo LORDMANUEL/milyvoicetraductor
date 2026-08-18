@@ -15,7 +15,7 @@ $CacheRoot = Join-Path $AppRoot 'cache'
 $ModelsRoot = Join-Path $AppRoot 'models'
 $RuntimeZip = Join-Path $Root 'dist\runtime\milyvoice-python-runtime.zip'
 $PerformanceRoot = Join-Path $Root 'dist\performance'
-$ReportPath = Join-Path $PerformanceRoot 'MilyVoiceTraductor-2.0.0-MegaBench.json'
+$ReportPath = Join-Path $PerformanceRoot 'MilyVoiceTraductor-2.0.1-MegaBench.json'
 $BenchmarkWave = Join-Path $FixtureRoot 'benchmark-en.wav'
 
 Remove-Item $FixtureRoot -Recurse -Force -ErrorAction SilentlyContinue
@@ -72,7 +72,6 @@ try {
     @'
 from pathlib import Path
 import json
-import math
 import platform
 import sys
 import time
@@ -186,7 +185,6 @@ asr_rtf_p50 = percentile(asr_rtfs, 50.0)
 asr_rtf_p95 = percentile(asr_rtfs, 95.0)
 mt_p95 = max(float(en_summary['p95Ms']), float(zh_summary['p95Ms']))
 
-# Límites deliberadamente de regresión CI, no del objetivo físico Legacy Haswell.
 gate = performance_gate(
     asr_rtf_p95=asr_rtf_p95,
     mt_p95_ms=mt_p95,
@@ -196,7 +194,7 @@ gate = performance_gate(
 
 report = {
     'schemaVersion': 1,
-    'productVersion': '2.0.0',
+    'productVersion': '2.0.1',
     'modelPack': f'{pack.id}@{pack.version}',
     'mode': 'github-windows-regression-gate',
     'physicalLegacyHaswellGateExecuted': False,
@@ -245,14 +243,14 @@ print('ZH_ES_P95_MS', zh_summary['p95Ms'])
 print('MEGABENCH_REPORT', report_path)
 if not gate['passed']:
     raise SystemExit('MEGABENCH PERFORMANCE GATE FAILED: ' + ','.join(gate['failures']))
-print('MEGABENCH_2_0_OK')
+print('MEGABENCH_2_0_1_OK')
 '@ | Set-Content -Path $Probe -Encoding UTF8
 
     & $Python $Probe $EngineApp $ModelsRoot $BenchmarkWave $ReportPath
-    if ($LASTEXITCODE -ne 0) { throw 'MegaBench 2.0 falló al ejecutar el pack real o sus límites de rendimiento.' }
+    if ($LASTEXITCODE -ne 0) { throw 'MegaBench 2.0.1 falló al ejecutar el pack real o sus límites de rendimiento.' }
     if (-not (Test-Path $ReportPath -PathType Leaf)) { throw 'MegaBench no produjo su reporte JSON.' }
 
-    Write-Host "MEGABENCH 2.0 OK: $ReportPath" -ForegroundColor Green
+    Write-Host "MEGABENCH 2.0.1 OK: $ReportPath" -ForegroundColor Green
 }
 finally {
     Remove-Item $FixtureRoot -Recurse -Force -ErrorAction SilentlyContinue
