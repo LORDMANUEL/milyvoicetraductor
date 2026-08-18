@@ -81,7 +81,9 @@ impl BridgeRuntime {
 
         let engine = component_state_name(&engine_status.state);
         let message = match engine_status.state {
-            ComponentState::Ready if model_pack.is_some() => "Aplicación, motor y modelo listos.".into(),
+            ComponentState::Ready if model_pack.is_some() => {
+                "Aplicación, motor y modelo listos.".into()
+            }
             ComponentState::Ready => "Motor conectado; el modelo todavía no está listo.".into(),
             ComponentState::Stopped => "Motor instalado y detenido.".into(),
             ComponentState::NotInstalled => "Runtime local no instalado.".into(),
@@ -155,7 +157,9 @@ mod tests {
     #[test]
     fn only_the_pinned_extension_origin_is_accepted() {
         assert!(caller_origin_allowed(EXTENSION_ORIGIN));
-        assert!(!caller_origin_allowed("chrome-extension://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/"));
+        assert!(!caller_origin_allowed(
+            "chrome-extension://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/"
+        ));
         assert!(!caller_origin_allowed("https://example.com"));
     }
 }
