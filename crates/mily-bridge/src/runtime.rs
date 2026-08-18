@@ -83,13 +83,13 @@ impl BridgeRuntime {
 
         // Una consulta de estado jamás debe crear credenciales. La credencial efímera
         // se emite únicamente para `hello`, que es la operación usada al iniciar captura.
-        let (credential, expires_at) = if should_issue_credential(ensure_started, &engine_status.state)
-        {
-            let credential = self.issue_ephemeral_credential()?;
-            (Some(credential.0), Some(credential.1))
-        } else {
-            (None, None)
-        };
+        let (credential, expires_at) =
+            if should_issue_credential(ensure_started, &engine_status.state) {
+                let credential = self.issue_ephemeral_credential()?;
+                (Some(credential.0), Some(credential.1))
+            } else {
+                (None, None)
+            };
 
         let engine = component_state_name(&engine_status.state);
         let message = match engine_status.state {
