@@ -69,6 +69,36 @@ function Assert-File([string]$Path, [string]$Code) {
     }
 }
 
+function Get-Sha256Hex([string]$Path) {
+    $stream = $null
+    $sha = $null
+    try {
+        $stream = [System.IO.File]::Open($Path, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, [System.IO.FileShare]::Read)
+        $sha = [System.Security.Cryptography.SHA256]::Create()
+        $bytes = $sha.ComputeHash($stream)
+        return ([System.BitConverter]::ToString($bytes)).Replace('-', '').ToLowerInvariant()
+    } finally {
+        if ($sha -ne $null) { $sha.Dispose() }
+        if ($stream -ne $null) { $stream.Dispose() }
+    }
+}
+
+function Read-ExpectedSha256([string]$Path) {
+    try {
+        $text = [System.IO.File]::ReadAllText($Path).Trim()
+    } catch {
+        throw 'RUNTIME_HASH_FILE_INVALID|No se pudo leer la firma SHA-256 incluida con el runtime.'
+    }
+    if ([string]::IsNullOrWhiteSpace($text)) {
+        throw 'RUNTIME_HASH_FILE_INVALID|La firma SHA-256 incluida con el runtime está vacía.'
+    }
+    $candidate = ($text -split '\s+')[0].Trim().ToLowerInvariant()
+    if ($candidate -notmatch '^[0-9a-f]{64}$') {
+        throw 'RUNTIME_HASH_FILE_INVALID|La firma SHA-256 incluida con el runtime no tiene un formato válido.'
+    }
+    return $candidate
+}
+
 function Copy-DirectoryContents([string]$Source, [string]$Destination, [string]$Code) {
     if (-not (Test-Path $Source -PathType Container)) {
         throw "$Code|No se encontró una carpeta incluida en el instalador."
@@ -143,8 +173,12 @@ try {
 
     Set-BootstrapStage 'RUNTIME_VERIFY' 'Verificando integridad del runtime privado.'
     Write-Step 'Verificando runtime Python privado.'
-    $expectedRuntimeHash = ((Get-Content $RuntimeHash -Raw).Trim() -split '\s+')[0].ToLowerInvariant()
-    $actualRuntimeHash = (Get-FileHash $RuntimeZip -Algorithm SHA256).Hash.ToLowerInvariant()
+    $expectedRuntimeHash = Read-ExpectedSha256 $RuntimeHash
+    try {
+        $actualRuntimeHash = Get-Sha256Hex $RuntimeZip
+    } catch {
+        throw 'RUNTIME_HASH_COMPUTE_FAILED|No se pudo calcular la firma SHA-256 del runtime incluido.'
+    }
     if ($expectedRuntimeHash -ne $actualRuntimeHash) {
         throw 'RUNTIME_HASH_MISMATCH|El runtime incluido no pasó la verificación de integridad.'
     }
@@ -160,8 +194,16 @@ try {
 
     Set-BootstrapStage 'RUNTIME_MANIFEST' 'Validando manifiesto del runtime privado.'
     $runtimeManifest = Get-Content $runtimeManifestPath -Raw -Encoding UTF8 | ConvertFrom-Json
-    $pythonHash = (Get-FileHash $nextPython -Algorithm SHA256).Hash.ToLowerInvariant()
-    if ($pythonHash -ne ([string]$runtimeManifest.pythonSha256).ToLowerInvariant()) {
+    try {
+        $pythonHash = Get-Sha256Hex $nextPython
+    } catch {
+        throw 'RUNTIME_PYTHON_HASH_COMPUTE_FAILED|No se pudo calcular la firma SHA-256 del Python privado.'
+    }
+    $manifestPythonHash = ([string]$runtimeManifest.pythonSha256).Trim().ToLowerInvariant()
+    if ($manifestPythonHash -notmatch '^[0-9a-f]{64}$') {
+        throw 'RUNTIME_MANIFEST_INVALID|El manifiesto del runtime contiene una firma de Python inválida.'
+    }
+    if ($pythonHash -ne $manifestPythonHash) {
         throw 'RUNTIME_PYTHON_HASH_MISMATCH|python.exe no coincide con el manifiesto del runtime.'
     }
 
