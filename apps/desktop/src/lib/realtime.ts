@@ -146,6 +146,7 @@ export class DesktopAudioCapture {
   private worklet: AudioWorkletNode | null = null;
   private stream: MediaStream | null = null;
   private elementSource: MediaElementAudioSourceNode | null = null;
+  private playbackGain: GainNode | null = null;
   private outputSuppressed = false;
 
   constructor(handler: RealtimeEventHandler) {
@@ -154,6 +155,12 @@ export class DesktopAudioCapture {
 
   setOutputSuppressed(suppressed: boolean): void {
     this.outputSuppressed = suppressed;
+  }
+
+  setPlaybackGain(value: number): void {
+    const gain = this.playbackGain;
+    if (!gain || !this.context) return;
+    gain.gain.setTargetAtTime(Math.max(0, Math.min(1, value)), this.context.currentTime, 0.03);
   }
 
   private async createAudioGraph(): Promise<AudioContext> {
@@ -237,8 +244,10 @@ export class DesktopAudioCapture {
     try {
       const context = await this.createAudioGraph();
       this.elementSource = context.createMediaElementSource(element);
+      this.playbackGain = context.createGain();
+      this.playbackGain.gain.value = 1;
       this.elementSource.connect(this.worklet!);
-      this.elementSource.connect(context.destination);
+      this.elementSource.connect(this.playbackGain).connect(context.destination);
     } catch (error) {
       await this.client.stop();
       throw error;
@@ -251,6 +260,8 @@ export class DesktopAudioCapture {
     this.stream = null;
     try { this.elementSource?.disconnect(); } catch (_) { /* noop */ }
     this.elementSource = null;
+    try { this.playbackGain?.disconnect(); } catch (_) { /* noop */ }
+    this.playbackGain = null;
     try { this.worklet?.disconnect(); } catch (_) { /* noop */ }
     this.worklet = null;
     if (this.context) {
