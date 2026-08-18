@@ -5,7 +5,11 @@ use thiserror::Error;
 pub fn bundled_bootstrap_from_exe(executable: &Path) -> Option<PathBuf> {
     executable
         .parent()
-        .map(|root| root.join("resources").join("bootstrap").join("setup-installed.ps1"))
+        .map(|root| {
+            root.join("resources")
+                .join("bootstrap")
+                .join("setup-installed.ps1")
+        })
         .filter(|path| path.is_file())
 }
 
