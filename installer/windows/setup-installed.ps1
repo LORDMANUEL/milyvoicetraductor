@@ -1,7 +1,8 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory = $true)]
-    [string]$InstallRoot
+    [string]$InstallRoot,
+    [string]$AppRoot = ''
 )
 
 $ErrorActionPreference = 'Stop'
@@ -18,7 +19,15 @@ $BridgeSource = Join-Path $BootstrapRoot 'bridge\milyvoice-bridge.exe'
 $RegisterScript = Join-Path $BootstrapRoot 'register-native-host.ps1'
 $NativeTemplate = Join-Path $BootstrapRoot 'native-host-template.json'
 
-$AppRoot = Join-Path $env:LOCALAPPDATA 'MilyVoiceTraductor'
+if ([string]::IsNullOrWhiteSpace($AppRoot)) {
+    if ([string]::IsNullOrWhiteSpace($env:LOCALAPPDATA)) {
+        Write-Error 'APPDATA_ROOT_MISSING: Windows no proporcionó LOCALAPPDATA y no se indicó AppRoot.'
+        exit 1
+    }
+    $AppRoot = Join-Path $env:LOCALAPPDATA 'MilyVoiceTraductor'
+}
+$AppRoot = [System.IO.Path]::GetFullPath($AppRoot)
+
 $RuntimeParent = Join-Path $AppRoot 'runtime'
 $RuntimeRoot = Join-Path $RuntimeParent 'python'
 $RuntimeNext = Join-Path $RuntimeParent 'python.next'
@@ -65,6 +74,32 @@ function Copy-DirectoryContents([string]$Source, [string]$Destination, [string]$
     }
 }
 
+function Expand-RuntimeArchive([string]$Archive, [string]$Destination) {
+    Remove-Item $Destination -Recurse -Force -ErrorAction SilentlyContinue
+    New-Item -ItemType Directory -Force -Path $Destination | Out-Null
+
+    # El instalador real ejecuta Windows PowerShell 5.1. Su Expand-Archive usa el
+    # .NET Framework clásico y puede fallar con árboles profundos de Torch/
+    # Transformers. Windows 10/11 y Windows Server modernos incluyen bsdtar en
+    # System32; se usa primero porque maneja esos ZIP y rutas de forma robusta.
+    $windowsRoot = if ([string]::IsNullOrWhiteSpace($env:WINDIR)) { 'C:\Windows' } else { $env:WINDIR }
+    $tar = Join-Path $windowsRoot 'System32\tar.exe'
+    if (Test-Path $tar -PathType Leaf) {
+        & $tar -xf $Archive -C $Destination
+        if ($LASTEXITCODE -eq 0) {
+            return
+        }
+        Remove-Item $Destination -Recurse -Force -ErrorAction SilentlyContinue
+        New-Item -ItemType Directory -Force -Path $Destination | Out-Null
+    }
+
+    try {
+        Expand-Archive -Path $Archive -DestinationPath $Destination -Force
+    } catch {
+        throw 'RUNTIME_EXTRACT_FAILED|No se pudo extraer el runtime privado incluido en el instalador.'
+    }
+}
+
 try {
     Write-BootstrapStatus 'installing' 'BOOTSTRAP_START' 'Preparando componentes locales.'
     foreach ($required in @(
@@ -88,8 +123,7 @@ try {
     }
 
     New-Item -ItemType Directory -Force -Path $AppRoot,$RuntimeParent,$ConfigRoot,$CacheRoot,$ModelsRoot,$BridgeRoot | Out-Null
-    Remove-Item $RuntimeNext -Recurse -Force -ErrorAction SilentlyContinue
-    Expand-Archive -Path $RuntimeZip -DestinationPath $RuntimeNext -Force
+    Expand-RuntimeArchive $RuntimeZip $RuntimeNext
     $nextPython = Join-Path $RuntimeNext 'python.exe'
     $runtimeManifestPath = Join-Path $RuntimeNext 'runtime-manifest.json'
     Assert-File $nextPython 'RUNTIME_PYTHON_MISSING'
@@ -107,7 +141,7 @@ try {
 
     Write-Step 'Activando runtime y motor.'
     if (Test-Path $RuntimeRoot) { Remove-Item $RuntimeRoot -Recurse -Force }
-    Move-Item $RuntimeNext $RuntimeRoot
+    Move-Item -LiteralPath $RuntimeNext -Destination $RuntimeRoot
     if (Test-Path $EngineApp) { Remove-Item $EngineApp -Recurse -Force }
     Copy-DirectoryContents $EngineSource $EngineApp 'ENGINE_COPY_FAILED'
     Assert-File (Join-Path $EngineApp 'main.py') 'ENGINE_MAIN_COPY_FAILED'
