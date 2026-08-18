@@ -33,6 +33,7 @@ class ClientMessage:
     binary_pcm: bool = False
     session_mode: str = "meeting"
     source_mode: str = "browser_tab"
+    external_pcm: bool = False
     speaker_detection: bool = False
     speaker_focus_mode: str = "all"
     speaker_id: str | None = None
@@ -115,6 +116,7 @@ class ClientMessage:
             binary_pcm=bool(payload.get("binaryPcm", False)),
             session_mode=session_mode,
             source_mode=source_mode,
+            external_pcm=bool(payload.get("externalPcm", False)),
             speaker_detection=bool(payload.get("speakerDetection", False)),
             speaker_focus_mode=speaker_focus_mode,
             speaker_id=speaker_id,
