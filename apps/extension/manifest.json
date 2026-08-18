@@ -11,7 +11,8 @@
     "offscreen",
     "storage",
     "notifications",
-    "nativeMessaging"
+    "nativeMessaging",
+    "scripting"
   ],
   "host_permissions": [
     "http://127.0.0.1/*"
@@ -29,16 +30,5 @@
     "32": "icons/icon32.png",
     "48": "icons/icon48.png",
     "128": "icons/icon128.png"
-  },
-  "content_scripts": [
-    {
-      "matches": [
-        "http://*/*",
-        "https://*/*"
-      ],
-      "js": ["content.js"],
-      "css": ["overlay.css"],
-      "run_at": "document_idle"
-    }
-  ]
+  }
 }
