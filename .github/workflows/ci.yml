@@ -201,11 +201,11 @@ jobs:
             "$hash *$($file.Name)"
           }
           $lines | Set-Content -Encoding ascii "dist/release/SHA256SUMS.txt"
-      - name: Upload test installer and extension
+      - name: Upload verified Windows installer and extension
         if: success()
         uses: actions/upload-artifact@v6
         with:
-          name: MilyVoiceTraductor-Pruebas-Windows-x64-${{ github.sha }}
+          name: MilyVoiceTraductor-Full-RC1-Windows-x64-${{ github.sha }}
           path: dist/release/*
           retention-days: 30
           compression-level: 0
