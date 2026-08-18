@@ -75,8 +75,17 @@ register_path = ROOT / "installer/windows/register-native-host.ps1"
 runtime_builder = ROOT / "installer/windows/build-python-runtime.ps1"
 native_template = ROOT / "installer/windows/native-host-template.json"
 model_service_path = ROOT / "crates/mily-models/src/lib.rs"
+desktop_main_path = ROOT / "apps/desktop/src-tauri/src/main.rs"
 
-for required in (hooks_path, bootstrap_path, register_path, runtime_builder, native_template, model_service_path):
+for required in (
+    hooks_path,
+    bootstrap_path,
+    register_path,
+    runtime_builder,
+    native_template,
+    model_service_path,
+    desktop_main_path,
+):
     if not required.is_file():
         fail(f"Falta componente Windows: {required.relative_to(ROOT)}")
 
@@ -100,6 +109,12 @@ if model_service_path.is_file():
     for marker in ("CREATE_NO_WINDOW", "command.creation_flags(CREATE_NO_WINDOW)"):
         if marker not in model_service:
             fail(f"El instalador/optimizador de modelos puede abrir una consola visible en Windows: falta {marker}")
+
+if desktop_main_path.is_file():
+    desktop_main = desktop_main_path.read_text(encoding="utf-8")
+    marker = '#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]'
+    if marker not in desktop_main:
+        fail("El Desktop Release puede abrir una consola visible en Windows: falta windows_subsystem=windows.")
 
 if runtime_builder.is_file():
     builder_text = runtime_builder.read_text(encoding="utf-8")
