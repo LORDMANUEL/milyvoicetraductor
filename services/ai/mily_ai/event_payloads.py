@@ -14,6 +14,9 @@ def pipeline_event_fields(item: Any) -> dict[str, Any]:
     }
     if item.translation:
         fields["translation"] = item.translation
+    speaker_id = getattr(item, "speaker_id", None)
+    if speaker_id:
+        fields["speakerId"] = speaker_id
     words = getattr(item, "words", ()) or ()
     if words:
         fields["words"] = [
