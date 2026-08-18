@@ -11,6 +11,7 @@ ext = root / "apps" / "extension"
 manifest = json.loads((ext / "manifest.json").read_text(encoding="utf-8"))
 popup = (ext / "popup.html").read_text(encoding="utf-8")
 background = (ext / "background.js").read_text(encoding="utf-8")
+settings = (root / "apps" / "desktop" / "src" / "pages" / "Settings.svelte").read_text(encoding="utf-8")
 
 EXPECTED_EXTENSION_ID = "edcpjonegaempcifgodcmgejbcpdpddm"
 EXPECTED_NATIVE_HOST = "com.milyvoice.traductor"
@@ -33,8 +34,22 @@ assert derived_id == EXPECTED_EXTENSION_ID, f"ID de extensión inesperado: {deri
 
 assert 'id="token"' not in popup, "El usuario no debe pegar tokens"
 assert 'id="port"' not in popup, "El usuario no debe configurar puertos"
+assert "Puerto local" not in settings, "Desktop no debe pedir el puerto del motor al usuario"
+assert "bind:value={draft.enginePort}" not in settings, "El puerto debe administrarse internamente"
 assert f"const NATIVE_HOST = '{EXPECTED_NATIVE_HOST}'" in background
 assert "connectNative(NATIVE_HOST)" in background, "Falta conexión al host nativo"
+
+# Consultar el popup debe ser pasivo. Solo START_CAPTURE puede usar `hello`, que
+# arranca el motor y solicita una credencial efímera al bridge.
+status_block = background.split("if (message?.type === 'GET_BRIDGE_STATUS')", 1)[1].split(
+    "if (message?.type === 'START_CAPTURE')", 1
+)[0]
+assert "requestBridge('status'" in status_block, "GET_BRIDGE_STATUS debe usar status pasivo"
+assert "requestBridge('hello'" not in status_block, "Consultar estado no debe arrancar el motor"
+start_capture_function = background.split("async function startCapture", 1)[1].split(
+    "async function stopCapture", 1
+)[0]
+assert "requestBridge('hello'" in start_capture_function, "START_CAPTURE debe solicitar sesión efímera"
 
 for path in ext.glob("*.js"):
     text = path.read_text(encoding="utf-8")
