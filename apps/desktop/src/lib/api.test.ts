@@ -9,8 +9,17 @@ describe('browser development fallback', () => {
     expect(status.extensionConnected).toBe(false);
     expect(status.activeModelPack).toBeNull();
   });
+
   it('keeps transcript persistence disabled by default', () => {
     expect(defaultConfig.persistTranscripts).toBe(false);
     expect(defaultConfig.computeProfile).toBe('auto');
+  });
+
+  it('reports CPU as the honest Hardware Advisor fallback outside Tauri', async () => {
+    const advisor = await new DesktopApi().getHardwareAdvisor();
+    expect(advisor.recommendedBackend).toBe('cpu');
+    expect(advisor.backends[0].backend).toBe('cpu');
+    expect(advisor.backends[0].adapterReady).toBe(true);
+    expect(advisor.benchmarkRequired).toBe(true);
   });
 });
