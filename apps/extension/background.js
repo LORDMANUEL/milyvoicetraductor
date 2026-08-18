@@ -11,6 +11,7 @@ const PROTECTED_HOSTS = new Set([
   'chrome.google.com',
   'microsoftedge.microsoft.com'
 ]);
+const SESSION_MODES = new Set(['meeting', 'education', 'karaoke', 'compact']);
 
 let nativePort = null;
 let pendingBridgeRequest = null;
@@ -171,6 +172,8 @@ async function startCapture(options) {
   } catch (_) {
     throw new Error('Chrome/Edge no permitió capturar el audio de esta pestaña. Prueba otra pestaña o usa Audio del sistema en MilyVoiceTraductor.');
   }
+  const requestedMode = String(options.sessionMode || 'meeting');
+  const sessionMode = SESSION_MODES.has(requestedMode) ? requestedMode : 'meeting';
   const response = await chrome.runtime.sendMessage({
     target: 'offscreen',
     type: 'START_CAPTURE',
@@ -178,18 +181,19 @@ async function startCapture(options) {
     tabId: tab.id,
     credential: bridge.credential,
     sourceLanguage: options.sourceLanguage || 'auto',
+    sessionMode,
     persistTranscript: Boolean(options.persistTranscript),
     enginePort: bridge.port
   });
   if (!response?.ok) throw new Error(response?.error || 'No se pudo iniciar la captura.');
-  await setCaptureState({ active: true, tabId: tab.id, startedAt: Date.now(), source: 'browser_tab' });
+  await setCaptureState({ active: true, tabId: tab.id, startedAt: Date.now(), source: 'browser_tab', sessionMode });
   return { ok: true };
 }
 
 async function stopCapture() {
   await ensureOffscreenDocument();
   await chrome.runtime.sendMessage({ target: 'offscreen', type: 'STOP_CAPTURE' });
-  await setCaptureState({ active: false, tabId: null, startedAt: null, source: null });
+  await setCaptureState({ active: false, tabId: null, startedAt: null, source: null, sessionMode: null });
   return { ok: true };
 }
 
