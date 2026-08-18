@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Sequence
 
+from .compute_router import BackendLoadError, load_backend_with_fallback
 from .cpu_budget import CpuBudget, detect_cpu_budget
 
 
@@ -72,7 +73,7 @@ class CachedTranslator(Translator):
 
 
 class FasterWhisperAsr(AsrProvider):
-    """Whisper vía CTranslate2; CPU INT8 y CUDA FP16 con lenguaje estabilizado."""
+    """Whisper vía CTranslate2; CPU INT8 y CUDA FP16 con fallback seguro."""
 
     def __init__(
         self,
@@ -88,6 +89,9 @@ class FasterWhisperAsr(AsrProvider):
         self._model = None
         self._locked_language: str | None = None
         self._warmed = False
+        self.selected_device: str | None = None
+        self.fallback_used = False
+        self.fallback_reason = ""
 
     def _load(self):
         if self._model is not None:
@@ -97,26 +101,36 @@ class FasterWhisperAsr(AsrProvider):
         except ImportError as exc:
             raise RuntimeError("faster-whisper no está instalado") from exc
 
-        device, compute_type = "cpu", "int8"
+        cuda_count = 0
         if self.compute_profile in {"auto", "gpu"}:
             try:
                 import ctranslate2
 
-                if ctranslate2.get_cuda_device_count() > 0:
-                    device, compute_type = "cuda", "float16"
-                elif self.compute_profile == "gpu":
-                    raise RuntimeError("Se solicitó GPU pero CUDA no está disponible")
-            except ImportError:
+                cuda_count = int(ctranslate2.get_cuda_device_count())
+            except ImportError as exc:
                 if self.compute_profile == "gpu":
-                    raise RuntimeError("CTranslate2/CUDA no disponible")
-        self._model = WhisperModel(
-            str(self.model_path),
-            device=device,
-            compute_type=compute_type,
-            cpu_threads=self.cpu_budget.asr_threads if device == "cpu" else 0,
-            num_workers=1,
-            local_files_only=True,
+                    raise BackendLoadError(
+                        "CUDA_UNAVAILABLE",
+                        "Se solicitó GPU pero CTranslate2/CUDA no está disponible.",
+                    ) from exc
+
+        def loader(device: str):
+            return WhisperModel(
+                str(self.model_path),
+                device=device,
+                compute_type="float16" if device == "cuda" else "int8",
+                cpu_threads=self.cpu_budget.asr_threads if device == "cpu" else 0,
+                num_workers=1,
+                local_files_only=True,
+            )
+
+        result = load_backend_with_fallback(
+            self.compute_profile, cuda_count, loader
         )
+        self._model = result.value
+        self.selected_device = result.device
+        self.fallback_used = result.fallback_used
+        self.fallback_reason = result.reason
         return self._model
 
     def warm_up(self, source_language: str = "en") -> None:
@@ -201,7 +215,7 @@ class FasterWhisperAsr(AsrProvider):
 
 
 class M2M100CTranslate2Translator(Translator):
-    """M2M100 convertido una vez a CTranslate2 INT8 para traducción rápida local."""
+    """M2M100 CTranslate2 INT8; CUDA se usa solo si carga realmente."""
 
     def __init__(
         self,
@@ -215,6 +229,9 @@ class M2M100CTranslate2Translator(Translator):
         self._translator = None
         self._tokenizer = None
         self._warmed = False
+        self.selected_device: str | None = None
+        self.fallback_used = False
+        self.fallback_reason = ""
 
     def _load(self):
         if self._translator is not None:
@@ -225,20 +242,31 @@ class M2M100CTranslate2Translator(Translator):
         except ImportError as exc:
             raise RuntimeError("CTranslate2/Transformers no están instalados") from exc
 
-        device = "cpu"
-        compute_type = "int8"
-        if self.compute_profile in {"auto", "gpu"}:
-            if ctranslate2.get_cuda_device_count() > 0:
-                device, compute_type = "cuda", "auto"
-            elif self.compute_profile == "gpu":
-                raise RuntimeError("Se solicitó GPU pero CUDA no está disponible")
-        self._translator = ctranslate2.Translator(
-            str(self.model_path),
-            device=device,
-            compute_type=compute_type,
-            inter_threads=1,
-            intra_threads=self.cpu_budget.translation_threads if device == "cpu" else 0,
+        cuda_count = (
+            int(ctranslate2.get_cuda_device_count())
+            if self.compute_profile in {"auto", "gpu"}
+            else 0
         )
+
+        def loader(device: str):
+            return ctranslate2.Translator(
+                str(self.model_path),
+                device=device,
+                compute_type="auto" if device == "cuda" else "int8",
+                inter_threads=1,
+                intra_threads=(
+                    self.cpu_budget.translation_threads if device == "cpu" else 0
+                ),
+            )
+
+        result = load_backend_with_fallback(
+            self.compute_profile, cuda_count, loader
+        )
+        self._translator = result.value
+        self.selected_device = result.device
+        self.fallback_used = result.fallback_used
+        self.fallback_reason = result.reason
+
         tokenizer_path = self.model_path / "tokenizer"
         if not tokenizer_path.is_dir():
             tokenizer_path = self.model_path
