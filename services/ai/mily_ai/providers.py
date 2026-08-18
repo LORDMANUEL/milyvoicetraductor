@@ -155,7 +155,12 @@ class M2M100CTranslate2Translator(Translator):
             compute_type=compute_type,
             inter_threads=1,
         )
-        self._tokenizer = AutoTokenizer.from_pretrained(str(self.model_path), local_files_only=True)
+        tokenizer_path = self.model_path / "tokenizer"
+        if not tokenizer_path.is_dir():
+            tokenizer_path = self.model_path
+        self._tokenizer = AutoTokenizer.from_pretrained(
+            str(tokenizer_path), local_files_only=True
+        )
 
     def translate(self, text: str, source_language: str) -> str:
         if not text.strip():
