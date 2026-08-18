@@ -71,8 +71,9 @@ fn backend_rank(backend: ComputeBackend) -> u8 {
     match backend {
         ComputeBackend::Cpu => 0,
         ComputeBackend::Cuda => 1,
-        ComputeBackend::DirectMl => 2,
-        ComputeBackend::OpenVino => 3,
-        ComputeBackend::Vulkan => 4,
+        ComputeBackend::WindowsMl => 2,
+        ComputeBackend::DirectMl => 3,
+        ComputeBackend::OpenVino => 4,
+        ComputeBackend::Vulkan => 5,
     }
 }
