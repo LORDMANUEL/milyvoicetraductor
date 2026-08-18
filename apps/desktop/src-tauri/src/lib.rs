@@ -33,6 +33,7 @@ pub fn run() {
             get_onboarding_status,
             repair_installation,
             get_system_info,
+            get_hardware_advisor,
             get_config,
             save_config,
             get_cache_status,
