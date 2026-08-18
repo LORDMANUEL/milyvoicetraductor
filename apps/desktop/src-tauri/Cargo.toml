@@ -5,6 +5,10 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 
+[[bin]]
+name = "MilyVoiceTraductor"
+path = "src/main.rs"
+
 [lib]
 name = "milyvoicetraductor_desktop_lib"
 crate-type = ["lib", "cdylib", "staticlib"]
