@@ -3,6 +3,8 @@ name: Rustfmt diagnostic
 on:
   push:
     branches: [pruebas]
+  pull_request:
+    branches: [main]
 
 permissions:
   contents: read
