@@ -1,6 +1,7 @@
 //! Adaptadores IPC. Nunca retornan backtraces, SQL ni detalles sensibles.
 
 use crate::bootstrap::AppState;
+use crate::repair;
 use mily_cache::CacheStatus;
 use mily_config::AppConfig;
 use mily_core::{
@@ -123,6 +124,28 @@ pub fn get_onboarding_status(state: State<'_, AppState>) -> OnboardingStatus {
         error_code,
         error_message,
     }
+}
+
+#[tauri::command]
+pub async fn repair_installation(state: State<'_, AppState>) -> Result<(), PublicError> {
+    let logger = state.logger.clone();
+    tauri::async_runtime::spawn_blocking(repair::repair_current_installation)
+        .await
+        .map_err(|_| {
+            public_error(
+                "REPAIR_TASK",
+                "La reparación local terminó inesperadamente.",
+            )
+        })?
+        .map_err(|error| {
+            let _ = logger.write("warn", &format!("Reparación local falló: {error}"));
+            public_error(
+                "REPAIR_FAILED",
+                "No se pudo reparar la instalación. Reinstala el mismo paquete si el problema continúa.",
+            )
+        })?;
+    let _ = logger.write("info", "Instalación local reparada correctamente.");
+    Ok(())
 }
 
 #[tauri::command]
