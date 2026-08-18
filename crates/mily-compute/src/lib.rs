@@ -4,6 +4,12 @@
 //! liviano que permite detectar candidatos y escogerlos únicamente después de
 //! medir inferencia real. CPU siempre existe como fallback seguro.
 
+mod cache;
+mod registry;
+
+pub use cache::{BenchmarkKey, CachedSelection, SelectionCache};
+pub use registry::BackendRegistry;
+
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
 
