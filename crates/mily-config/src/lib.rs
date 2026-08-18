@@ -24,7 +24,6 @@ pub struct AppPaths {
 }
 
 impl AppPaths {
-    /// Resuelve carpetas por convenciones del SO; nunca codifica un usuario.
     pub fn discover() -> Result<Self, ConfigError> {
         #[cfg(windows)]
         let (data_dir, config_dir, cache_dir) = {
@@ -182,7 +181,6 @@ impl ConfigService {
         Ok(())
     }
 
-    /// Genera la configuración mínima que consume el sidecar Python.
     pub fn save_engine_config(&self, config: &AppConfig) -> Result<(), ConfigError> {
         let parent = self
             .path
@@ -231,6 +229,22 @@ mod tests {
         assert_eq!(config.active_model_pack, "realtime-m2m100");
         assert!(!config.persist_transcripts);
         assert_eq!(config.schema_version, 2);
+    }
+
+    #[test]
+    fn malformed_prior_config_is_quarantined_and_defaults_are_loaded() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("config.json");
+        fs::write(&path, b"{ definitely-not-valid-json").unwrap();
+        let service = ConfigService::new(&path);
+
+        let config = service
+            .load_or_default()
+            .expect("una configuración corrupta anterior no debe impedir el arranque");
+
+        assert_eq!(config, AppConfig::default());
+        assert!(!path.exists());
+        assert!(dir.path().join("config.json.invalid").exists());
     }
 
     #[test]
