@@ -1,5 +1,8 @@
 //! Snapshot ligero del equipo. La GPU es opcional y nunca bloquea la app.
 
+mod gpu;
+pub use gpu::{GpuAdapterInfo, GpuVendor, classify_gpu_vendor, gpu_inventory};
+
 use serde::{Deserialize, Serialize};
 use sysinfo::System;
 
@@ -27,8 +30,6 @@ impl CpuFeatures {
             features.avx512f = std::arch::is_x86_feature_detected!("avx512f");
         }
 
-        // ASIMD/NEON es parte de la arquitectura base AArch64 en los equipos
-        // objetivo; no necesitamos una librería de detección adicional.
         #[cfg(target_arch = "aarch64")]
         {
             features.neon = true;
@@ -49,6 +50,8 @@ pub struct SystemSnapshot {
     pub total_memory_mb: u64,
     pub available_memory_mb: u64,
     pub cpu_features: CpuFeatures,
+    /// Resumen compatible con el DTO actual. El inventario completo se obtiene
+    /// mediante `SystemInfoService::gpu_inventory()`.
     pub gpu: Option<String>,
 }
 
@@ -72,6 +75,12 @@ impl SystemInfoService {
             .clamp(1, logical_cpus);
         let total_memory_mb = system.total_memory() / 1024 / 1024;
         let available_memory_mb = (system.available_memory() / 1024 / 1024).min(total_memory_mb);
+        let adapters = gpu_inventory();
+        let gpu = adapters
+            .iter()
+            .find(|adapter| !adapter.software)
+            .map(|adapter| adapter.name.clone())
+            .or_else(detect_optional_gpu_hint);
 
         SystemSnapshot {
             operating_system: System::name().unwrap_or_else(|| std::env::consts::OS.into()),
@@ -82,8 +91,12 @@ impl SystemInfoService {
             total_memory_mb,
             available_memory_mb,
             cpu_features: CpuFeatures::detect(),
-            gpu: detect_optional_gpu_hint(),
+            gpu,
         }
+    }
+
+    pub fn gpu_inventory(&self) -> Vec<GpuAdapterInfo> {
+        gpu_inventory()
     }
 
     /// Variables heredables por el sidecar. Mantienen Python liviano y evitan
@@ -110,7 +123,6 @@ fn bool_env(value: bool) -> String {
     if value { "1" } else { "0" }.into()
 }
 
-/// Fase actual evita librerías GPU pesadas. Solo informa hints confiables disponibles.
 fn detect_optional_gpu_hint() -> Option<String> {
     for variable in ["NVIDIA_VISIBLE_DEVICES", "CUDA_VISIBLE_DEVICES"] {
         if let Ok(value) = std::env::var(variable)
