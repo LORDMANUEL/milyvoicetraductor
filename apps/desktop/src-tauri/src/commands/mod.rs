@@ -1,5 +1,8 @@
 //! Adaptadores IPC. Nunca retornan backtraces, SQL ni detalles sensibles.
 
+mod hardware;
+pub use hardware::*;
+
 use crate::bootstrap::AppState;
 use crate::repair;
 use mily_cache::CacheStatus;
