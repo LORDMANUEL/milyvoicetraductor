@@ -27,6 +27,10 @@ check(
     json.loads((ROOT / "apps/desktop/src-tauri/tauri.conf.json").read_text(encoding="utf-8")).get("version"),
 )
 
+extension = json.loads((ROOT / "apps/extension/manifest.json").read_text(encoding="utf-8"))
+check("extension manifest version", extension.get("version"))
+check("extension manifest version_name", extension.get("version_name"))
+
 cargo = (ROOT / "Cargo.toml").read_text(encoding="utf-8")
 workspace_package = re.search(
     r"(?ms)^\[workspace\.package\]\s*(.*?)(?=^\[|\Z)", cargo
@@ -36,6 +40,14 @@ if not workspace_package:
 else:
     match = re.search(r'(?m)^version\s*=\s*"([^"]+)"', workspace_package.group(1))
     check("Cargo.toml workspace.package", match.group(1) if match else None)
+
+server = (ROOT / "services/ai/mily_ai/server.py").read_text(encoding="utf-8")
+for marker in (
+    '"version": "1.0.5"',
+    'event("engine.ready", version="1.0.5", protocolVersion=1)',
+):
+    if marker not in server:
+        FAILURES.append(f"Motor Python: falta {marker}")
 
 ci = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
 if "MilyVoiceTraductor-Full-1.0.5-Windows-x64-${{ github.sha }}" not in ci:
