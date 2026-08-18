@@ -129,21 +129,25 @@ pub fn get_onboarding_status(state: State<'_, AppState>) -> OnboardingStatus {
 #[tauri::command]
 pub async fn repair_installation(state: State<'_, AppState>) -> Result<(), PublicError> {
     let logger = state.logger.clone();
-    tauri::async_runtime::spawn_blocking(repair::repair_current_installation)
+    let repair_result = tauri::async_runtime::spawn_blocking(repair::repair_current_installation)
         .await
         .map_err(|_| {
             public_error(
                 "REPAIR_TASK",
                 "La reparación local terminó inesperadamente.",
             )
-        })?
-        .map_err(|error| {
-            let _ = logger.write("warn", &format!("Reparación local falló: {error}"));
-            public_error(
-                "REPAIR_FAILED",
-                "No se pudo reparar la instalación. Reinstala el mismo paquete si el problema continúa.",
-            )
         })?;
+
+    if let Err(error) = repair_result {
+        let _ = logger.write("warn", &format!("Reparación local falló: {error}"));
+        let (_, bootstrap_code, bootstrap_message) = bootstrap_status(&state);
+        let code = bootstrap_code.as_deref().unwrap_or("REPAIR_FAILED");
+        let message = bootstrap_message.as_deref().unwrap_or(
+            "No se pudo reparar la instalación. Reinstala el mismo paquete si el problema continúa.",
+        );
+        return Err(public_error(code, message));
+    }
+
     let _ = logger.write("info", "Instalación local reparada correctamente.");
     Ok(())
 }
