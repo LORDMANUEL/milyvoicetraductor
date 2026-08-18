@@ -63,6 +63,8 @@ for marker in (
 ci = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
 if "MilyVoiceTraductor-Full-2.0.0-Windows-x64-${{ github.sha }}" not in ci:
     FAILURES.append("CI: el artefacto Windows no está versionado como 2.0.0")
+if "MilyVoiceTraductor-2.0.0-MegaBench.json" not in ci:
+    FAILURES.append("CI: falta incluir el reporte MegaBench 2.0.0 en el artefacto")
 
 publish = (ROOT / ".github/workflows/publish-rc.yml").read_text(encoding="utf-8")
 required_publish_markers = (
@@ -70,6 +72,7 @@ required_publish_markers = (
     "RELEASE_TAG: v2.0.0",
     "RELEASE_TITLE: MilyVoiceTraductor 2.0.0",
     "release/MilyVoiceTraductor_2.0.0_x64-setup.exe",
+    "release/MilyVoiceTraductor-2.0.0-MegaBench.json",
 )
 for marker in required_publish_markers:
     if marker not in publish:
@@ -79,7 +82,7 @@ readme = (ROOT / "README.md").read_text(encoding="utf-8")
 for marker in (
     "releases/download/v2.0.0/MilyVoiceTraductor_2.0.0_x64-setup.exe",
     "releases/tag/v2.0.0",
-    "Release actual: 2.0.0",
+    "Candidata actual: 2.0.0 RC",
 ):
     if marker not in readme:
         FAILURES.append(f"README: falta {marker}")
