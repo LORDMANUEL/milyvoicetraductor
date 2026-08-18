@@ -17,10 +17,13 @@ from .queueing import enqueue_translation
 from .runtime import EngineSettings, RuntimePaths, parent_process_alive
 from .security import EphemeralCredentialService, PairingTokenService
 from .sessions import SessionRecorder
+from .telemetry import LatencyController
 
 PINNED_EXTENSION_ORIGIN = "chrome-extension://edcpjonegaempcifgodcmgejbcpdpddm"
 AUDIO_QUEUE_MAX = 16
 TRANSLATION_QUEUE_MAX = 8
+AUDIO_CHUNK_MS = 100
+TELEMETRY_INTERVAL_SECONDS = 0.5
 
 
 def websocket_origin_allowed(origin: str) -> bool:
@@ -168,6 +171,8 @@ def create_app(paths: RuntimePaths, port: int = 8765, parent_pid: int | None = N
         audio_task: asyncio.Task | None = None
         translation_task: asyncio.Task | None = None
         send_lock = asyncio.Lock()
+        latency_controller = LatencyController()
+        last_telemetry_emit = 0.0
 
         async def safe_send(payload: dict) -> None:
             async with send_lock:
@@ -185,8 +190,60 @@ def create_app(paths: RuntimePaths, port: int = 8765, parent_pid: int | None = N
                     fields["translation"] = item.translation
                 await safe_send(event(item.type, **fields))
 
+        def telemetry_snapshot(current: RealtimePipeline):
+            snapshot = current.telemetry.snapshot(
+                audio_queue_ms=audio_queue.qsize() * AUDIO_CHUNK_MS,
+                translation_queue_depth=translation_queue.qsize(),
+            )
+            pressure = latency_controller.classify(
+                snapshot.audio_queue_ms,
+                snapshot.translation_queue_depth,
+                snapshot.real_time_factor,
+            )
+            return snapshot, pressure
+
+        async def emit_realtime_status(current: RealtimePipeline) -> None:
+            nonlocal last_telemetry_emit
+            now = time.monotonic()
+            if now - last_telemetry_emit < TELEMETRY_INTERVAL_SECONDS:
+                return
+            last_telemetry_emit = now
+            level = current.audio_level
+            snapshot, pressure = telemetry_snapshot(current)
+            await safe_send(
+                event(
+                    "audio.level",
+                    rms=round(level.rms, 5),
+                    peak=round(level.peak, 5),
+                    silentMs=level.silent_ms,
+                    speech=level.speech,
+                )
+            )
+            await safe_send(
+                event(
+                    "pipeline.metrics",
+                    asrP50Ms=round(snapshot.asr_p50_ms, 1),
+                    asrP95Ms=round(snapshot.asr_p95_ms, 1),
+                    translationP50Ms=round(snapshot.translation_p50_ms, 1),
+                    translationP95Ms=round(snapshot.translation_p95_ms, 1),
+                    realTimeFactor=round(snapshot.real_time_factor, 3),
+                    audioQueueMs=snapshot.audio_queue_ms,
+                    translationQueueDepth=snapshot.translation_queue_depth,
+                    pressure=pressure,
+                    cpuProfile=current.cpu_budget.profile,
+                )
+            )
+
         async def queue_translation_requests(requests) -> None:
+            current = pipeline
             for request in requests:
+                if not request.final and current is not None:
+                    _snapshot, pressure = telemetry_snapshot(current)
+                    if not latency_controller.allow_partial_translation(pressure):
+                        logger.debug(
+                            "Parcial omitido por presión realtime: %s", pressure
+                        )
+                        continue
                 accepted = await enqueue_translation(translation_queue, request)
                 if not accepted:
                     logger.debug("Parcial de traducción omitido por backpressure.")
@@ -224,6 +281,7 @@ def create_app(paths: RuntimePaths, port: int = 8765, parent_pid: int | None = N
                     )
                     await send_pipeline_events(events)
                     await queue_translation_requests(requests)
+                    await emit_realtime_status(current)
                 finally:
                     audio_queue.task_done()
 
@@ -478,6 +536,7 @@ def create_app(paths: RuntimePaths, port: int = 8765, parent_pid: int | None = N
                             )
                         )
                         continue
+                    last_telemetry_emit = 0.0
                     binary_pcm_enabled = message.binary_pcm
                     await safe_send(
                         event(
