@@ -33,7 +33,7 @@ SERIAL_DEFER_STEP_SECONDS = 0.02
 def websocket_origin_allowed(origin: str) -> bool:
     """Solo la extensión fijada o vistas loopback del propio producto pueden entrar."""
     if not origin:
-        return True
+        return False
     normalized = origin.rstrip("/")
     if normalized == PINNED_EXTENSION_ORIGIN:
         return True
@@ -235,6 +235,10 @@ def create_app(paths: RuntimePaths, port: int = 8765, parent_pid: int | None = N
                     translationQueueDepth=snapshot.translation_queue_depth,
                     pressure=pressure,
                     cpuProfile=current.cpu_budget.profile,
+                    physicalCores=current.cpu_budget.physical_cores,
+                    asrThreads=current.cpu_budget.asr_threads,
+                    translationThreads=current.cpu_budget.translation_threads,
+                    parallelStages=current.cpu_budget.parallel_stages,
                 )
             )
 
@@ -264,6 +268,10 @@ def create_app(paths: RuntimePaths, port: int = 8765, parent_pid: int | None = N
                     executor = asr_executor
                     if current is None or executor is None:
                         continue
+                    _snapshot, pressure = telemetry_snapshot(current)
+                    current.segmenter.set_partial_decoding(
+                        latency_controller.allow_partial_asr(pressure)
+                    )
                     try:
                         events, requests = await loop.run_in_executor(
                             executor, current.ingest, samples
