@@ -144,6 +144,14 @@ impl AppConfig {
     }
 }
 
+fn replace_file(source: &Path, destination: &Path) -> io::Result<()> {
+    #[cfg(windows)]
+    if destination.exists() {
+        fs::remove_file(destination)?;
+    }
+    fs::rename(source, destination)
+}
+
 #[derive(Debug, Clone)]
 pub struct ConfigService {
     path: PathBuf,
@@ -163,8 +171,17 @@ impl ConfigService {
             return Ok(AppConfig::default());
         }
         let data = fs::read_to_string(&self.path)?;
-        let config: AppConfig = serde_json::from_str(&data)?;
-        Ok(config.normalized())
+        match serde_json::from_str::<AppConfig>(&data) {
+            Ok(config) => Ok(config.normalized()),
+            Err(_) => {
+                let quarantine = self.path.with_extension("json.invalid");
+                if quarantine.exists() {
+                    fs::remove_file(&quarantine)?;
+                }
+                fs::rename(&self.path, quarantine)?;
+                Ok(AppConfig::default())
+            }
+        }
     }
 
     pub fn save(&self, config: &AppConfig) -> Result<(), ConfigError> {
@@ -177,7 +194,7 @@ impl ConfigService {
         let mut file = fs::File::create(&temp_path)?;
         file.write_all(&bytes)?;
         file.sync_all()?;
-        fs::rename(temp_path, &self.path)?;
+        replace_file(&temp_path, &self.path)?;
         Ok(())
     }
 
@@ -198,7 +215,7 @@ impl ConfigService {
         let path = parent.join("engine.json");
         let temp = parent.join("engine.json.tmp");
         fs::write(&temp, serde_json::to_vec_pretty(&value)?)?;
-        fs::rename(temp, path)?;
+        replace_file(&temp, &path)?;
         Ok(())
     }
 }
