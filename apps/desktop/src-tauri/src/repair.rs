@@ -1,4 +1,5 @@
 use std::path::{Path, PathBuf};
+#[cfg(windows)]
 use std::process::{Command, Stdio};
 use thiserror::Error;
 
