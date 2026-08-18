@@ -8,7 +8,7 @@ import tomllib
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-EXPECTED = "1.0.5"
+EXPECTED = "2.0.0"
 FAILURES: list[str] = []
 
 
@@ -46,30 +46,30 @@ else:
 
 server = (ROOT / "services/ai/mily_ai/server.py").read_text(encoding="utf-8")
 for marker in (
-    '"version": "1.0.5"',
-    'event("engine.ready", version="1.0.5", protocolVersion=1)',
+    '"version": "2.0.0"',
+    'event("engine.ready", version="2.0.0", protocolVersion=1)',
 ):
     if marker not in server:
         FAILURES.append(f"Motor Python: falta {marker}")
 
 frontend_api = (ROOT / "apps/desktop/src/lib/api.ts").read_text(encoding="utf-8")
 for marker in (
-    "version: '1.0.5-web-preview'",
+    "version: '2.0.0-web-preview'",
     "activeModelPack: 'realtime-m2m100'",
 ):
     if marker not in frontend_api:
         FAILURES.append(f"Frontend API: falta {marker}")
 
 ci = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
-if "MilyVoiceTraductor-Full-1.0.5-Windows-x64-${{ github.sha }}" not in ci:
-    FAILURES.append("CI: el artefacto Windows no está versionado como 1.0.5")
+if "MilyVoiceTraductor-Full-2.0.0-Windows-x64-${{ github.sha }}" not in ci:
+    FAILURES.append("CI: el artefacto Windows no está versionado como 2.0.0")
 
 publish = (ROOT / ".github/workflows/publish-rc.yml").read_text(encoding="utf-8")
 required_publish_markers = (
-    "ARTIFACT_NAME: MilyVoiceTraductor-Full-1.0.5-Windows-x64-${{ github.event.workflow_run.head_sha }}",
-    "RELEASE_TAG: v1.0.5",
-    "RELEASE_TITLE: MilyVoiceTraductor 1.0.5",
-    "release/MilyVoiceTraductor_1.0.5_x64-setup.exe",
+    "ARTIFACT_NAME: MilyVoiceTraductor-Full-2.0.0-Windows-x64-${{ github.event.workflow_run.head_sha }}",
+    "RELEASE_TAG: v2.0.0",
+    "RELEASE_TITLE: MilyVoiceTraductor 2.0.0",
+    "release/MilyVoiceTraductor_2.0.0_x64-setup.exe",
 )
 for marker in required_publish_markers:
     if marker not in publish:
@@ -77,18 +77,18 @@ for marker in required_publish_markers:
 
 readme = (ROOT / "README.md").read_text(encoding="utf-8")
 for marker in (
-    "releases/download/v1.0.5/MilyVoiceTraductor_1.0.5_x64-setup.exe",
-    "releases/tag/v1.0.5",
-    "Release actual: 1.0.5",
+    "releases/download/v2.0.0/MilyVoiceTraductor_2.0.0_x64-setup.exe",
+    "releases/tag/v2.0.0",
+    "Release actual: 2.0.0",
 ):
     if marker not in readme:
         FAILURES.append(f"README: falta {marker}")
 
 site = (ROOT / "apps/site/index.html").read_text(encoding="utf-8")
 for marker in (
-    "releases/download/v1.0.5/MilyVoiceTraductor_1.0.5_x64-setup.exe",
-    "MilyVoiceTraductor 1.0.5",
-    "1.0.5 · Runtime privado",
+    "releases/download/v2.0.0/MilyVoiceTraductor_2.0.0_x64-setup.exe",
+    "MilyVoiceTraductor 2.0.0",
+    "2.0.0 · Runtime privado",
 ):
     if marker not in site:
         FAILURES.append(f"Sitio: falta {marker}")
@@ -99,4 +99,4 @@ if FAILURES:
         print(" -", failure)
     raise SystemExit(1)
 
-print("RELEASE VERSION CHECK OK: 1.0.5")
+print("RELEASE VERSION CHECK OK: 2.0.0")
