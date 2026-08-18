@@ -9,6 +9,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   repository-guards:
     name: Privacy, extension and site guards
@@ -163,6 +167,10 @@ jobs:
         if: success()
         shell: pwsh
         run: .\installer\windows\test-bootstrap.ps1 -RequireRuntime
+      - name: Exercise installed runtime, bridge and registration
+        if: success()
+        shell: pwsh
+        run: .\installer\windows\test-installed-flow.ps1
       - name: Rust tests
         if: success()
         run: cargo test --workspace
