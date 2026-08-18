@@ -186,6 +186,10 @@ jobs:
       - name: Windows desktop release build
         if: success()
         run: cargo build -p milyvoicetraductor-desktop --release
+      - name: Verify Windows GUI subsystem
+        if: success()
+        shell: pwsh
+        run: .\installer\windows\test-windows-gui.ps1
       - name: Tauri NSIS bundle
         if: success()
         run: npm run tauri -- build
