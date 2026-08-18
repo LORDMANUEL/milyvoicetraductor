@@ -1,4 +1,6 @@
-use mily_system::{GpuAdapterInfo, GpuVendor, SystemSnapshot, CpuFeatures, hardware_fingerprint};
+use mily_system::{
+    CpuFeatures, GpuAdapterInfo, GpuVendor, SystemSnapshot, hardware_fingerprint,
+};
 
 fn snapshot() -> SystemSnapshot {
     SystemSnapshot {
