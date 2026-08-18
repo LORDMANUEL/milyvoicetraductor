@@ -1,4 +1,5 @@
 const source = document.querySelector('#source');
+const sessionMode = document.querySelector('#sessionMode');
 const persist = document.querySelector('#persist');
 const showOriginal = document.querySelector('#showOriginal');
 const toggle = document.querySelector('#toggle');
@@ -43,6 +44,8 @@ function renderCapture(active) {
   toggle.textContent = active ? 'Detener traducción' : bridgeReady ? 'Iniciar traducción' : 'Preparando…';
   toggle.classList.toggle('stop', active);
   toggle.disabled = active ? false : !bridgeReady;
+  source.disabled = active;
+  sessionMode.disabled = active;
 }
 
 function renderEngineEvent(event) {
@@ -50,7 +53,7 @@ function renderEngineEvent(event) {
   status.classList.remove('error');
   if (event.type === 'engine.ready' || event.type === 'connected') status.textContent = 'Motor local conectado';
   else if (event.type === 'engine.loading') status.textContent = event.phase === 'warming' ? 'Precalentando modelos locales…' : 'Cargando modelos locales…';
-  else if (event.type === 'session.started') status.textContent = 'Escuchando audio…';
+  else if (event.type === 'session.started') status.textContent = event.sessionMode === 'karaoke' ? 'Karaoke activo · escuchando audio…' : 'Escuchando audio…';
   else if (event.type === 'transcription.partial') status.textContent = 'Transcribiendo en tiempo real…';
   else if (event.type === 'translation.partial') status.textContent = 'Traduciendo frase…';
   else if (event.type === 'translation.final') status.textContent = 'Traducción al día';
@@ -76,6 +79,7 @@ function renderEngineEvent(event) {
 async function savePreferences() {
   await chrome.storage.local.set({
     sourceLanguage: source.value,
+    sessionMode: sessionMode.value,
     persistTranscript: persist.checked,
     showOriginal: showOriginal.checked
   });
@@ -88,8 +92,9 @@ async function refreshBridge() {
 }
 
 async function loadSettings() {
-  const saved = await chrome.storage.local.get(['sourceLanguage', 'persistTranscript', 'showOriginal']);
+  const saved = await chrome.storage.local.get(['sourceLanguage', 'sessionMode', 'persistTranscript', 'showOriginal']);
   source.value = saved.sourceLanguage || 'auto';
+  sessionMode.value = saved.sessionMode || 'meeting';
   persist.checked = Boolean(saved.persistTranscript);
   showOriginal.checked = saved.showOriginal !== false;
   const session = await chrome.storage.session.get(['captureState', 'engineEvent', 'bridgeState']);
@@ -99,7 +104,7 @@ async function loadSettings() {
   await refreshBridge();
 }
 
-for (const element of [source, persist, showOriginal]) {
+for (const element of [source, sessionMode, persist, showOriginal]) {
   element.addEventListener('change', savePreferences);
 }
 
@@ -117,6 +122,7 @@ toggle.addEventListener('click', async () => {
           type: 'START_CAPTURE',
           options: {
             sourceLanguage: source.value,
+            sessionMode: sessionMode.value,
             persistTranscript: persist.checked
           }
         }
