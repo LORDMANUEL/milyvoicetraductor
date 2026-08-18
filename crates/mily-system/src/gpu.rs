@@ -44,8 +44,8 @@ fn platform_gpu_inventory() -> Vec<GpuAdapterInfo> {
 #[cfg(windows)]
 fn platform_gpu_inventory() -> Vec<GpuAdapterInfo> {
     use windows::Win32::Graphics::Dxgi::{
-        CreateDXGIFactory1, DXGI_ADAPTER_DESC1, DXGI_ADAPTER_FLAG_NONE,
-        DXGI_ADAPTER_FLAG_SOFTWARE, IDXGIFactory1,
+        CreateDXGIFactory1, DXGI_ADAPTER_DESC1, DXGI_ADAPTER_FLAG_NONE, DXGI_ADAPTER_FLAG_SOFTWARE,
+        IDXGIFactory1,
     };
 
     let factory: IDXGIFactory1 = match unsafe { CreateDXGIFactory1() } {
