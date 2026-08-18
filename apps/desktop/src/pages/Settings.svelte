@@ -17,7 +17,7 @@
       <label>Idioma de origen<select bind:value={draft.sourceLanguage}><option value="auto">Automático</option><option value="en">Inglés</option><option value="zh">Chino</option></select></label>
       <label>Idioma de destino<select bind:value={draft.targetLanguage}><option value="es">Español</option></select></label>
       <label>Perfil de cómputo<select bind:value={draft.computeProfile}><option value="auto">Automático (recomendado)</option><option value="cpu">Solo CPU</option><option value="gpu">Forzar GPU</option></select></label>
-      <label>Pack preferido<select bind:value={draft.activeModelPack}><option value="lite-nllb">Lite NLLB</option><option value="business-qwen">Business Qwen</option></select></label>
+      <label>Pack preferido<select bind:value={draft.activeModelPack}><option value="realtime-m2m100">Tiempo Real INT8 (recomendado)</option><option value="business-qwen">Business Qwen</option><option value="lite-nllb">Lite NLLB</option></select></label>
       <label>Tema<select bind:value={draft.theme}><option value="system">Sistema</option><option value="light">Claro</option><option value="dark">Oscuro</option></select></label>
       <label>Nivel de log<select bind:value={draft.logLevel}><option value="error">Error</option><option value="warn">Advertencia</option><option value="info">Información</option><option value="debug">Depuración</option></select></label>
       <label>Límite de caché (MB)<input type="number" min="64" max="4096" step="64" bind:value={draft.cacheLimitMb}></label>
