@@ -52,6 +52,15 @@ jobs:
         env:
           PYTHONPATH: services/ai
         run: python -m unittest discover -s services/ai/tests -v
+      - name: Realtime stress and MegaBench contracts
+        env:
+          PYTHONPATH: services/ai
+        run: |
+          python services/ai/tests/test_benchmarking.py
+          python services/ai/tests/test_realtime_optimization.py
+          python services/ai/tests/test_realtime_queueing.py
+          python services/ai/tests/test_realtime_telemetry.py
+          python services/ai/tests/test_cpu_budget.py
       - name: Compile Python sources
         run: python -m compileall -q services/ai
 
@@ -171,8 +180,8 @@ jobs:
         if: success()
         shell: pwsh
         run: .\installer\windows\test-installed-flow.ps1
-      - name: Exercise real realtime model pack
-        if: success() && github.event_name == 'push' && github.ref == 'refs/heads/main'
+      - name: MegaBench real model EN/ZH to ES
+        if: success() && github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/pruebas')
         shell: pwsh
         run: .\installer\windows\test-realtime-model.ps1
       - name: Rust tests
@@ -206,18 +215,20 @@ jobs:
           $installer = Get-ChildItem "target/release/bundle/nsis/*-setup.exe" | Select-Object -First 1
           if (-not $installer) { throw "No se encontró el instalador NSIS generado." }
           $extension = Get-Item "dist/MilyVoiceTraductor-Chromium-Extension.zip"
+          $megaBench = Get-Item "dist/performance/MilyVoiceTraductor-2.0.0-MegaBench.json"
           Copy-Item $installer.FullName "dist/release/$($installer.Name)"
           Copy-Item $extension.FullName "dist/release/$($extension.Name)"
+          Copy-Item $megaBench.FullName "dist/release/$($megaBench.Name)"
           $lines = foreach ($file in Get-ChildItem "dist/release" -File) {
             $hash = (Get-FileHash $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
             "$hash *$($file.Name)"
           }
           $lines | Set-Content -Encoding ascii "dist/release/SHA256SUMS.txt"
-      - name: Upload verified Windows installer and extension
+      - name: Upload verified Windows installer, extension and MegaBench
         if: success()
         uses: actions/upload-artifact@v6
         with:
-          name: MilyVoiceTraductor-Full-1.0.5-Windows-x64-${{ github.sha }}
+          name: MilyVoiceTraductor-Full-2.0.0-Windows-x64-${{ github.sha }}
           path: dist/release/*
           retention-days: 30
           compression-level: 0
