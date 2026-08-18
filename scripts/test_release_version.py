@@ -49,6 +49,14 @@ for marker in (
     if marker not in server:
         FAILURES.append(f"Motor Python: falta {marker}")
 
+frontend_api = (ROOT / "apps/desktop/src/lib/api.ts").read_text(encoding="utf-8")
+for marker in (
+    "version: '1.0.5-web-preview'",
+    "activeModelPack: 'realtime-m2m100'",
+):
+    if marker not in frontend_api:
+        FAILURES.append(f"Frontend API: falta {marker}")
+
 ci = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
 if "MilyVoiceTraductor-Full-1.0.5-Windows-x64-${{ github.sha }}" not in ci:
     FAILURES.append("CI: el artefacto Windows no está versionado como 1.0.5")
