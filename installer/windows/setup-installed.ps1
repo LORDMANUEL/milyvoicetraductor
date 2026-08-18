@@ -41,6 +41,7 @@ $CacheRoot = Join-Path $AppRoot 'cache'
 $ModelsRoot = Join-Path $AppRoot 'models'
 $BootstrapStateRoot = Join-Path $AppRoot 'bootstrap'
 $StatusPath = Join-Path $BootstrapStateRoot 'status.json'
+$script:BootstrapStage = 'BOOTSTRAP_START'
 
 function Write-Step([string]$Text) {
     Write-Host "[MilyVoiceTraductor] $Text"
@@ -55,6 +56,11 @@ function Write-BootstrapStatus([string]$State, [string]$Code, [string]$Message) 
         message = $Message
         updatedAt = (Get-Date).ToUniversalTime().ToString('o')
     } | ConvertTo-Json -Depth 4 | Set-Content -Path $StatusPath -Encoding UTF8
+}
+
+function Set-BootstrapStage([string]$Code, [string]$Message) {
+    $script:BootstrapStage = $Code
+    Write-BootstrapStatus 'installing' $Code $Message
 }
 
 function Assert-File([string]$Path, [string]$Code) {
@@ -78,12 +84,14 @@ function Expand-RuntimeArchive([string]$Archive, [string]$Destination) {
     Remove-Item $Destination -Recurse -Force -ErrorAction SilentlyContinue
     New-Item -ItemType Directory -Force -Path $Destination | Out-Null
 
-    # El instalador real ejecuta Windows PowerShell 5.1. Su Expand-Archive usa el
-    # .NET Framework clásico y puede fallar con árboles profundos de Torch/
-    # Transformers. Windows 10/11 y Windows Server modernos incluyen bsdtar en
-    # System32; se usa primero porque maneja esos ZIP y rutas de forma robusta.
     $windowsRoot = if ([string]::IsNullOrWhiteSpace($env:WINDIR)) { 'C:\Windows' } else { $env:WINDIR }
-    $tar = Join-Path $windowsRoot 'System32\tar.exe'
+    $systemDirectory = if (-not [string]::IsNullOrWhiteSpace($env:PROCESSOR_ARCHITEW6432)) {
+        Join-Path $windowsRoot 'Sysnative'
+    } else {
+        Join-Path $windowsRoot 'System32'
+    }
+    $tar = Join-Path $systemDirectory 'tar.exe'
+
     if (Test-Path $tar -PathType Leaf) {
         & $tar -xf $Archive -C $Destination
         if ($LASTEXITCODE -eq 0) {
@@ -100,8 +108,26 @@ function Expand-RuntimeArchive([string]$Archive, [string]$Destination) {
     }
 }
 
+function Resolve-UnstructuredFailure([string]$Stage) {
+    switch ($Stage) {
+        'COMPONENTS_CHECK' { return @('BOOTSTRAP_COMPONENT_CHECK_FAILED', 'No se pudieron validar los componentes incluidos.') }
+        'RUNTIME_VERIFY' { return @('RUNTIME_VERIFY_FAILED', 'No se pudo verificar la integridad del runtime privado.') }
+        'RUNTIME_EXTRACT' { return @('RUNTIME_EXTRACT_FAILED', 'No se pudo extraer el runtime privado incluido en el instalador.') }
+        'RUNTIME_MANIFEST' { return @('RUNTIME_VERIFY_FAILED', 'No se pudo validar el manifiesto del runtime privado.') }
+        'RUNTIME_IMPORT' { return @('RUNTIME_IMPORT_FAILED', 'El runtime privado no pudo cargar sus dependencias.') }
+        'RUNTIME_ACTIVATE' { return @('RUNTIME_ACTIVATE_FAILED', 'No se pudo activar el runtime privado en el perfil del usuario.') }
+        'ENGINE_COPY' { return @('ENGINE_COPY_FAILED', 'No se pudo preparar el motor local incluido.') }
+        'EXTENSION_COPY' { return @('EXTENSION_COPY_FAILED', 'No se pudo preparar la extensión Chromium incluida.') }
+        'BRIDGE_COPY' { return @('BRIDGE_COPY_FAILED', 'No se pudo preparar el puente Native Messaging incluido.') }
+        'NATIVE_REGISTER' { return @('NATIVE_HOST_REGISTER_FAILED', 'No se pudo registrar el puente con los navegadores Chromium.') }
+        'ENGINE_DIAGNOSE' { return @('ENGINE_DIAGNOSE_FAILED', 'El motor incluido no pasó su diagnóstico local.') }
+        'BOOTSTRAP_FINALIZE' { return @('BOOTSTRAP_FINALIZE_FAILED', 'La preparación local terminó, pero no pudo guardar su estado final.') }
+        default { return @('BOOTSTRAP_FAILED', 'La preparación local no terminó correctamente.') }
+    }
+}
+
 try {
-    Write-BootstrapStatus 'installing' 'BOOTSTRAP_START' 'Preparando componentes locales.'
+    Set-BootstrapStage 'COMPONENTS_CHECK' 'Verificando componentes incluidos.'
     foreach ($required in @(
         @{ Path = $RuntimeZip; Code = 'RUNTIME_ARCHIVE_MISSING' },
         @{ Path = $RuntimeHash; Code = 'RUNTIME_HASH_MISSING' },
@@ -115,6 +141,7 @@ try {
         Assert-File $required.Path $required.Code
     }
 
+    Set-BootstrapStage 'RUNTIME_VERIFY' 'Verificando integridad del runtime privado.'
     Write-Step 'Verificando runtime Python privado.'
     $expectedRuntimeHash = ((Get-Content $RuntimeHash -Raw).Trim() -split '\s+')[0].ToLowerInvariant()
     $actualRuntimeHash = (Get-FileHash $RuntimeZip -Algorithm SHA256).Hash.ToLowerInvariant()
@@ -123,25 +150,33 @@ try {
     }
 
     New-Item -ItemType Directory -Force -Path $AppRoot,$RuntimeParent,$ConfigRoot,$CacheRoot,$ModelsRoot,$BridgeRoot | Out-Null
+
+    Set-BootstrapStage 'RUNTIME_EXTRACT' 'Extrayendo runtime privado.'
     Expand-RuntimeArchive $RuntimeZip $RuntimeNext
     $nextPython = Join-Path $RuntimeNext 'python.exe'
     $runtimeManifestPath = Join-Path $RuntimeNext 'runtime-manifest.json'
     Assert-File $nextPython 'RUNTIME_PYTHON_MISSING'
     Assert-File $runtimeManifestPath 'RUNTIME_MANIFEST_MISSING'
 
+    Set-BootstrapStage 'RUNTIME_MANIFEST' 'Validando manifiesto del runtime privado.'
     $runtimeManifest = Get-Content $runtimeManifestPath -Raw -Encoding UTF8 | ConvertFrom-Json
     $pythonHash = (Get-FileHash $nextPython -Algorithm SHA256).Hash.ToLowerInvariant()
     if ($pythonHash -ne ([string]$runtimeManifest.pythonSha256).ToLowerInvariant()) {
         throw 'RUNTIME_PYTHON_HASH_MISMATCH|python.exe no coincide con el manifiesto del runtime.'
     }
+
+    Set-BootstrapStage 'RUNTIME_IMPORT' 'Comprobando dependencias del runtime privado.'
     & $nextPython -c "import fastapi,uvicorn,numpy,faster_whisper,transformers,torch,huggingface_hub; print('MILY_RUNTIME_OK')"
     if ($LASTEXITCODE -ne 0) {
         throw 'RUNTIME_IMPORT_FAILED|El runtime privado no pudo cargar sus dependencias.'
     }
 
+    Set-BootstrapStage 'RUNTIME_ACTIVATE' 'Activando runtime privado.'
     Write-Step 'Activando runtime y motor.'
     if (Test-Path $RuntimeRoot) { Remove-Item $RuntimeRoot -Recurse -Force }
     Move-Item -LiteralPath $RuntimeNext -Destination $RuntimeRoot
+
+    Set-BootstrapStage 'ENGINE_COPY' 'Preparando motor local.'
     if (Test-Path $EngineApp) { Remove-Item $EngineApp -Recurse -Force }
     Copy-DirectoryContents $EngineSource $EngineApp 'ENGINE_COPY_FAILED'
     Assert-File (Join-Path $EngineApp 'main.py') 'ENGINE_MAIN_COPY_FAILED'
@@ -149,17 +184,22 @@ try {
     Remove-Item (Join-Path $EngineApp 'mily_ai\__pycache__') -Recurse -Force -ErrorAction SilentlyContinue
     Remove-Item (Join-Path $EngineApp 'tests\__pycache__') -Recurse -Force -ErrorAction SilentlyContinue
 
+    Set-BootstrapStage 'EXTENSION_COPY' 'Preparando extensión Chromium.'
     Write-Step 'Instalando extensión y puente local.'
     if (Test-Path $ExtensionRoot) { Remove-Item $ExtensionRoot -Recurse -Force }
     Copy-DirectoryContents $ExtensionSource $ExtensionRoot 'EXTENSION_COPY_FAILED'
     Assert-File (Join-Path $ExtensionRoot 'manifest.json') 'EXTENSION_MANIFEST_COPY_FAILED'
+
+    Set-BootstrapStage 'BRIDGE_COPY' 'Preparando puente Native Messaging.'
     Copy-Item -LiteralPath $BridgeSource -Destination $BridgeTarget -Force
 
+    Set-BootstrapStage 'NATIVE_REGISTER' 'Registrando puente Native Messaging.'
     & $RegisterScript -BridgePath $BridgeTarget -ManifestTemplate $NativeTemplate -ManifestOutput $NativeManifest
     if ($LASTEXITCODE -ne 0) {
         throw 'NATIVE_HOST_REGISTER_FAILED|No se pudo registrar el puente con los navegadores Chromium.'
     }
 
+    Set-BootstrapStage 'ENGINE_DIAGNOSE' 'Ejecutando diagnóstico local del motor.'
     Write-Step 'Ejecutando diagnóstico local.'
     $embeddedPython = Join-Path $RuntimeRoot 'python.exe'
     & $embeddedPython (Join-Path $EngineApp 'main.py') diagnose `
@@ -171,6 +211,7 @@ try {
         throw 'ENGINE_DIAGNOSE_FAILED|El motor incluido no pasó su diagnóstico local.'
     }
 
+    $script:BootstrapStage = 'BOOTSTRAP_FINALIZE'
     $modelState = if (Test-Path (Join-Path $ModelsRoot 'current.json')) { 'ready' } else { 'model-pending' }
     $message = if ($modelState -eq 'ready') {
         'Runtime, motor, extensión y bridge preparados.'
@@ -183,8 +224,14 @@ try {
 } catch {
     $raw = [string]$_.Exception.Message
     $parts = $raw.Split('|', 2)
-    $code = if ($parts.Count -eq 2) { $parts[0] } else { 'BOOTSTRAP_FAILED' }
-    $message = if ($parts.Count -eq 2) { $parts[1] } else { 'La preparación local no terminó correctamente.' }
+    if ($parts.Count -eq 2) {
+        $code = $parts[0]
+        $message = $parts[1]
+    } else {
+        $resolved = Resolve-UnstructuredFailure $script:BootstrapStage
+        $code = $resolved[0]
+        $message = $resolved[1]
+    }
     Write-BootstrapStatus 'failed' $code $message
     Write-Error "$code`: $message"
     exit 1
