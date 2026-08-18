@@ -1,198 +1,250 @@
-# MilyVoiceTraductor 1.0.5 — MASTER
+# MilyVoiceTraductor 2.0.0 — MASTER
 
-Este documento es el punto de entrada y la fuente operativa del proyecto. Reúne las instrucciones y requisitos aprobados para que el alcance no vuelva a quedar disperso entre conversaciones, commits, Model Labs o fases.
+Este documento es la **fuente operativa y normativa principal** de MilyVoiceTraductor. Consolida los requisitos aprobados entre conversaciones, especificaciones, Model Labs, commits y workstreams.
 
-**Regla:** si una conversación, documento histórico, experimento o README contradice este MASTER, prevalece este MASTER salvo que se actualice explícitamente en `pruebas` con una decisión posterior documentada.
+**Regla:** si un README, chat, experimento, documento 1.x o plan histórico contradice este MASTER, prevalece este MASTER hasta que una decisión posterior se documente explícitamente en `pruebas`.
 
-## 1. Objetivo del producto
+## 1. Objetivo de MilyVoice 2.0
 
-MilyVoiceTraductor es una aplicación Windows local y multimodal para escuchar audio, transcribir voz, traducir en tiempo real, mostrar subtítulos y, opcionalmente, sintetizar voz. Debe cubrir reuniones, pestañas web, videos, cursos, canciones, micrófono, audio del sistema y archivos multimedia compatibles.
+MilyVoiceTraductor es una aplicación Windows local y multimodal para:
 
-Debe funcionar **sin GPU** y, cuando exista hardware acelerador, aprovecharlo automáticamente sin convertir CUDA/NVIDIA en requisito arquitectónico.
+- capturar audio de navegador, micrófono, sistema Windows o archivo multimedia;
+- convertir voz a texto mediante ASR local;
+- traducir texto mediante MT local;
+- mostrar subtítulos originales/traducidos;
+- sintetizar voz opcionalmente;
+- reconocer hablantes de forma efímera por sesión;
+- trabajar con video, cursos, canciones y modo karaoke;
+- exportar sesiones cuando el usuario dé consentimiento;
+- aprovechar CPU/GPU disponibles sin exigir CUDA o una GPU dedicada.
 
-La experiencia prioritaria de calidad de MilyVoice es:
+**2.0.0 es un salto de arquitectura y rendimiento**, no un simple cambio de versión. Introduce la fundación MilyCompute, audio/realtime ampliado y un sistema de MegaBench integrado al release.
 
-- voz inglesa → ASR inglés → traducción a español;
-- voz china mandarín → ASR mandarín → traducción a español;
-- voz española → ASR español → traducción a inglés;
-- voz española → ASR español → traducción a mandarín.
+## 2. Autoridad documental
 
-Aclaración terminológica: **ASR no traduce idiomas**. ASR convierte voz a texto en el idioma reconocido. La traducción bidireccional la realiza MT. Por tanto, los cuatro fast paths end-to-end de primera clase son **EN→ES, ES→EN, ZH→ES y ES→ZH**.
+Orden de autoridad:
 
-## 2. Documentos normativos
+1. `MASTER.md` — este documento.
+2. `docs/WORKSTREAMS.md` — coordinación y locks.
+3. diseños especializados vigentes.
+4. planes técnicos vigentes.
+5. especificaciones 1.x históricas como referencia de evolución.
+6. conversaciones antiguas.
 
-- Especificación maestra completa: `docs/superpowers/specs/2026-08-18-milyvoice-1.0.5-master-spec.md`.
-- Diseño de audio universal/karaoke/TTS/hablantes: `docs/superpowers/specs/2026-08-18-realtime-universal-audio-karaoke-design.md`.
-- Plan de optimización CPU: `docs/superpowers/plans/2026-08-18-cpu-realtime-optimization.md`.
-- Diseño de onboarding/runtime embebido: `docs/superpowers/specs/2026-08-17-automatic-onboarding-embedded-runtime-design.md`.
-- Coordinación entre chats/workstreams: `docs/WORKSTREAMS.md`.
+Documentos históricos que siguen siendo útiles pero no cambian la versión normativa:
 
-Orden de autoridad: **este MASTER → especificación maestra 1.0.5 → diseño especializado → plan de implementación → documentación histórica → conversaciones antiguas**.
+- `docs/superpowers/specs/2026-08-18-milyvoice-1.0.5-master-spec.md`;
+- `docs/superpowers/specs/2026-08-18-realtime-universal-audio-karaoke-design.md`;
+- `docs/superpowers/plans/2026-08-18-cpu-realtime-optimization.md`;
+- `docs/superpowers/specs/2026-08-17-automatic-onboarding-embedded-runtime-design.md`.
 
-## 3. Regla de ramas
+## 3. Ramas y trabajo paralelo
 
-- `main`: versión estable/publicable. No se programa directamente aquí.
-- `pruebas`: desarrollo, tests, RC y correcciones.
-- No crear ramas efímeras como flujo normal salvo necesidad extraordinaria.
-- Solo fusionar `pruebas` a `main` después de CI completo, instalación NSIS real y pruebas funcionales del alcance aprobado.
-- Ningún chat/agente puede asumir que otro chat terminó un bloque: debe verificar código, tests y último SHA de `pruebas`.
+- `main`: estable/publicable. No se programa directamente aquí.
+- `pruebas`: desarrollo, CI, RC e integración.
+- No crear ramas efímeras como flujo normal.
+- Varios chats pueden trabajar en paralelo únicamente respetando `docs/WORKSTREAMS.md`.
+- Antes de modificar un archivo compartido: leer HEAD, SHA actual y lock.
+- Nunca asumir que otro chat terminó un bloque; verificar código + tests + SHA.
+- Merge `pruebas → main` solo después de todos los gates 2.0.
 
-## 4. Versión
+## 4. Versión 2.0.0
 
-Toda la cadena de la candidata estable debe declarar `1.0.5`: `VERSION`, Cargo, Node, Tauri, motor, workflows, release, artefactos e instalador. CI debe fallar ante cualquier desalineación.
+La candidata debe declarar **2.0.0** de forma consistente en:
 
-## 5. Instalación Windows — requisito obligatorio SIN CMD
+- `VERSION`;
+- Cargo workspace/desktop;
+- Node root/Desktop;
+- Tauri;
+- motor Python;
+- extensión Chromium;
+- API/frontend preview;
+- CI/artifact naming;
+- publish workflow;
+- instalador NSIS;
+- release assets;
+- sitio/README de candidata.
 
-El usuario instala una sola aplicación gráfica. No debe ver ni depender de ventanas `cmd.exe`, PowerShell, consola de Python o terminal auxiliar.
+CI debe fallar ante cualquier divergencia.
 
-Gates obligatorios:
+## 5. Idiomas Tier 1 y definición correcta de ASR/MT
 
-- `MilyVoiceTraductor.exe` debe ser `IMAGE_SUBSYSTEM_WINDOWS_GUI`.
-- Procesos Python de motor, descarga, conversión y reparación se lanzan con `CREATE_NO_WINDOW` en Windows.
-- El bridge/Native Messaging no abre terminal visible.
-- NSIS silencioso no muestra `MessageBox` ni lanza procesos interactivos.
-- El runtime Python 3.13 es privado y se instala con la aplicación; el usuario no instala Python, `winget`, pip ni venv.
-- El modelo se prepara desde la UI después de abrir la app; NSIS no descarga gigabytes de IA durante instalación.
-- La descarga/conversión del modelo debe mostrarse por fases: descarga ASR → descarga traducción → optimización/conversión → verificación → activación.
-- Cerrar una supuesta ventana de terminal nunca puede matar la app porque esa ventana no debe existir.
+**ASR = voz → texto.** ASR no traduce idiomas.
 
-## 6. Idiomas Tier 1 y fast paths
+**MT = texto → texto traducido.**
 
-### Tier 1 — prioridad obligatoria
+Tier 1 obligatorio:
 
 - Español (`es`).
 - Inglés (`en`).
-- Chino mandarín (`zh`, con manejo explícito de escritura cuando aplique).
+- Chino mandarín (`zh`).
 
-El soporte a otros idiomas no puede degradar latencia, reconocimiento, traducción, gramática, fonética ni calidad de voz de estos tres.
+Fast paths end-to-end:
 
-### Cuatro fast paths privilegiados
+```text
+voz EN → ASR EN → MT EN→ES → texto/voz ES
+voz ZH → ASR ZH → MT ZH→ES → texto/voz ES
+voz ES → ASR ES → MT ES→EN → texto/voz EN
+voz ES → ASR ES → MT ES→ZH → texto/voz ZH
+```
 
-- `EN → ES`
-- `ES → EN`
-- `ZH → ES`
-- `ES → ZH`
+### Prioridad de producto
 
-Cada dirección debe poder tener configuración propia de ASR, estabilización, segmentación, caché, traducción, TTS y benchmark. No se debe asumir que EN→ES y ES→EN tienen idéntico comportamiento de parciales o longitud sintáctica.
+**EN→ES y ZH→ES son los flujos receptores prioritarios** para reuniones, videos, cursos y contenido externo. Su latencia/calidad no puede degradarse por agregar otros idiomas.
 
-### Prioridad práctica de producto
+ES→EN y ES→ZH son Tier 1 para conversación bidireccional y deben alcanzar gates equivalentes antes de anunciarse como experiencia voice-to-voice cerrada.
 
-Para reuniones, videos y cursos, **EN→ES y ZH→ES siguen siendo la ruta principal de recepción**, porque el objetivo original es comprender inmediatamente contenido extranjero en español. Las rutas inversas **ES→EN y ES→ZH son también Tier 1** y deben evolucionar hasta la misma calidad para conversación bidireccional.
+No afirmar soporte bidireccional funcional solamente porque el diseño lo contemple; el protocolo/router correspondiente debe estar implementado y verificado.
 
-La arquitectura y el protocolo de 1.0.5 no deben quedar acoplados permanentemente a `targetLanguage=es`; cualquier compatibilidad temporal debe quedar marcada como deuda activa y no como diseño definitivo.
+## 6. Mily Linguistic Engine
 
-## 7. Mily Linguistic Engine
+La arquitectura incluye una capa lingüística formal y liviana:
 
-MilyVoice tendrá una capa lingüística formal y liviana, evitando usar un LLM grande para operaciones deterministas:
-
-- Language Detector.
-- Text Normalizer.
-- Grammar/Stability Layer.
-- Terminology Manager.
-- Sentence Segmenter.
-- Context Manager.
-- Pronunciation Lexicon.
+- Language Detector;
+- Text Normalizer;
+- Grammar/Stability Layer;
+- Terminology Manager;
+- Sentence Segmenter;
+- Context Manager;
+- Pronunciation Lexicon;
 - Phonetic Layer.
 
-Perfiles mínimos:
+Perfiles mínimos de arquitectura:
 
-- `en-es-realtime`.
-- `es-en-realtime`.
-- `zh-es-realtime`.
+- `en-es-realtime`;
+- `es-en-realtime`;
+- `zh-es-realtime`;
 - `es-zh-realtime`.
 
 Para mandarín:
 
-- distinguir cuando proceda simplificado/tradicional en presentación;
-- segmentación y puntuación adecuadas;
-- cuidado de números, nombres y términos técnicos;
-- pinyin opcional **solo como capa educativa/presentación**, no como sustituto del texto interno del ASR/MT;
-- ninguna política de entrenamiento futura puede introducir augmentación de pitch que destruya información tonal del mandarín.
+- respetar información tonal;
+- distinguir simplificado/tradicional cuando aplique a presentación;
+- pinyin opcional solo en UI educativa;
+- pinyin no sustituye texto interno ASR/MT;
+- no introducir pitch-shift de training que altere tonos del mandarín.
 
-## 8. Pack IA estable actual
+## 7. Pack estable actual
 
-Mientras no exista un candidato propio promocionado por benchmarks reales, el pack comercial estable sigue siendo:
+Hasta que exista un modelo propio realmente promocionado, el baseline estable sigue siendo:
 
-- ASR: `Systran/faster-whisper-small`, snapshot fijado por commit.
-- Traducción: `facebook/m2m100_418M`, snapshot fijado por commit.
-- M2M100 convertido localmente a CTranslate2 INT8.
-- CPU INT8 como ruta de primera clase.
-- CUDA opcional cuando sea compatible y realmente mejore el rendimiento.
+```text
+ASR: Systran/faster-whisper-small
+MT : facebook/m2m100_418M → CTranslate2 INT8
+```
 
-**No sustituir automáticamente este pack por experimentos Quality/Legacy solo porque existan trainers o configuraciones.**
+Reglas:
 
-## 9. Estado obligatorio de los Model Labs
+- snapshots fijados por revisión;
+- CPU INT8 de primera clase;
+- CUDA opcional si existe y rinde mejor;
+- no sustituir el baseline por un trainer, dry-run o modelo no benchmarkeado;
+- warm-up antes del primer audio útil;
+- activación atómica de packs;
+- rollback disponible.
 
-### MilyVoice TriCore / Quality
+## 8. Estado normativo de Model Labs
 
-Existe un laboratorio preparado para:
+### TriCore / Quality
 
-- `MilyASR-EN` sobre Whisper Small;
-- `MilyASR-ES` sobre Whisper Small;
-- `MilyASR-ZH` sobre Whisper Small;
-- MT EN→ES, ES→EN, ZH→ES y ES→ZH sobre/adaptado desde M2M100.
+Preparado para:
 
-**Estado normativo actual:** código de entrenamiento/evaluación/exportación preparado; **pesos fine-tuned reales no promocionados como producción**. No afirmar que existen modelos finales hasta comprobar artefactos entrenados y gates de calidad.
+- MilyASR EN/ES/ZH sobre Whisper Small;
+- MT EN→ES, ES→EN, ZH→ES, ES→ZH;
+- LoRA/fine-tuning;
+- evaluación;
+- merge/export CT2/ONNX;
+- promotion gates.
 
-### MilyVoice Legacy CPU
+**Estado actual:** infraestructura de laboratorio preparada; **los pesos fine-tuned no se consideran producción mientras no existan artefactos reales entrenados y un reporte de promoción aprobado**.
 
-Existe un laboratorio preparado para máquinas débiles con:
+### Legacy CPU
 
-- Whisper Tiny INT8 para ASR EN/ES/ZH;
-- MT pequeños directos para EN↔ES y ZH↔ES;
-- objetivo de referencia Intel Core i3 Haswell 2C/4T, sin GPU;
-- benchmark de end-to-end, P95 y RTF.
+Objetivo:
 
-**Estado normativo actual:** laboratorio/código y tests preparados; **pesos finales no promocionados y benchmark físico en i3 real todavía obligatorio antes de llamarlo Stable**.
+- Whisper Tiny INT8 ASR EN/ES/ZH;
+- MT pequeño INT8;
+- referencia Intel Core i3 Haswell 2C/4T sin GPU;
+- prioridad a tiempo real y bajo consumo.
 
-### Regla de promoción de modelos
+**Estado actual:** laboratorio/tests/configuración preparados; **no declarar Legacy Stable sin pesos finales y benchmark físico sobre i3 Haswell real**.
 
-Un modelo propio solo puede entrar al producto si:
+### Promoción de un modelo
 
-1. pesos entrenados reales existen y son reproducibles;
-2. licencia y procedencia de datos son compatibles con el canal comercial;
-3. supera o empata la calidad crítica del baseline;
-4. no empeora números, negaciones, nombres propios o términos clave;
+Un candidato solo entra al producto si:
+
+1. existen pesos reales reproducibles;
+2. licencia/proveniencia son válidas para el canal de uso;
+3. no empeora números, negaciones, nombres o términos críticos;
+4. supera o empata el baseline en calidad relevante;
 5. cumple P50/P95/RTF del hardware objetivo;
-6. pasa benchmark end-to-end, no solo métrica offline;
-7. genera artefactos CT2/ONNX/otro formato requeridos por MilyCompute;
-8. queda versionado, firmado/hashado y reversible.
+6. pasa benchmark end-to-end;
+7. produce formatos requeridos por MilyCompute;
+8. queda versionado, hashado y reversible.
 
-La velocidad **forma parte de la calidad** de MilyVoice.
+**La velocidad forma parte de la calidad.**
 
-## 10. MilyCompute Foundation — obligatorio desde 1.0.5
+## 9. MilyCompute Foundation
 
-MilyVoice no escribirá un driver gráfico/kernel propio. `MilyCompute` es una capa de orquestación de cómputo que utiliza APIs/runtimes existentes de Windows y del hardware.
+MilyVoice no implementa drivers kernel propios. MilyCompute es la capa de orquestación sobre runtimes/APIs existentes.
 
-Arquitectura objetivo:
+Cadena:
 
-`Hardware Probe → Backend Discovery → Compatibility Filter → Microbenchmark → Scoring → Model Router → Runtime Telemetry → Fallback`.
+```text
+Hardware Probe
+→ Backend Discovery
+→ Compatibility Filter
+→ Benchmark
+→ Scoring
+→ Model Router
+→ Runtime Telemetry
+→ Fallback
+```
 
-Componentes mínimos:
+Componentes:
 
-- Hardware Profiler.
-- Backend Registry.
-- Backend Selector.
-- Benchmark Engine.
-- Memory Budget/Manager.
-- Model Router.
-- Fallback Manager.
+- Hardware Profiler;
+- Backend Registry;
+- Backend Selector;
+- Benchmark Engine;
+- Memory/Compute Budget;
+- Model Router foundation;
+- Fallback Manager;
+- caché de selección por hardware/modelo.
 
-Backends reconocidos por arquitectura:
+Backends de arquitectura:
 
-- CPU AVX/AVX2/AVX512/FMA cuando aplique.
-- CUDA.
-- Windows ML.
-- DirectML.
-- OpenVINO.
-- Vulkan.
-- ROCm/HIP cuando el hardware/OS realmente lo soporte.
+- CPU AVX/AVX2/FMA/AVX512 cuando aplique;
+- CUDA;
+- Windows ML;
+- DirectML;
+- OpenVINO;
+- Vulkan;
+- ROCm/HIP cuando exista compatibilidad real.
 
-**1.0.5 debe contener la fundación y detección/scoring; no es obligatorio que todos los modelos ejecuten ya en todos los backends.** Los backends no productivos deben reportarse como `detected/not-ready` en vez de fingir soporte funcional.
+### Regla conservadora
 
-## 11. Hardware Profiler profesional
+`runtime_detected != adapter_ready`.
 
-El profiler debe evolucionar más allá de un hint NVIDIA/CUDA.
+Detectar DirectML/OpenVINO/Vulkan/CUDA **no autoriza a afirmar que el modelo activo ya ejecuta en ese backend**. Los estados deben distinguir al menos:
+
+- `available/ready`;
+- `detected-not-ready`;
+- `unavailable`.
+
+CPU siempre debe ser fallback seguro.
+
+### Selección
+
+No usar reglas rígidas por marca (`Intel=OpenVINO`, `AMD=DirectML`, etc.). Seleccionar por medición real cuando el adaptador esté listo:
+
+1. RTF;
+2. latencia;
+3. memoria/estabilidad como criterio adicional.
+
+Una GPU disponible puede perder frente a CPU y MilyVoice debe elegir CPU si el benchmark lo demuestra.
+
+## 10. Hardware Profiler
 
 CPU:
 
@@ -200,265 +252,278 @@ CPU:
 - arquitectura;
 - núcleos físicos;
 - hilos lógicos;
-- SSE4.2/AVX/AVX2/FMA/AVX512 cuando exista;
+- SSE4.2/AVX/AVX2/FMA/AVX512 cuando aplique;
 - RAM total/disponible;
 - benchmark corto local.
 
-GPU por dispositivo:
+GPU/aceleradores cuando Windows permita consultarlo con seguridad:
 
-- Intel/AMD/NVIDIA/otro;
-- nombre/modelo y, cuando sea posible, PCI/vendor/device ID;
+- fabricante/modelo;
 - integrada/discreta;
-- memoria dedicada y compartida cuando pueda consultarse de forma segura;
-- DX12/DirectML capability;
-- Vulkan capability;
-- OpenVINO capability;
-- CUDA capability;
-- otros backends disponibles;
-- benchmark únicamente si el backend puede ejecutarse realmente.
+- memoria dedicada/compartida si está disponible;
+- CUDA/DirectML/OpenVINO/Vulkan/Windows ML capabilities;
+- evidencia de runtime;
+- benchmark solo cuando exista adaptador funcional.
 
-También debe registrar:
+También registrar audio devices/WASAPI capabilities sin exponer información sensible innecesaria.
 
-- dispositivos de audio relevantes;
-- capacidad WASAPI/loopback;
-- NPU/aceleradores cuando Windows los exponga de forma útil.
-
-No se debe seleccionar backend solo por marca. Ejemplo válido: una Intel Iris puede existir pero perder contra CPU INT8; gana el backend medido.
-
-## 12. Selección por benchmark, no por marca
-
-Flujo obligatorio:
-
-1. detectar hardware;
-2. enumerar backends;
-3. descartar incompatibles;
-4. microbenchmark corto y cacheable;
-5. medir ASR/MT latency, RTF y presión de memoria;
-6. puntuar;
-7. seleccionar por workload;
-8. persistir recomendación con versión de hardware/driver/modelo;
-9. invalidar benchmark cuando cambie un componente relevante.
-
-Debe ser posible que ASR y MT usen backends distintos. El diseño debe permitir procesamiento híbrido CPU+iGPU/dGPU cuando los benchmarks lo justifiquen.
-
-## 13. Traducción en tiempo real
+## 11. Pipeline realtime 2.0
 
 Cadena objetivo:
 
-`fuente de audio → PCM16/16 kHz → energy gate/VAD → ASR incremental → estabilización lingüística → MT → OutputBus → overlay/Desktop/TTS/sesión`.
+```text
+fuente
+→ PCM 16 kHz
+→ energy gate/VAD
+→ ring/segmentación adaptativa
+→ ASR incremental
+→ estabilidad
+→ MT
+→ OutputBus
+→ subtítulos/TTS/sesión
+```
 
-La UI debe distinguir estados reales: `Capturando`, `Audio detectado`, `Silencio`, `Transcribiendo`, `Traduciendo`, `Hablando`, `Fuente perdida`, `No se detecta audio`, `CPU al límite`.
+Requisitos de rendimiento:
 
-La cola no puede crecer indefinidamente. Bajo presión se reduce trabajo parcial antes de permitir atraso acumulativo.
+- presupuesto por núcleos físicos;
+- `cpu_threads` Whisper;
+- `intra_threads`/control CTranslate2;
+- evitar sobresuscripción;
+- PCM binario por WebSocket;
+- primera inferencia conversación ~0.8–1.2 s cuando sea viable;
+- parciales estables;
+- ASR/MT desacoplados cuando CPU lo permita;
+- colas limitadas;
+- `beam_size=1` realtime;
+- warm-up;
+- estados `healthy/pressure/overloaded`;
+- bajo presión reducir opcionales/parciales antes que perder finales;
+- ningún crecimiento monotónico de cola;
+- jamás descartar deliberadamente utterances finales por optimización.
 
-## 14. Fuentes de audio aprobadas
+## 12. Fuentes de audio
 
-- `browser_tab`: pestaña Chromium capturable.
-- `system_loopback`: audio del sistema Windows por loopback.
-- `microphone`: entrada seleccionada.
-- `media_file`: reproductor interno para video/audio compatible.
+- `browser_tab`: pestaña Chromium capturable;
+- `system_loopback`: WASAPI loopback Windows con fallback protegido;
+- `microphone`;
+- `media_file`.
 
-La extensión debe funcionar más allá de Meet/Teams/Zoom: YouTube, Vimeo, cursos, radio web, reproductores HTML5 y cualquier página `http/https` capturable. Páginas protegidas del navegador se excluyen con mensaje explícito.
+La extensión no se limita a Meet/Teams/Zoom: debe funcionar en YouTube, cursos, radio web, reproductores HTML5 y sitios `http/https` capturables. Páginas protegidas se rechazan con mensaje explícito.
 
-WASAPI nativo es la ruta principal para audio del sistema en Windows; selector protegido/WebView puede existir como fallback explícito, nunca como doble captura simultánea.
-
-## 15. Subtítulos y transcripción
-
-- Mostrar texto original y traducción.
-- Original puede ocultarse.
-- Transcripción parcial puede aparecer antes de la traducción final.
-- Solo texto estable entra a MT para evitar retrabajo CPU.
-- Overlay con Shadow DOM, independiente del DOM de la web.
-- Vista Desktop con transcripción continua.
-- Persistencia desactivada por defecto.
-
-## 16. Video, audio y aprendizaje
-
-Vista `Aprender con video/audio` con reproductor local y subtítulos sobre el contenido.
+## 13. Video, educativo y karaoke
 
 Modos:
 
-- `Reunión`.
-- `Educativo`.
-- `Karaoke`.
-- `Compacto`.
+- Reunión;
+- Educativo;
+- Karaoke;
+- Compacto.
 
-En karaoke se usan timestamps por palabra/fragmento cuando estén disponibles. En CPU débil se degrada de palabra a frase antes de sacrificar tiempo real.
+Karaoke:
 
-Para EN/ES/ZH, las capas educativas futuras pueden mostrar pronunciación/pinyin sin contaminar la representación interna utilizada por ASR/MT.
+- español + original;
+- `word_timestamps` únicamente cuando se necesiten;
+- resaltado palabra/fragmento;
+- más contexto/VAD menos agresivo;
+- en CPU débil degradar palabra→frase antes que perder realtime.
 
-## 17. Hablantes
+## 14. Hablantes
 
-- Identificar localmente `Hablante A/B/C…` mediante características/embeddings/clustering cuando se active.
-- Mantener `speakerId` estable por sesión.
-- Color estable por hablante.
-- Modos `todos`, `dominante`, `fijado`.
-- Permitir renombrar, priorizar, silenciar/reactivar o fijar speaker.
-- No inferir género, edad ni identidad desde la voz.
-- El usuario puede asignar a cada speaker una voz TTS instalada.
+Opcional y local:
 
-## 18. TTS y OutputBus
+- Hablante A/B/C…;
+- `speakerId` estable por sesión;
+- color estable;
+- modos todos/dominante/fijado;
+- renombrar/priorizar/silenciar/reactivar;
+- voz TTS asignable por speaker;
+- no inferir género, edad o identidad.
 
-Modos mínimos:
+## 15. TTS y OutputBus
 
-- `Subtítulos`.
-- `Subtítulos + voz`.
-- `Solo voz`.
+Modos:
 
-Requisitos:
+- Subtítulos;
+- Subtítulos + voz;
+- Solo voz.
 
-- TTS local.
-- Cola TTS separada de ASR/MT; no cancelar cada frase nueva de forma que se pierda una final válida.
-- Voces instaladas de Windows/Chrome como primera implementación para no agregar otro modelo pesado.
-- Ducking opcional/configurable del audio original.
-- Anti-feedback sin dejar de escuchar al interlocutor: no apagar globalmente PCM mientras habla TTS.
-- TTS nunca abre consola.
+TTS:
 
-## 19. Temas y accesibilidad
+- local;
+- voces Windows/Chromium como primera implementación;
+- cola separada;
+- ducking configurable;
+- anti-feedback sin apagar deliberadamente la captura PCM;
+- no abrir consola.
 
-Temas mínimos: `Mily azul`, `Oscuro cine`, `Clase clara`, `Alto contraste`, `Karaoke neón`.
+## 16. Subtítulos, temas y accesibilidad
 
-Ajustes obligatorios: posición, tamaño, opacidad, mostrar/ocultar original y colores por speaker con contraste suficiente.
+- original + traducción;
+- original ocultable;
+- Shadow DOM en web;
+- cinco temas mínimos: Mily azul, Oscuro cine, Clase clara, Alto contraste, Karaoke neón;
+- tamaño/posición/opacidad configurables;
+- contraste suficiente por speaker.
 
-## 20. Sesiones y exportación
+## 17. Sesiones y exportación
 
-Solo con consentimiento:
+Persistencia desactivada por defecto y solo con consentimiento.
 
-- original, traducción, timestamps, speakerId y palabras opcionales;
+Cuando se guarda una sesión puede incluir:
+
+- original;
+- traducción;
+- timestamps;
+- speakerId;
+- words opcionales.
+
+Formatos:
+
 - TXT bilingüe;
-- SRT de traducción;
+- SRT español;
 - SRT bilingüe;
 - VTT bilingüe;
-- cues por palabra cuando haya datos karaoke.
+- cues por palabra cuando existan datos karaoke.
 
-## 21. Optimización CPU — prioridad permanente
+## 18. Instalación Windows sin CMD
 
-Antes de subir el tamaño de modelos:
+El usuario instala una sola app gráfica.
 
-1. detectar presupuesto de núcleos físicos;
-2. asignar threads explícitos;
-3. evitar sobresuscripción;
-4. PCM binario por WebSocket;
-5. energy gate + VAD;
-6. ring buffer y ventanas adaptativas;
-7. parciales estables;
-8. ASR y MT desacoplados con colas limitadas;
-9. beam 1 y decodificación acotada en realtime;
-10. warm-up;
-11. control `healthy/pressure/overloaded`;
-12. métricas locales P50/P95/RTF;
-13. nunca perder utterances finales ni acumular atraso monotónico;
-14. degradar primero características opcionales antes de romper realtime.
+Obligatorio:
 
-## 22. Seguridad y privacidad
+- `MilyVoiceTraductor.exe` = `IMAGE_SUBSYSTEM_WINDOWS_GUI`;
+- procesos Python/bridge sin ventanas de consola;
+- runtime Python 3.13 privado incluido;
+- sin dependencia de Python/winget/pip del usuario;
+- Native Messaging auto-configurado;
+- sin token/puerto manual en UX normal;
+- NSIS no descarga gigabytes durante instalación;
+- preparación de modelos dentro de la UI con progreso/reintento;
+- reparación integrada;
+- cerrar una terminal inexistente nunca puede matar la app.
 
-- Todo audio/transcripción/traducción/TTS local salvo descarga inicial de modelos.
-- Native Messaging limitado a la extensión autorizada.
-- Credenciales efímeras; no token/puerto manual en UX normal.
-- Logs redactados.
-- Sin `.env` reales, contraseñas, tokens, audio o transcripciones en Git.
-- Descargas de modelos fijadas por revisión/hash y activación atómica.
-- Los Model Labs no pueden publicar secretos/tokens de Hugging Face en Git, logs o chats.
+## 19. Seguridad y privacidad
 
-## 23. Gates lingüísticos Tier 1
+- audio/transcripción/MT/TTS local salvo descarga inicial de pesos;
+- localhost/Native Messaging restringidos;
+- credenciales efímeras;
+- logs redactados;
+- sin secretos `.env`, tokens o contraseñas en Git;
+- sin audio/transcripciones de usuario en Git;
+- modelos fijados por revisión/hash;
+- activación atómica y rollback.
 
-Para EN↔ES y ZH↔ES no basta con “el modelo responde”. Deben existir benchmarks reproducibles que incluyan según corresponda:
+## 20. MegaBench 2.0
 
-- WER/CER ASR;
-- latencia P50/P95;
-- RTF;
-- números/fechas/cantidades;
-- negaciones;
-- nombres propios;
-- preguntas y frases largas/cortas;
-- habla rápida;
-- ruido/micrófono mediocre;
-- terminología empresarial, informática, automotriz, ventas, cursos y conversación cotidiana.
+MilyVoice 2.0 introduce un gate de rendimiento reproducible en el pipeline Windows.
 
-No se promociona un modelo si mejora una métrica offline pero rompe realtime.
+El mismo SHA debe ejecutar el pack real Whisper Small + M2M100 CT2 INT8 y producir:
 
-## 24. Definition of Done 1.0.5
+- ASR P50/P95 ms;
+- ASR RTF P50/P95;
+- MT EN→ES P50/P95 ms;
+- MT ZH→ES P50/P95 ms;
+- end-to-end P95 estimado;
+- entorno/model pack;
+- PASS/FAIL;
+- `MilyVoiceTraductor-2.0.0-MegaBench.json`.
 
-No marcar 1.0.5 como estable hasta pasar:
+El runner de GitHub es un **gate de regresión**, no una certificación de hardware mínimo. El benchmark físico Legacy Haswell sigue siendo un gate distinto y pendiente hasta ejecutarse en ese equipo real.
 
-- consistencia de versión;
-- source/privacy/extension/site guards;
-- Python unit tests + compileall;
-- frontend typecheck/tests/build;
-- Rust fmt/tests/Clippy `-D warnings` Linux y Windows;
-- runtime Python privado + SHA-256;
-- bootstrap/bridge/Native Messaging instalado;
-- Desktop Release Windows;
-- verificación PE `WINDOWS_GUI`;
-- NSIS generado e instalado realmente;
-- extensión ZIP;
-- SHA256SUMS;
-- prueba real del pack estable antes de promoción;
-- pruebas funcionales de browser_tab, system_loopback, microphone y media_file;
-- speakers, TTS, anti-feedback, educativo/karaoke y exportación;
-- fundación MilyCompute y Hardware Profiler sin depender solo de hints CUDA;
-- detección/reporting seguro de CPU/CUDA/DirectML/Vulkan/OpenVINO aunque algunos backends sigan `not-ready`;
-- arquitectura/protocolo preparados para los cuatro fast paths Tier 1;
-- al menos EN→ES y ZH→ES no pueden degradarse respecto al baseline funcional;
-- las rutas ES→EN y ES→ZH deben quedar funcionales o, si un gate externo impide su promoción, permanecer explícitamente bloqueadas como requisito de release y no ocultarse como “soportadas”.
+Los límites CI deben impedir regresiones catastróficas sin confundir variabilidad de runners con especificaciones de producto.
 
-Solo después: merge `pruebas → main`, repetir CI sobre `main`, publicar artefactos y entregar EXE/ZIP/hash.
+## 21. Mega Tests / Definition of Done 2.0
 
-## 25. Roadmap vinculante
+No marcar 2.0 como entregable hasta pasar, sobre el mismo SHA:
 
-### 1.0.5
+### Fuente/privacidad
 
-- cierre realtime multimodal actual;
-- MilyCompute Foundation;
-- Hardware Profiler profesional;
-- CPU/CUDA actuales + discovery de DirectML/Vulkan/OpenVINO/Windows ML;
-- benchmark/scoring/fallback foundation;
-- ES/EN/ZH como Tier 1;
-- arquitectura de cuatro fast paths;
-- gobierno Quality/Legacy de modelos.
+- consistencia 2.0.0;
+- source verification;
+- privacy scan;
+- extension guard;
+- site smoke.
 
-### 1.1
+### Python/realtime
 
-- ejecución real DirectML/Windows ML para workloads aprobados;
-- Intel OpenVINO real cuando gane benchmark;
-- Vulkan ASR donde corresponda;
-- perfiles lingüísticos completos EN↔ES y ZH↔ES;
-- Model Advisor visible al usuario;
-- routing híbrido por workload.
+- unit tests completos;
+- `compileall`;
+- benchmarking contract;
+- CPU budget;
+- queue/backpressure stress;
+- realtime optimization;
+- telemetry;
+- final utterance preservation.
 
-### 1.2
+### Frontend
 
-- full duplex;
-- voz↔voz bidireccional;
-- virtual microphone/output routing;
-- dos direcciones simultáneas con control de eco y presupuesto de cómputo.
+- TypeScript;
+- tests;
+- build.
 
-### 1.3
+### Rust/MilyCompute
 
-- tutor de idiomas;
-- fonética/pronunciación avanzada;
+- `cargo fmt`;
+- workspace tests;
+- MilyCompute backend selection/registry/discovery contracts;
+- Clippy `-D warnings`;
+- release build.
+
+### Windows real
+
+- runtime Python privado;
+- bridge/Native Messaging instalado;
+- installed-flow;
+- MegaBench real EN→ES/ZH→ES;
+- Rust tests/Clippy Windows;
+- Desktop Release;
+- `WINDOWS_GUI`;
+- Tauri NSIS;
+- instalación real del NSIS generado;
+- extensión Chromium ZIP.
+
+### Artefacto final
+
+Debe contener exactamente desde el mismo SHA:
+
+- `MilyVoiceTraductor_2.0.0_x64-setup.exe`;
+- `MilyVoiceTraductor-Chromium-Extension.zip`;
+- `MilyVoiceTraductor-2.0.0-MegaBench.json`;
+- `SHA256SUMS.txt`.
+
+Solo después puede integrarse a `main` y publicarse v2.0.0.
+
+## 22. Roadmap posterior
+
+No mezclar roadmap futuro con Definition of Done actual.
+
+### 2.1
+
+- adapters reales DirectML/OpenVINO/Vulkan donde ganen benchmarks;
+- perfiles lingüísticos Tier 1 más profundos;
+- Model Advisor avanzado.
+
+### 2.2
+
+- full-duplex;
+- micrófono virtual;
+- voz↔voz bidireccional cerrada.
+
+### 2.3
+
+- tutor;
+- fonética avanzada;
+- pronunciación/correcciones;
 - pinyin educativo;
-- correcciones y ejercicios;
-- seguimiento local de aprendizaje con consentimiento.
+- ejercicios.
 
-## 26. Coordinación entre chats/agentes
+## 23. Política de implementación
 
-La división actual está en `docs/WORKSTREAMS.md` y es obligatoria para evitar conflictos.
-
-Principio:
-
-- **Workstream Plataforma/Arquitectura:** MASTER, MilyCompute, hardware profiler, backend registry/scoring, protocolo/abstracción de idiomas, gobierno de modelos y gates.
-- **Workstream Realtime/UX:** Desktop/extensión, fuentes de audio, speakers, karaoke, TTS/ducking, accesibilidad, exportación y pruebas funcionales/NSIS.
-
-Antes de modificar un archivo compartido, cada chat debe leer el último SHA de `pruebas`. Si un archivo pertenece temporalmente al otro workstream, no se sobrescribe: se documenta la necesidad y se coordina mediante `docs/WORKSTREAMS.md`.
-
-## 27. Política de trabajo
-
-- TDD: prueba que falla → implementación mínima → prueba verde → commit.
-- No ocultar deuda técnica ni marcar una fase completa si el gate real no pasó.
-- No degradar privacidad para ganar rendimiento.
-- No sacrificar utterances finales para bajar latencia.
-- No cambiar el modelo estable solo porque exista un experimento nuevo.
-- Ningún modelo propio se llama “entrenado”, “estable” o “production” sin pesos y benchmarks reales.
-- Seleccionar backend por benchmark, no por marca.
+- TDD: test rojo → implementación mínima → verde → refactor.
+- No ocultar deuda técnica.
+- No llamar “funcional” a un backend solo detectado.
+- No promover pesos inexistentes.
+- No degradar privacidad por rendimiento.
+- No sacrificar finales por latencia.
+- No cambiar el baseline de modelos antes de benchmark y promotion gate.
 - `main` siempre debe permanecer funcional.
