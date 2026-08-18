@@ -12,7 +12,8 @@
     "storage",
     "notifications",
     "nativeMessaging",
-    "scripting"
+    "scripting",
+    "tts"
   ],
   "host_permissions": [
     "http://127.0.0.1/*"
