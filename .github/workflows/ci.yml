@@ -84,14 +84,10 @@ jobs:
         run: npm run --prefix apps/desktop build
 
   rust:
-    name: Rust / Tauri Linux
+    name: Rust core Linux
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-      - name: Install Tauri Linux dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
@@ -116,15 +112,12 @@ jobs:
           escaped = tail.replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
           print(f'::error title=rustfmt diagnostics::{escaped}')
           PY
-      - name: Tests
+      - name: Core tests
         if: success()
-        run: cargo test --workspace
-      - name: Clippy
+        run: cargo test --workspace --exclude milyvoicetraductor-desktop
+      - name: Core Clippy
         if: success()
-        run: cargo clippy --workspace --all-targets -- -D warnings
-      - name: Release build
-        if: success()
-        run: cargo build -p milyvoicetraductor-desktop --release
+        run: cargo clippy --workspace --all-targets --exclude milyvoicetraductor-desktop -- -D warnings
 
   windows-smoke:
     name: Windows release smoke
