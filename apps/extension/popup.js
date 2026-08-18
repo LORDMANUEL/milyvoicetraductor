@@ -50,7 +50,10 @@ function renderEngineEvent(event) {
   status.classList.remove('error');
   if (event.type === 'engine.ready' || event.type === 'connected') status.textContent = 'Motor local conectado';
   else if (event.type === 'engine.loading') status.textContent = 'Cargando modelos locales…';
-  else if (event.type === 'session.started') status.textContent = 'Traduciendo reunión';
+  else if (event.type === 'session.started') status.textContent = 'Escuchando audio…';
+  else if (event.type === 'transcription.partial') status.textContent = 'Transcribiendo en tiempo real…';
+  else if (event.type === 'translation.partial') status.textContent = 'Traduciendo frase…';
+  else if (event.type === 'translation.final') status.textContent = 'Traducción al día';
   else if (event.type === 'engine.error' || event.type === 'error') {
     status.textContent = event.message || 'Error del motor local';
     status.classList.add('error');
@@ -113,7 +116,7 @@ toggle.addEventListener('click', async () => {
     return;
   }
   renderCapture(!active);
-  status.textContent = active ? 'Traducción detenida.' : 'Traduciendo esta pestaña.';
+  status.textContent = active ? 'Traducción detenida.' : 'Escuchando esta pestaña.';
 });
 
 chrome.storage.onChanged.addListener((_changes, areaName) => {
