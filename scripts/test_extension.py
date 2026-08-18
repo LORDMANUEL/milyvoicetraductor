@@ -24,6 +24,8 @@ assert set(manifest["permissions"]) <= {
     "activeTab", "tabCapture", "offscreen", "storage", "notifications", "nativeMessaging"
 }
 assert manifest["host_permissions"] == ["http://127.0.0.1/*"]
+content_matches = manifest["content_scripts"][0]["matches"]
+assert set(content_matches) == {"http://*/*", "https://*/*"}, "Overlay debe cubrir web genérica sin <all_urls>"
 public_key = manifest.get("key", "")
 assert public_key, "La extensión debe fijar un ID estable para allowed_origins"
 
@@ -39,6 +41,9 @@ assert "Puerto local" not in settings, "Desktop no debe pedir el puerto del moto
 assert "bind:value={draft.enginePort}" not in settings, "El puerto debe administrarse internamente"
 assert f"const NATIVE_HOST = '{EXPECTED_NATIVE_HOST}'" in background
 assert "connectNative(NATIVE_HOST)" in background, "Falta conexión al host nativo"
+assert "MEETING_URL" not in background, "La captura no debe limitarse a Meet/Teams/Zoom"
+assert "assertCapturableTab(tab)" in background, "Debe validar páginas protegidas antes de capturar"
+assert "Audio del sistema" in background, "El error de tabCapture debe ofrecer fallback del Desktop"
 
 # Consultar el popup debe ser pasivo. Solo START_CAPTURE puede usar `hello`, que
 # arranca el motor y solicita una credencial efímera al bridge.
@@ -53,8 +58,6 @@ start_capture_function = background.split("async function startCapture", 1)[1].s
 assert "requestBridge('hello'" in start_capture_function, "START_CAPTURE debe solicitar sesión efímera"
 
 # El camino caliente negociado debe enviar el ArrayBuffer PCM directamente.
-# Base64 queda únicamente como fallback de compatibilidad hasta que el motor
-# confirme `binaryPcm` en `session.started`.
 assert "binaryPcm: true" in offscreen, "La extensión debe negociar PCM binario"
 assert "websocket.send(event.data)" in offscreen, "El camino caliente debe enviar PCM binario directo"
 assert "payload.binaryPcm === true" in offscreen, "No se debe activar binario sin confirmación del motor"
@@ -63,7 +66,6 @@ assert "arrayBufferToBase64" not in binary_block, "PCM binario no debe pasar por
 
 for path in ext.glob("*.js"):
     text = path.read_text(encoding="utf-8")
-    # El único https permitido en JS es el link visible de descarga del producto.
     if path.name != "popup.js":
         assert "https://" not in text, f"Código remoto/no local en {path.name}"
     external_ws = [
