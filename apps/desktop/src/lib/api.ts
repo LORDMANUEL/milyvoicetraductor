@@ -17,7 +17,7 @@ export const defaultConfig: AppConfig = {
   persistTranscripts: false,
   computeProfile: 'auto',
   enginePort: 8765,
-  activeModelPack: 'business-qwen',
+  activeModelPack: 'realtime-m2m100',
   showOriginalSubtitle: true
 };
 
@@ -29,7 +29,7 @@ export function isTauriEnvironment(): boolean {
 export class DesktopApi {
   async getAppStatus(): Promise<AppStatus> {
     if (!isTauriEnvironment()) return {
-      version: '1.0.0-rc.1-web-preview', engine: 'notInstalled', models: 'notInstalled',
+      version: '1.0.5-web-preview', engine: 'notInstalled', models: 'notInstalled',
       installedModels: 0, extensionConnected: false, activeModelPack: null
     };
     return invoke<AppStatus>('get_app_status');
@@ -43,6 +43,8 @@ export class DesktopApi {
       modelState: 'notInstalled',
       downloadedBytes: 0,
       totalBytes: null,
+      modelPhase: 'idle',
+      modelMessage: null,
       bootstrapState: 'unknown',
       errorCode: null,
       errorMessage: null
