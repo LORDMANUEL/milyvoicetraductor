@@ -11,27 +11,32 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/LORDMANUEL/milyvoicetraductor/releases/download/v2.0.0/MilyVoiceTraductor_2.0.0_x64-setup.exe"><img alt="Descargar para Windows" src="https://img.shields.io/badge/Windows_2.0.0-00A878?style=for-the-badge&logo=windows11&logoColor=white"></a>
-  <a href="https://github.com/LORDMANUEL/milyvoicetraductor/releases/download/v2.0.0/MilyVoiceTraductor-Chromium-Extension.zip"><img alt="Extensión Chromium" src="https://img.shields.io/badge/Extensión_Chromium-1769E0?style=for-the-badge&logo=googlechrome&logoColor=white"></a>
+  <img alt="Windows 2.0.0 Stable" src="https://img.shields.io/badge/Windows_2.0.0-Stable-00A878?style=for-the-badge&logo=windows11&logoColor=white">
+  <img alt="CI 852 verified" src="https://img.shields.io/badge/CI_852-Verified-1769E0?style=for-the-badge&logo=githubactions&logoColor=white">
 </p>
 
-<p align="center">
-  <a href="https://github.com/LORDMANUEL/milyvoicetraductor/releases/tag/v2.0.0">Ver release 2.0.0</a>
-  ·
-  <a href="https://github.com/LORDMANUEL/milyvoicetraductor/releases/download/v2.0.0/SHA256SUMS.txt">Verificar SHA-256</a>
-  ·
-  <a href="https://github.com/LORDMANUEL/milyvoicetraductor/releases/download/v2.0.0/MilyVoiceTraductor-2.0.0-MegaBench.json">MegaBench</a>
-</p>
+> **Release estable actual: 2.0.0.** La candidata `0403d63ff0b9387a84e55a014387b3074e033467` superó CI #852 completo y fue promovida a `main`. Pasó guards, Frontend, motor Python, Rust core, MegaBench con modelos reales, `WINDOWS_GUI`, Tauri NSIS e instalación real del instalador generado.
 
-> **Candidata actual: 2.0.0 RC.** La rama `pruebas` no se declara Stable hasta que el mismo SHA supere tests Python/Frontend/Rust, Clippy, MegaBench con modelos reales, Windows GUI, NSIS e instalación real. El release público v2.0.0 solo se publica desde `main` después de esos gates.
+## Estado de entrega 2.0.0
+
+El build validado genera conjuntamente:
+
+- `MilyVoiceTraductor_2.0.0_x64-setup.exe`;
+- `MilyVoiceTraductor-Chromium-Extension.zip`;
+- `MilyVoiceTraductor-2.0.0-MegaBench.json`;
+- `SHA256SUMS.txt`.
+
+El artefacto de referencia fue producido por **CI #852** sobre el mismo SHA probado. El README no publica enlaces ficticios a una GitHub Release que todavía no exista; el build verificable queda asociado al workflow correspondiente.
+
+[Ver CI #852 y su artefacto verificado](https://github.com/LORDMANUEL/milyvoicetraductor/actions/runs/32188948683)
 
 ## Qué cambia en 2.0
 
-MilyVoice 2.0 es un salto de arquitectura, no un simple cambio de número:
+MilyVoice 2.0 es un salto de arquitectura y rendimiento:
 
 - **CPU realtime optimizada:** presupuesto por núcleos físicos, INT8, ventanas adaptativas, energy gate, parciales estables, ASR/MT desacoplados, backpressure y warm-up.
 - **MilyCompute Foundation:** CPU siempre disponible y registro/selección conservadora de CUDA, DirectML, OpenVINO y Vulkan. Detectar un runtime no significa afirmar que el adaptador del modelo ya esté listo.
-- **Hardware Advisor:** topología CPU real, características AVX/AVX2/FMA/AVX512 cuando existan y base para selección por benchmark, no por marca.
+- **Hardware Advisor:** topología CPU real, AVX/AVX2/FMA/AVX512 cuando existan y base para selección por benchmark, no por marca.
 - **Audio universal:** pestaña Chromium, micrófono, archivo multimedia y audio del sistema con WASAPI loopback/fallback protegido.
 - **Multimodal realtime:** subtítulos, educativo, karaoke, múltiples hablantes, TTS local, ducking y sesiones exportables.
 - **MegaBench 2.0:** P50/P95, RTF y smoke con Whisper Small + M2M100 reales en Windows antes de empaquetar el artefacto.
@@ -47,13 +52,13 @@ voz ES → ASR ES → MT ES→EN → texto/voz EN
 voz ES → ASR ES → MT ES→ZH → texto/voz ZH
 ```
 
-**EN→ES y ZH→ES son los caminos receptores prioritarios** para reuniones, videos y cursos. ES→EN y ES→ZH son Tier 1 de la arquitectura bidireccional y solo se anuncian como funcionales cuando el protocolo/router correspondiente haya superado sus gates.
+**EN→ES y ZH→ES son los caminos receptores prioritarios** para reuniones, videos y cursos. ES→EN y ES→ZH forman parte de la arquitectura Tier 1 bidireccional y solo se anuncian como funcionales cuando el protocolo/router correspondiente haya superado sus gates.
 
 ASR significa voz→texto; MT realiza la traducción entre idiomas.
 
 ## Modelo estable y Model Labs
 
-El baseline de producción continúa siendo:
+El baseline estable de producción continúa siendo:
 
 ```text
 Systran/faster-whisper-small
@@ -67,14 +72,27 @@ CTranslate2 INT8
 
 No se sustituyen esos pesos automáticamente por experimentos.
 
-- **TriCore / Quality:** trainers, evaluación y exportación preparados; los pesos fine-tuned no se consideran promocionados hasta existir y superar los gates.
+- **TriCore / Quality:** trainers, evaluación y exportación preparados; los pesos fine-tuned no se consideran promocionados hasta existir y superar los promotion gates.
 - **Legacy CPU:** laboratorio para Whisper Tiny + MT pequeño INT8 con objetivo i3 Haswell; no se considera Stable sin pesos finales y benchmark físico en ese hardware.
 
 El MegaBench del runner GitHub detecta regresiones de 2.0, pero **no sustituye el benchmark físico Legacy**.
 
-## Instalación Windows sin terminal
+## Windows sin CMD ni consola negra
 
-El usuario ejecuta un único instalador gráfico. El paquete incluye:
+La versión 2.0 corrige específicamente el problema de ventanas de terminal visibles.
+
+- `MilyVoiceTraductor.exe` se compila como `IMAGE_SUBSYSTEM_WINDOWS_GUI`.
+- El Native Messaging bridge Release usa subsistema Windows, sin consola.
+- El motor Python privado se inicia con `CREATE_NO_WINDOW` y streams anulados.
+- La reparación PowerShell usa `CREATE_NO_WINDOW`, modo no interactivo y streams anulados.
+- CI #852 verifica el subsistema GUI antes de crear NSIS.
+- El NSIS generado se instala realmente en el runner antes de publicar el artefacto.
+
+El usuario ejecuta un único instalador gráfico. No necesita instalar Python, `winget`, pip ni crear un venv manualmente.
+
+## Instalación Windows
+
+El paquete incluye:
 
 - Desktop Tauri/Rust;
 - Python 3.13 x64 privado;
@@ -85,7 +103,7 @@ El usuario ejecuta un único instalador gráfico. El paquete incluye:
 - diagnóstico/reparación;
 - registro local necesario para auto-reconocimiento.
 
-No requiere instalar Python, `winget`, pip o un venv manualmente. Los pesos del modelo se descargan desde Hugging Face durante la preparación visual de la aplicación y se verifican antes de activarse.
+Los pesos del modelo se descargan desde Hugging Face durante la preparación visual de la aplicación y se verifican antes de activarse.
 
 ## Fuentes y modos
 
@@ -94,7 +112,7 @@ No requiere instalar Python, `winget`, pip o un venv manualmente. Los pesos del 
 - cualquier pestaña `http/https` capturable en Chrome/Edge/Brave/Chromium;
 - micrófono;
 - audio del sistema Windows;
-- MP4/WebM/MP3/WAV/M4A y otros formatos que soporte el reproductor interno.
+- MP4/WebM/MP3/WAV/M4A y otros formatos soportados por el reproductor interno.
 
 **Vistas:**
 
@@ -126,33 +144,44 @@ audio → 127.0.0.1 → ASR → MT → subtítulos/TTS/sesión
 - modelos por revisión fijada y activación atómica;
 - sin tokens, contraseñas, audio o transcripciones dentro de Git.
 
-## MegaBench y Definition of Done
+## MegaBench 2.0 — build estable
 
-Un ZIP de 2.0 solo es entregable cuando el **mismo SHA** produce:
+CI #852 ejecutó el pack real `realtime-m2m100@1.0.0` sobre Windows y obtuvo:
 
-1. Python unit tests + `compileall`;
-2. stress de colas/backpressure/telemetría/CPU;
-3. Frontend typecheck/tests/build;
-4. `cargo fmt`, workspace tests y Clippy `-D warnings`;
-5. runtime Python privado verificado;
-6. instalación/bridge/Native Messaging reales;
-7. **MegaBench real** con Whisper Small y M2M100: ASR P50/P95, ASR RTF, MT EN→ES P50/P95 y MT ZH→ES P50/P95;
-8. Desktop Release `WINDOWS_GUI`;
-9. Tauri NSIS;
-10. instalación real del NSIS generado;
-11. extensión ZIP;
-12. `MilyVoiceTraductor-2.0.0-MegaBench.json`;
-13. `SHA256SUMS.txt`.
+| Métrica | Resultado |
+|---|---:|
+| ASR P50 | 2457 ms |
+| ASR P95 | 2897 ms |
+| ASR RTF P95 | **0.248** |
+| MT EN→ES P95 | **447 ms** |
+| MT ZH→ES P95 | **504 ms** |
+| End-to-end P95 estimado | **3400 ms** |
+| Gate | **PASS** |
 
-### Descargar
+El fixture ASR reconoció correctamente una frase inglesa de prueba con números y negación. El gate ejecutó 5 inferencias ASR y 24 traducciones por dirección EN→ES y ZH→ES.
 
-**[⬇ MilyVoiceTraductor 2.0.0 Windows x64](https://github.com/LORDMANUEL/milyvoicetraductor/releases/download/v2.0.0/MilyVoiceTraductor_2.0.0_x64-setup.exe)**
+## Definition of Done 2.0
 
-**[⬇ Extensión Chromium](https://github.com/LORDMANUEL/milyvoicetraductor/releases/download/v2.0.0/MilyVoiceTraductor-Chromium-Extension.zip)**
+La versión estable fue promovida solo después de pasar, sobre el mismo SHA:
 
-**[⬇ MegaBench 2.0](https://github.com/LORDMANUEL/milyvoicetraductor/releases/download/v2.0.0/MilyVoiceTraductor-2.0.0-MegaBench.json)**
-
-El instalador también deja la extensión preparada en `%LOCALAPPDATA%\MilyVoiceTraductor\extension`. Chromium exige autorización explícita para instalar una extensión fuera de tienda y para comenzar `tabCapture`.
+1. consistencia de versión 2.0.0;
+2. source verification y privacy scan;
+3. extension/site guards;
+4. Python unit tests + `compileall`;
+5. stress realtime, CPU budget, queue/backpressure y telemetría;
+6. Frontend typecheck/tests/build;
+7. Rust core tests y Clippy `-D warnings`;
+8. runtime Python privado y bootstrap offline;
+9. installed-flow + Native Messaging;
+10. MegaBench real Whisper Small + M2M100;
+11. workspace tests Windows;
+12. Clippy Windows;
+13. Desktop Release;
+14. `WINDOWS_GUI`;
+15. Tauri NSIS;
+16. instalación real del NSIS generado;
+17. extensión Chromium ZIP;
+18. SHA-256 de los artefactos.
 
 ## Ingeniería
 
@@ -169,4 +198,4 @@ El instalador también deja la extensión preparada en `%LOCALAPPDATA%\MilyVoice
 
 El código propio de MilyVoiceTraductor se distribuye bajo **MIT**. Los pesos externos conservan sus licencias originales y no se redistribuyen dentro del repositorio.
 
-<p align="center"><strong>MilyVoiceTraductor 2.0</strong><br/>Local · realtime · adaptive compute</p>
+<p align="center"><strong>MilyVoiceTraductor 2.0.0 Stable</strong><br/>Local · realtime · adaptive compute</p>
