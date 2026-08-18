@@ -10,6 +10,8 @@ function state(overrides: Partial<OnboardingStatus> = {}): OnboardingStatus {
     modelState: 'ready',
     downloadedBytes: 0,
     totalBytes: null,
+    modelPhase: 'ready',
+    modelMessage: 'Modelo de tiempo real listo.',
     bootstrapState: 'ready',
     errorCode: null,
     errorMessage: null,
@@ -19,8 +21,8 @@ function state(overrides: Partial<OnboardingStatus> = {}): OnboardingStatus {
 
 describe('automatic onboarding', () => {
   it('starts automatically when the model is missing', () => {
-    expect(needsOnboarding(state({ modelState: 'notInstalled' }))).toBe(true);
-    expect(onboardingStep(state({ modelState: 'notInstalled' }))).toBe('model');
+    expect(needsOnboarding(state({ modelState: 'notInstalled', modelPhase: 'idle' }))).toBe(true);
+    expect(onboardingStep(state({ modelState: 'notInstalled', modelPhase: 'idle' }))).toBe('model');
   });
 
   it('stays in recovery when the embedded runtime is broken', () => {

@@ -4,8 +4,8 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="theme-color" content="#00a878" />
-  <meta name="description" content="MilyVoiceTraductor: traducción local de reuniones de inglés o chino a español, con instalación simple, autoreconocimiento y privacidad por defecto." />
-  <title>MilyVoiceTraductor · Traducción local y privada</title>
+  <meta name="description" content="MilyVoiceTraductor 2.0: voz, subtítulos y traducción local en tiempo real para español, inglés y chino, con MilyCompute y MegaBench." />
+  <title>MilyVoiceTraductor 2.0 · Traducción local adaptativa</title>
   <link rel="stylesheet" href="./styles.css" />
 </head>
 <body>
@@ -15,47 +15,47 @@
       <span><b>Mily</b><em>Voice</em>Traductor</span>
     </a>
     <nav aria-label="Navegación del sitio">
-      <a href="#producto">Producto</a>
+      <a href="#producto">2.0</a>
+      <a href="#compute">MilyCompute</a>
       <a href="#privacidad">Privacidad</a>
-      <a href="#arquitectura">Cómo funciona</a>
       <a href="#estado">Descargas</a>
     </nav>
-    <a class="ghost-button" href="https://github.com/LORDMANUEL/milyvoicetraductor/releases/download/v1.0.0-rc.1/MilyVoiceTraductor_1.0.0-rc.1_x64-setup.exe">Descargar</a>
+    <a class="ghost-button" href="https://github.com/LORDMANUEL/milyvoicetraductor/releases/download/v2.0.0/MilyVoiceTraductor_2.0.0_x64-setup.exe">Descargar</a>
   </header>
 
   <main id="inicio">
     <section class="hero wrap">
       <div class="hero-copy">
-        <div class="eyebrow">IA local · Privacidad por defecto</div>
-        <h1>Entiende la reunión.<br /><span>Sin regalar el audio.</span></h1>
-        <p>Traduce reuniones web en inglés o chino a español con subtítulos y procesamiento local. Instala la app y la extensión: se reconocen automáticamente, sin copiar tokens ni configurar puertos.</p>
+        <div class="eyebrow">2.0 RC · IA local · MegaBench</div>
+        <h1>Escucha. Traduce.<br /><span>Sin regalar el audio.</span></h1>
+        <p>MilyVoiceTraductor 2.0 combina traducción local en tiempo real, audio universal y selección adaptativa de cómputo para reuniones, pestañas web, micrófono, audio de Windows, videos, cursos y karaoke.</p>
         <div class="actions">
-          <a class="primary-button" href="https://github.com/LORDMANUEL/milyvoicetraductor/releases/download/v1.0.0-rc.1/MilyVoiceTraductor_1.0.0-rc.1_x64-setup.exe">Descargar para Windows</a>
-          <a class="text-link" href="https://github.com/LORDMANUEL/milyvoicetraductor/releases/download/v1.0.0-rc.1/MilyVoiceTraductor-Chromium-Extension.zip">Extensión Chromium →</a>
+          <a class="primary-button" href="https://github.com/LORDMANUEL/milyvoicetraductor/releases/download/v2.0.0/MilyVoiceTraductor_2.0.0_x64-setup.exe">Descargar Windows 2.0</a>
+          <a class="text-link" href="https://github.com/LORDMANUEL/milyvoicetraductor/releases/download/v2.0.0/MilyVoiceTraductor-Chromium-Extension.zip">Extensión Chromium →</a>
         </div>
         <ul class="trust-row" aria-label="Principios principales">
-          <li><span>✓</span> Python incluido</li>
-          <li><span>✓</span> Sin telemetría</li>
+          <li><span>✓</span> Runtime privado</li>
+          <li><span>✓</span> CPU first</li>
           <li><span>✓</span> Procesamiento local</li>
         </ul>
       </div>
-      <div class="hero-visual" aria-label="Vista conceptual de MilyVoiceTraductor">
+      <div class="hero-visual" aria-label="Vista conceptual de MilyVoiceTraductor 2.0">
         <div class="app-window">
-          <div class="window-bar"><i></i><i></i><i></i><span>MilyVoiceTraductor</span></div>
+          <div class="window-bar"><i></i><i></i><i></i><span>MilyVoiceTraductor 2.0</span></div>
           <div class="window-body">
             <div class="mini-sidebar">
               <img src="./assets/logo.svg" alt="" />
               <b></b><b></b><b></b><b></b><b></b>
             </div>
             <div class="mini-content">
-              <small>TRADUCCIÓN LOCAL</small>
+              <small>TIER 1 · EN / ES / ZH</small>
               <h2>English / 中文</h2>
               <div class="arrow">↓</div>
               <div class="subtitle-card">
                 <span>ES</span>
-                <p>Buenos días a todos, comencemos nuestra reunión.</p>
+                <p>Buenos días. La reunión comienza a las nueve.</p>
               </div>
-              <div class="privacy-chip"><i></i>Procesamiento local</div>
+              <div class="privacy-chip"><i></i>Local · realtime</div>
             </div>
           </div>
         </div>
@@ -64,62 +64,58 @@
 
     <section id="producto" class="section wrap">
       <div class="section-heading">
-        <span>Producto</span>
-        <h2>Instala dos piezas. El resto se configura solo.</h2>
-        <p>Instala MilyVoiceTraductor y añade la extensión Chromium. El bridge local las enlaza automáticamente y la aplicación prepara el modelo recomendado durante el primer inicio.</p>
+        <span>MilyVoiceTraductor 2.0</span>
+        <h2>Un gran salto de optimización y sistema.</h2>
+        <p>La candidata 2.0 no cambia solamente la interfaz: reorganiza el pipeline realtime, incorpora MilyCompute Foundation, añade audio universal y somete el paquete final a un benchmark real antes de permitir el artefacto.</p>
       </div>
       <div class="feature-grid">
-        <article><div class="feature-icon emerald">01</div><h3>Runtime incluido</h3><p>Python 3.13 y las dependencias del motor viajan dentro del instalador. No necesitas winget, Python del sistema ni pip durante la instalación.</p></article>
-        <article><div class="feature-icon sapphire">02</div><h3>Autoreconocimiento</h3><p>App y extensión se descubren por Native Messaging local. Sin token que copiar y sin puerto que escribir.</p></article>
-        <article><div class="feature-icon emerald">03</div><h3>Modelo automático</h3><p>Business Qwen se descarga, verifica y activa desde una pantalla de primera preparación con reintento recuperable.</p></article>
-        <article><div class="feature-icon sapphire">04</div><h3>IA en tu equipo</h3><p>Reconocimiento y traducción se ejecutan localmente, con CPU como base y aceleración GPU opcional.</p></article>
+        <article><div class="feature-icon emerald">01</div><h3>Realtime optimizado</h3><p>PCM binario, energy gate, ventanas adaptativas, parciales estables, warm-up, colas limitadas y control de presión evitan atraso acumulativo.</p></article>
+        <article><div class="feature-icon sapphire">02</div><h3>Audio universal</h3><p>Pestaña Chromium, micrófono, media local y audio del sistema Windows mediante loopback/fallback protegido.</p></article>
+        <article><div class="feature-icon emerald">03</div><h3>Hablantes y karaoke</h3><p>SpeakerId local, colores, TTS por hablante, modo educativo, word timestamps y degradación por frase bajo presión.</p></article>
+        <article><div class="feature-icon sapphire">04</div><h3>MegaBench</h3><p>Whisper Small y M2M100 reales producen P50/P95 y RTF en Windows antes de empaquetar EXE, extensión y hashes.</p></article>
+      </div>
+    </section>
+
+    <section id="compute" class="section wrap">
+      <div class="section-heading"><span>MilyCompute</span><h2>Usar el hardware que realmente rinde mejor.</h2><p>CPU es siempre el fallback. CUDA, DirectML, OpenVINO y Vulkan forman parte del registry de arquitectura y solo se seleccionan cuando existe un adaptador compatible y una medición real. Detectar una GPU nunca se presenta como soporte funcional inexistente.</p></div>
+      <div class="architecture-card">
+        <div class="arch-node"><small>DETECTAR</small><strong>CPU / GPU / runtime</strong><p>Núcleos físicos, AVX, memoria y backends candidatos.</p></div>
+        <div class="connector">→</div>
+        <div class="arch-node highlighted"><small>MEDIR</small><strong>P50 · P95 · RTF</strong><p>El benchmark decide; la marca del hardware no.</p></div>
+        <div class="connector">→</div>
+        <div class="arch-node future"><small>RUTEAR</small><strong>Mejor backend válido</strong><p>Fallback seguro a CPU si el candidato no está listo.</p></div>
       </div>
     </section>
 
     <section id="privacidad" class="privacy-section">
       <div class="wrap privacy-layout">
-        <div>
-          <span class="section-label">Privacidad</span>
-          <h2>Tu reunión no debería convertirse en telemetría.</h2>
-          <p>El motor trabaja en localhost. Los logs se sanitizan, no hay tracking y las transcripciones solo se guardan cuando tú lo decides.</p>
-        </div>
+        <div><span class="section-label">Privacidad</span><h2>La conversación permanece local.</h2><p>ASR, traducción, TTS y sesiones trabajan en localhost. Solo la preparación inicial de pesos requiere Internet.</p></div>
         <div class="privacy-list">
-          <div><span>✓</span><p><b>Sin tracking.</b><br />La aplicación y la web no usan analytics, píxeles ni telemetría del contenido.</p></div>
-          <div><span>✓</span><p><b>Sin audio persistente por defecto.</b><br />El contenido no se almacena como requisito para traducir.</p></div>
-          <div><span>✓</span><p><b>Credencial efímera.</b><br />La extensión autorizada recibe acceso local temporal; no guarda un token permanente.</p></div>
+          <div><span>✓</span><p><b>Sin tracking del contenido.</b><br />No hay analytics de la conversación.</p></div>
+          <div><span>✓</span><p><b>Persistencia opt-in.</b><br />Audio y transcripciones no se guardan por defecto.</p></div>
+          <div><span>✓</span><p><b>Native Messaging restringido.</b><br />App y extensión se enlazan localmente con credenciales efímeras.</p></div>
         </div>
-      </div>
-    </section>
-
-    <section id="arquitectura" class="section wrap">
-      <div class="section-heading compact"><span>Cómo funciona</span><h2>Reunión web → extensión reconocida → IA local → español.</h2></div>
-      <div class="architecture-card">
-        <div class="arch-node"><small>REUNIÓN</small><strong>Chrome / Edge / Brave</strong><p>La extensión captura solamente la pestaña que autorizas.</p></div>
-        <div class="connector">→</div>
-        <div class="arch-node highlighted"><small>TU EQUIPO</small><strong>MilyVoiceTraductor</strong><p>Native Messaging enlaza la extensión y el motor local automáticamente.</p></div>
-        <div class="connector">→</div>
-        <div class="arch-node future"><small>RESULTADO</small><strong>Subtítulos en español</strong><p>Lee la conversación mientras la reunión continúa.</p></div>
       </div>
     </section>
 
     <section id="estado" class="section wrap">
-      <div class="section-heading"><span>Release candidate</span><h2>MilyVoiceTraductor 1.0.0-rc.1</h2><p>El EXE ya incluye runtime y dependencias. La primera conexión a Internet se usa para descargar los pesos del modelo; después la traducción está diseñada para ejecutarse localmente.</p></div>
+      <div class="section-heading"><span>Candidata actual</span><h2>MilyVoiceTraductor 2.0.0</h2><p>2.0.0 permanece RC en `pruebas` hasta que el mismo SHA supere MegaBench real, Windows GUI, NSIS e instalación automatizada del instalador generado.</p></div>
       <div class="roadmap">
-        <article class="done"><span>1</span><div><b>Instalar</b><p>Desktop, Python privado, motor, bridge y extensión quedan preparados desde el paquete Windows.</p></div></article>
-        <article class="done"><span>2</span><div><b>Reconocer</b><p>La extensión encuentra la aplicación automáticamente; no pide token ni puerto.</p></div></article>
-        <article class="done"><span>3</span><div><b>Preparar IA</b><p>El modelo recomendado se descarga con staging, verificación y reintento recuperable.</p></div></article>
-        <article class="done"><span>4</span><div><b>Traducir</b><p>Abre Meet, Teams Web o Zoom Web y pulsa Iniciar traducción.</p></div></article>
+        <article class="done"><span>1</span><div><b>Runtime privado</b><p>Python 3.13, motor, bridge y extensión sin instalación manual de Python.</p></div></article>
+        <article class="done"><span>2</span><div><b>Realtime</b><p>CPU optimizada, backpressure, WASAPI, speakers, TTS, karaoke y exportación.</p></div></article>
+        <article class="done"><span>3</span><div><b>MilyCompute Foundation</b><p>Registry, selección conservadora y base de benchmark por hardware.</p></div></article>
+        <article class="done"><span>4</span><div><b>MegaTest</b><p>Modelo real, P50/P95/RTF, Clippy, NSIS real, extensión y SHA-256.</p></div></article>
       </div>
       <div class="cta-card">
-        <div><small>WINDOWS X64 · RC1</small><h2>Pruébalo en una reunión real.</h2><p>Si el runtime incluido necesita recuperación, la propia aplicación ofrece Reparar instalación.</p></div>
-        <a class="primary-button" href="https://github.com/LORDMANUEL/milyvoicetraductor/releases/download/v1.0.0-rc.1/MilyVoiceTraductor_1.0.0-rc.1_x64-setup.exe">Descargar Windows</a>
+        <div><small>WINDOWS X64 · 2.0.0</small><h2>Un artefacto, cuatro evidencias.</h2><p>EXE NSIS + extensión Chromium + MegaBench JSON + SHA256SUMS deben provenir del mismo commit verificado.</p></div>
+        <a class="primary-button" href="https://github.com/LORDMANUEL/milyvoicetraductor/releases/download/v2.0.0/MilyVoiceTraductor_2.0.0_x64-setup.exe">Descargar Windows</a>
       </div>
     </section>
   </main>
 
   <footer class="wrap">
     <div class="brand footer-brand"><img src="./assets/logo.svg" alt="" /><span><b>Mily</b><em>Voice</em>Traductor</span></div>
-    <p>1.0.0-rc.1 · Runtime privado · Procesamiento local · Sin telemetría.</p>
+    <p>2.0.0 · Runtime privado · MilyCompute · MegaBench · Sin telemetría.</p>
   </footer>
   <script src="./app.js" defer></script>
 </body>

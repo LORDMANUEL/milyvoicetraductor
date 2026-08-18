@@ -3,6 +3,9 @@
 //! Este crate no conoce Tauri. Descubre primero el runtime privado incluido por
 //! el instalador y mantiene compatibilidad de desarrollo con layouts anteriores.
 
+mod hardware;
+pub use hardware::hardware_runtime_environment;
+
 use mily_config::AppPaths;
 use mily_core::{ComponentState, EngineRuntimeStatus};
 use serde::{Deserialize, Serialize};
@@ -178,6 +181,9 @@ impl EngineProcessManager {
         let spec = LaunchSpec::discover(&self.paths).ok_or(EngineError::NotInstalled)?;
         let _ = self.pairing_token()?;
         let mut command = spec.command();
+        for (key, value) in hardware_runtime_environment() {
+            command.env(key, value);
+        }
         command
             .arg("serve")
             .arg("--port")

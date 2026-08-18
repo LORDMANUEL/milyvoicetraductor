@@ -11,6 +11,8 @@ ext = root / "apps" / "extension"
 manifest = json.loads((ext / "manifest.json").read_text(encoding="utf-8"))
 popup = (ext / "popup.html").read_text(encoding="utf-8")
 background = (ext / "background.js").read_text(encoding="utf-8")
+offscreen = (ext / "offscreen.js").read_text(encoding="utf-8")
+tts = (ext / "tts.js").read_text(encoding="utf-8")
 settings = (root / "apps" / "desktop" / "src" / "pages" / "Settings.svelte").read_text(encoding="utf-8")
 
 EXPECTED_EXTENSION_ID = "edcpjonegaempcifgodcmgejbcpdpddm"
@@ -20,9 +22,12 @@ assert manifest["manifest_version"] == 3
 assert "<all_urls>" not in json.dumps(manifest)
 assert "nativeMessaging" in manifest["permissions"], "Falta nativeMessaging para autoreconocimiento"
 assert set(manifest["permissions"]) <= {
-    "activeTab", "tabCapture", "offscreen", "storage", "notifications", "nativeMessaging"
+    "activeTab", "tabCapture", "offscreen", "storage", "notifications", "nativeMessaging", "scripting", "tts"
 }
+assert "scripting" in manifest["permissions"], "La inyección bajo demanda requiere scripting"
+assert "tts" in manifest["permissions"], "La voz española del navegador requiere permiso tts local"
 assert manifest["host_permissions"] == ["http://127.0.0.1/*"]
+assert not manifest.get("content_scripts"), "El overlay no debe inyectarse permanentemente en todas las webs"
 public_key = manifest.get("key", "")
 assert public_key, "La extensión debe fijar un ID estable para allowed_origins"
 
@@ -38,6 +43,15 @@ assert "Puerto local" not in settings, "Desktop no debe pedir el puerto del moto
 assert "bind:value={draft.enginePort}" not in settings, "El puerto debe administrarse internamente"
 assert f"const NATIVE_HOST = '{EXPECTED_NATIVE_HOST}'" in background
 assert "connectNative(NATIVE_HOST)" in background, "Falta conexión al host nativo"
+assert "MEETING_URL" not in background, "La captura no debe limitarse a Meet/Teams/Zoom"
+assert "assertCapturableTab(tab)" in background, "Debe validar páginas protegidas antes de capturar"
+assert "Audio del sistema" in background, "El error de tabCapture debe ofrecer fallback del Desktop"
+assert "chrome.scripting.executeScript" in background, "El overlay debe inyectarse bajo demanda"
+assert "chrome.scripting.insertCSS" in background, "El CSS del overlay debe inyectarse bajo demanda"
+assert "ensureOverlay(tab.id)" in background, "START_CAPTURE debe preparar overlay solo en la pestaña elegida"
+assert "speakTranslation" in background, "La traducción final debe poder activar TTS local"
+assert "tts.started" in offscreen and "tts.finished" in offscreen, "TTS debe avisar al motor para anti-feedback"
+assert "chrome.tts.speak" in tts, "La extensión debe usar síntesis local de Chromium/Windows"
 
 # Consultar el popup debe ser pasivo. Solo START_CAPTURE puede usar `hello`, que
 # arranca el motor y solicita una credencial efímera al bridge.
@@ -51,9 +65,15 @@ start_capture_function = background.split("async function startCapture", 1)[1].s
 )[0]
 assert "requestBridge('hello'" in start_capture_function, "START_CAPTURE debe solicitar sesión efímera"
 
+# El camino caliente negociado debe enviar el ArrayBuffer PCM directamente.
+assert "binaryPcm: true" in offscreen, "La extensión debe negociar PCM binario"
+assert "websocket.send(event.data)" in offscreen, "El camino caliente debe enviar PCM binario directo"
+assert "payload.binaryPcm === true" in offscreen, "No se debe activar binario sin confirmación del motor"
+binary_block = offscreen.split("if (binaryPcmActive)", 1)[1].split("websocket.send(JSON.stringify", 1)[0]
+assert "arrayBufferToBase64" not in binary_block, "PCM binario no debe pasar por Base64"
+
 for path in ext.glob("*.js"):
     text = path.read_text(encoding="utf-8")
-    # El único https permitido en JS es el link visible de descarga del producto.
     if path.name != "popup.js":
         assert "https://" not in text, f"Código remoto/no local en {path.name}"
     external_ws = [

@@ -17,6 +17,8 @@ export interface OnboardingStatus {
   modelState: ComponentState;
   downloadedBytes: number;
   totalBytes: number | null;
+  modelPhase: 'idle' | 'prepare' | 'download' | 'optimize' | 'verify' | 'ready' | 'failed' | string;
+  modelMessage: string | null;
   bootstrapState: 'ready' | 'model-pending' | 'installing' | 'failed' | 'unknown';
   errorCode: string | null;
   errorMessage: string | null;
@@ -27,6 +29,11 @@ export interface EngineRuntimeStatus {
   pid: number | null;
   port: number;
   message: string;
+}
+
+export interface LocalEngineSession {
+  port: number;
+  credential: string;
 }
 
 export interface ModelPackInfo {
@@ -55,13 +62,44 @@ export interface RuntimeLocations {
   extension: string;
 }
 
+export interface CpuFeatures {
+  sse42: boolean;
+  avx: boolean;
+  avx2: boolean;
+  fma: boolean;
+  avx512f: boolean;
+  neon: boolean;
+}
+
 export interface SystemSnapshot {
   operatingSystem: string;
   architecture: string;
   cpuBrand: string;
   logicalCpus: number;
+  physicalCpus: number;
   totalMemoryMb: number;
+  availableMemoryMb: number;
+  cpuFeatures: CpuFeatures;
   gpu: string | null;
+}
+
+export type ComputeBackend = 'cpu' | 'cuda' | 'directMl' | 'openVino' | 'vulkan';
+
+export interface BackendCapability {
+  backend: ComputeBackend;
+  runtimeDetected: boolean;
+  adapterReady: boolean;
+  evidence: string[];
+}
+
+export interface HardwareAdvisor {
+  system: SystemSnapshot;
+  backends: BackendCapability[];
+  recommendedBackend: ComputeBackend;
+  recommendedProfile: 'legacy' | 'balanced' | 'performance' | string;
+  legacyHaswellCompatible: boolean;
+  benchmarkRequired: boolean;
+  message: string;
 }
 
 export interface AppConfig {
@@ -77,8 +115,54 @@ export interface AppConfig {
   persistTranscripts: boolean;
   computeProfile: 'auto' | 'cpu' | 'gpu';
   enginePort: number;
-  activeModelPack: 'lite-nllb' | 'business-qwen';
+  activeModelPack: 'realtime-m2m100' | 'lite-nllb' | 'business-qwen';
   showOriginalSubtitle: boolean;
+}
+
+export type SessionMode = 'meeting' | 'education' | 'karaoke' | 'compact';
+export type SpeakerFocusMode = 'all' | 'dominant' | 'fixed';
+export type AudioSourceMode = 'browser_tab' | 'microphone' | 'media_file' | 'system_loopback';
+
+export interface RealtimeWord {
+  start: number;
+  end: number;
+  text: string;
+}
+
+export interface RealtimeEvent {
+  protocol: number;
+  type: string;
+  start?: number;
+  end?: number;
+  original?: string;
+  translation?: string;
+  language?: string;
+  words?: RealtimeWord[];
+  sessionMode?: SessionMode;
+  sourceMode?: AudioSourceMode;
+  speakerDetection?: boolean;
+  speakerId?: string | null;
+  focusMode?: SpeakerFocusMode;
+  rms?: number;
+  peak?: number;
+  silentMs?: number;
+  speech?: boolean;
+  pressure?: 'healthy' | 'pressure' | 'overloaded';
+  audioQueueMs?: number;
+  realTimeFactor?: number;
+  asrP50Ms?: number;
+  asrP95Ms?: number;
+  translationP50Ms?: number;
+  translationP95Ms?: number;
+  translationQueueDepth?: number;
+  cpuProfile?: string;
+  physicalCores?: number;
+  asrThreads?: number;
+  translationThreads?: number;
+  parallelStages?: boolean;
+  message?: string;
+  code?: string;
+  binaryPcm?: boolean;
 }
 
 export interface CacheStatus {

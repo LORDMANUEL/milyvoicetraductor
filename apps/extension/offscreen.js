@@ -8,6 +8,7 @@ let workletNode = null;
 let websocket = null;
 let activeTabId = null;
 let stopping = false;
+let binaryPcmActive = false;
 
 function arrayBufferToBase64(buffer) {
   const bytes = new Uint8Array(buffer);
@@ -28,6 +29,12 @@ function publishTranslation(payload) {
   chrome.runtime.sendMessage({ type: 'TRANSLATION_EVENT', tabId: activeTabId, payload }).catch(() => undefined);
 }
 
+function sendControl(type, fields = {}) {
+  if (websocket?.readyState !== WebSocket.OPEN) return false;
+  websocket.send(JSON.stringify({ protocol: 1, type, targetLanguage: 'es', ...fields }));
+  return true;
+}
+
 async function cleanup() {
   stopping = true;
   if (websocket && websocket.readyState === WebSocket.OPEN) {
@@ -43,6 +50,7 @@ async function cleanup() {
   audioContext = null;
   mediaStream = null;
   activeTabId = null;
+  binaryPcmActive = false;
   stopping = false;
 }
 
@@ -87,23 +95,46 @@ async function startCapture(message) {
       type: 'client.hello',
       sourceLanguage: message.sourceLanguage || 'auto',
       targetLanguage: 'es',
-      persistTranscript: Boolean(message.persistTranscript)
+      sessionMode: message.sessionMode || 'meeting',
+      sourceMode: 'browser_tab',
+      speakerDetection: Boolean(message.speakerDetection),
+      speakerFocusMode: message.speakerFocusMode || 'all',
+      speakerId: message.speakerId || null,
+      persistTranscript: Boolean(message.persistTranscript),
+      binaryPcm: true
     }));
     publishEngineEvent({ type: 'connected' });
   });
   websocket.addEventListener('message', (event) => {
     let payload;
     try { payload = JSON.parse(event.data); } catch (_) { return; }
-    if (payload.type === 'translation.final') publishTranslation(payload);
+    if (payload.type === 'session.started') {
+      binaryPcmActive = payload.binaryPcm === true;
+    }
+    if (
+      payload.type === 'translation.final' ||
+      payload.type === 'translation.partial' ||
+      payload.type === 'transcription.partial' ||
+      payload.type === 'transcription.final' ||
+      payload.type === 'pipeline.metrics' ||
+      payload.type === 'speaker.changed'
+    ) {
+      publishTranslation(payload);
+    }
     publishEngineEvent(payload);
   });
   websocket.addEventListener('close', () => {
+    binaryPcmActive = false;
     if (!stopping) publishEngineEvent({ type: 'disconnected' });
   });
   websocket.addEventListener('error', () => publishEngineEvent({ type: 'error', message: 'No se pudo conectar al motor local.' }));
 
   workletNode.port.onmessage = (event) => {
     if (websocket?.readyState !== WebSocket.OPEN) return;
+    if (binaryPcmActive) {
+      websocket.send(event.data);
+      return;
+    }
     websocket.send(JSON.stringify({
       protocol: 1,
       type: 'audio.chunk',
@@ -129,6 +160,24 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message.type === 'STOP_CAPTURE') {
     cleanup().then(() => sendResponse({ ok: true }));
     return true;
+  }
+  if (message.type === 'SET_SPEAKER_FOCUS') {
+    const ok = sendControl('speaker.focus', {
+      speakerFocusMode: message.speakerFocusMode || 'all',
+      speakerId: message.speakerId || null
+    });
+    sendResponse({ ok });
+    return false;
+  }
+  if (message.type === 'TTS_STARTED') {
+    const ok = sendControl('tts.started', { text: message.text || '', speakerId: message.speakerId || null });
+    sendResponse({ ok });
+    return false;
+  }
+  if (message.type === 'TTS_FINISHED') {
+    const ok = sendControl('tts.finished', { speakerId: message.speakerId || null });
+    sendResponse({ ok });
+    return false;
   }
   return false;
 });

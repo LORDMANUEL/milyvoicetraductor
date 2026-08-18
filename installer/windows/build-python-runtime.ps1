@@ -44,8 +44,8 @@ python -m pip install --disable-pip-version-check --no-input --target $sitePacka
 if ($LASTEXITCODE -ne 0) { throw 'No se pudieron preparar las dependencias del runtime privado.' }
 
 $embeddedPython = Join-Path $Stage 'python.exe'
-& $embeddedPython -c "import fastapi, uvicorn, numpy, faster_whisper, transformers, torch, huggingface_hub; print('MILY_RUNTIME_OK')"
-if ($LASTEXITCODE -ne 0) { throw 'El Python embebido no pudo importar todas las dependencias requeridas.' }
+& $embeddedPython -c "import fastapi, uvicorn, numpy, faster_whisper, transformers, torch, huggingface_hub, pyaudiowpatch; print('MILY_RUNTIME_OK')"
+if ($LASTEXITCODE -ne 0) { throw 'El Python embebido no pudo importar todas las dependencias requeridas, incluido WASAPI loopback.' }
 
 $metadata = [ordered]@{
     schemaVersion = 1
@@ -54,6 +54,7 @@ $metadata = [ordered]@{
     sourceSha256 = $ExpectedSha256.ToLowerInvariant()
     pythonSha256 = (Get-FileHash $embeddedPython -Algorithm SHA256).Hash.ToLowerInvariant()
     architecture = 'x86_64'
+    windowsLoopback = 'PyAudioWPatch-0.2.12.8'
 }
 $metadata | ConvertTo-Json -Depth 4 | Set-Content (Join-Path $Stage 'runtime-manifest.json') -Encoding UTF8
 

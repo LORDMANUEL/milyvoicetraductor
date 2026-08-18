@@ -1,13 +1,22 @@
 # Modelos locales y licencias
 
-MilyVoiceTraductor separa el **código** de los **pesos de IA**. El repositorio no redistribuye pesos; el Model Manager descarga snapshots desde los repositorios declarados en `resources/model-packs.json`, primero a `.staging` y solo activa el pack después de completar la descarga.
+MilyVoiceTraductor separa el **código** de los **pesos de IA**. El repositorio no redistribuye pesos; el Model Manager descarga snapshots desde los repositorios declarados en `resources/model-packs.json`, primero a `.staging` y solo activa el pack después de completar descarga, preparación y verificación.
 
-## `business-qwen` — recomendado
+## `realtime-m2m100` — recomendado
+
+- ASR: `Systran/faster-whisper-small` (licencia declarada MIT).
+- Traducción: `facebook/m2m100_418M`.
+- M2M100 se descarga desde Hugging Face con revisión fijada y se convierte localmente a CTranslate2 INT8 una sola vez.
+- Perfil pensado para subtítulos inglés/chino → español con menor memoria y latencia de ejecución que el modelo Transformer original.
+- La app muestra las fases **descarga ASR → descarga traducción → optimización INT8 → verificación → listo**.
+- La operación se ejecuta sin consola externa en Windows.
+
+## `business-qwen` — alternativa de contexto/calidad
 
 - ASR: `Systran/faster-whisper-small` (licencia declarada MIT).
 - Traducción: `Qwen/Qwen3-0.6B` (licencia declarada Apache-2.0).
-- Perfil pensado para el flujo local normal inglés/chino → español.
-- Las dos revisiones quedan **fijadas por SHA de commit** en el catálogo de esta release candidate para que una misma versión del pack no cambie silenciosamente con `main`.
+- Permanece disponible como alternativa manual; no es el pack automático de primera preparación en 1.0.5.
+- Las dos revisiones quedan fijadas por SHA de commit.
 
 ## `lite-nllb` — investigación / no comercial
 
@@ -27,4 +36,4 @@ MilyVoiceTraductor separa el **código** de los **pesos de IA**. El repositorio 
 - No se eliminan packs activos.
 - Los modelos viven fuera del directorio de código y no entran en Git ni en el ZIP de fuente.
 
-Antes de convertir una RC en release estable debe conservarse un expediente de release con las licencias de los snapshots fijados y volver a ejecutar las pruebas de traducción/calidad sobre esos mismos commits.
+Cada release estable debe conservar un expediente de licencias de los snapshots fijados y volver a ejecutar las pruebas de traducción/calidad sobre esos mismos commits.

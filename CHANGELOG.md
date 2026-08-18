@@ -1,5 +1,27 @@
 # Changelog
 
+## [1.0.5] - 2026-08-18
+
+### Corregido
+- Versionado coherente en Desktop, Rust, Tauri, motor Python, extensión Chromium, CI y publicación.
+- El instalador/optimizador de modelos ya no abre una consola negra en Windows.
+- La preparación del modelo no depende de mantener abierta una ventana externa.
+- La pantalla de primera preparación distingue descarga de Whisper, descarga de M2M100, conversión INT8, verificación y estado listo.
+- El instalador NSIS incluye el runtime privado y usa el layout `bootstrap/` correcto.
+- Verificación SHA-256 del runtime compatible con el contexto real del instalador Windows.
+- Nombre del binario Windows fijado a `MilyVoiceTraductor.exe`.
+
+### Modelos
+- Perfil recomendado `realtime-m2m100`: Systran/faster-whisper-small + facebook/m2m100_418M.
+- Los pesos se descargan desde Hugging Face mediante revisiones fijadas por commit.
+- M2M100 se convierte localmente a CTranslate2 INT8 una vez para reducir memoria y latencia de ejecución.
+- El progreso queda registrado en `models/operation.json` para que la UI pueda mostrar la fase real.
+
+### Calidad
+- Gate de consistencia de versión 1.0.5.
+- Tests Python, TypeScript/Vitest, Rust workspace, Clippy estricto y Release builds Linux/Windows.
+- Prueba del instalador NSIS generado sobre Windows antes de publicar artefactos.
+
 ## [1.0.0-rc.1] - 2026-08-17
 
 ### Añadido

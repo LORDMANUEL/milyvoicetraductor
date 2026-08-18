@@ -60,6 +60,8 @@ impl SessionService {
         let file_name = match format {
             "txt" => "translation.txt",
             "srt" => "translation.srt",
+            "srt-bilingual" => "translation-bilingual.srt",
+            "vtt" => "translation.vtt",
             _ => return Err(SessionError::InvalidFormat),
         };
         Ok(fs::read_to_string(

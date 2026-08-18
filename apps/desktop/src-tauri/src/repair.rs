@@ -14,6 +14,10 @@ pub fn bundled_bootstrap_from_exe(executable: &Path) -> Option<PathBuf> {
 
 #[cfg(windows)]
 pub fn repair_current_installation() -> Result<(), RepairError> {
+    use std::os::windows::process::CommandExt;
+
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+
     let executable = std::env::current_exe()?;
     let install_root = executable.parent().ok_or(RepairError::InstallRootMissing)?;
     let script = bundled_bootstrap_from_exe(&executable).ok_or(RepairError::BootstrapMissing)?;
@@ -25,7 +29,8 @@ pub fn repair_current_installation() -> Result<(), RepairError> {
         .join("v1.0")
         .join("powershell.exe");
 
-    let status = Command::new(powershell)
+    let mut command = Command::new(powershell);
+    command
         .arg("-NoProfile")
         .arg("-NonInteractive")
         .arg("-ExecutionPolicy")
@@ -36,8 +41,10 @@ pub fn repair_current_installation() -> Result<(), RepairError> {
         .arg(install_root)
         .stdin(Stdio::null())
         .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()?;
+        .stderr(Stdio::null());
+    command.creation_flags(CREATE_NO_WINDOW);
+
+    let status = command.status()?;
     if status.success() {
         Ok(())
     } else {

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Prueba estática sin dependencias para la landing de GitHub Pages."""
+"""Prueba estática sin dependencias para la landing 2.0 de GitHub Pages."""
 from pathlib import Path
 import sys
 
@@ -8,8 +8,8 @@ index = ROOT / "apps" / "site" / "index.html"
 styles = ROOT / "apps" / "site" / "styles.css"
 logo = ROOT / "apps" / "site" / "assets" / "logo.svg"
 
-WINDOWS_DOWNLOAD = "https://github.com/LORDMANUEL/milyvoicetraductor/releases/download/v1.0.0-rc.1/MilyVoiceTraductor_1.0.0-rc.1_x64-setup.exe"
-CHROMIUM_DOWNLOAD = "https://github.com/LORDMANUEL/milyvoicetraductor/releases/download/v1.0.0-rc.1/MilyVoiceTraductor-Chromium-Extension.zip"
+WINDOWS_DOWNLOAD = "https://github.com/LORDMANUEL/milyvoicetraductor/releases/download/v2.0.0/MilyVoiceTraductor_2.0.0_x64-setup.exe"
+CHROMIUM_DOWNLOAD = "https://github.com/LORDMANUEL/milyvoicetraductor/releases/download/v2.0.0/MilyVoiceTraductor-Chromium-Extension.zip"
 
 errors: list[str] = []
 if not index.exists():
@@ -17,11 +17,14 @@ if not index.exists():
 else:
     html = index.read_text(encoding="utf-8")
     for required in [
-        "MilyVoiceTraductor",
+        "MilyVoiceTraductor 2.0",
         'id="privacidad"',
-        'id="arquitectura"',
+        'id="compute"',
         'id="estado"',
         "Sin telemetría",
+        "MilyCompute",
+        "MegaBench",
+        "2.0.0 · Runtime privado",
         WINDOWS_DOWNLOAD,
         CHROMIUM_DOWNLOAD,
     ]:
@@ -41,4 +44,4 @@ if errors:
     for error in errors:
         print(f"- {error}")
     sys.exit(1)
-print("SITE CHECK OK: branding, privacidad y descargas RC1 presentes.")
+print("SITE CHECK OK: MilyVoice 2.0, MilyCompute, MegaBench, privacidad y descargas presentes.")

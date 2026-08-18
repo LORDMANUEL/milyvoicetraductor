@@ -1,7 +1,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import type {
-  AppConfig, AppStatus, CacheStatus, EngineRuntimeStatus, ModelPackInfo,
-  OnboardingStatus, RuntimeLocations, SessionSummary, SystemSnapshot
+  AppConfig, AppStatus, CacheStatus, EngineRuntimeStatus, HardwareAdvisor, LocalEngineSession,
+  ModelPackInfo, OnboardingStatus, RuntimeLocations, SessionSummary, SystemSnapshot
 } from '../types';
 
 export const defaultConfig: AppConfig = {
@@ -17,7 +17,7 @@ export const defaultConfig: AppConfig = {
   persistTranscripts: false,
   computeProfile: 'auto',
   enginePort: 8765,
-  activeModelPack: 'business-qwen',
+  activeModelPack: 'realtime-m2m100',
   showOriginalSubtitle: true
 };
 
@@ -29,7 +29,7 @@ export function isTauriEnvironment(): boolean {
 export class DesktopApi {
   async getAppStatus(): Promise<AppStatus> {
     if (!isTauriEnvironment()) return {
-      version: '1.0.0-rc.1-web-preview', engine: 'notInstalled', models: 'notInstalled',
+      version: '2.0.0-web-preview', engine: 'notInstalled', models: 'notInstalled',
       installedModels: 0, extensionConnected: false, activeModelPack: null
     };
     return invoke<AppStatus>('get_app_status');
@@ -43,6 +43,8 @@ export class DesktopApi {
       modelState: 'notInstalled',
       downloadedBytes: 0,
       totalBytes: null,
+      modelPhase: 'idle',
+      modelMessage: null,
       bootstrapState: 'unknown',
       errorCode: null,
       errorMessage: null
@@ -57,10 +59,38 @@ export class DesktopApi {
 
   async getSystemInfo(): Promise<SystemSnapshot> {
     if (!isTauriEnvironment()) return {
-      operatingSystem: 'Vista previa web', architecture: 'N/D',
-      cpuBrand: 'Disponible únicamente en Tauri', logicalCpus: 0, totalMemoryMb: 0, gpu: null
+      operatingSystem: 'Vista previa web',
+      architecture: 'N/D',
+      cpuBrand: 'Disponible únicamente en Tauri',
+      logicalCpus: 0,
+      physicalCpus: 0,
+      totalMemoryMb: 0,
+      availableMemoryMb: 0,
+      cpuFeatures: { sse42: false, avx: false, avx2: false, fma: false, avx512f: false, neon: false },
+      gpu: null
     };
     return invoke<SystemSnapshot>('get_system_info');
+  }
+
+  async getHardwareAdvisor(): Promise<HardwareAdvisor> {
+    if (!isTauriEnvironment()) {
+      const system = await this.getSystemInfo();
+      return {
+        system,
+        backends: [{
+          backend: 'cpu',
+          runtimeDetected: true,
+          adapterReady: true,
+          evidence: ['fallback de vista previa']
+        }],
+        recommendedBackend: 'cpu',
+        recommendedProfile: 'legacy',
+        legacyHaswellCompatible: false,
+        benchmarkRequired: true,
+        message: 'Instala MilyVoice para medir el hardware real.'
+      };
+    }
+    return invoke<HardwareAdvisor>('get_hardware_advisor');
   }
 
   async getConfig(): Promise<AppConfig> {
@@ -98,6 +128,11 @@ export class DesktopApi {
     return invoke<EngineRuntimeStatus>('stop_engine');
   }
 
+  async getLocalEngineSession(): Promise<LocalEngineSession> {
+    if (!isTauriEnvironment()) throw new Error('La sesión local solo está disponible en la app instalada.');
+    return invoke<LocalEngineSession>('get_local_engine_session');
+  }
+
   async getModelCatalog(): Promise<ModelPackInfo[]> {
     if (!isTauriEnvironment()) return [];
     return invoke<ModelPackInfo[]>('get_model_catalog');
@@ -125,7 +160,10 @@ export class DesktopApi {
     return invoke<SessionSummary[]>('list_sessions');
   }
 
-  async getSessionExport(sessionId: string, format: 'txt' | 'srt'): Promise<string> {
+  async getSessionExport(
+    sessionId: string,
+    format: 'txt' | 'srt' | 'srt-bilingual' | 'vtt'
+  ): Promise<string> {
     return invoke<string>('get_session_export', { sessionId, format });
   }
 

@@ -3,25 +3,32 @@
 from __future__ import annotations
 
 import base64
-import struct
 from collections.abc import Iterable
+
+import numpy as np
 
 MAX_AUDIO_CHUNK_BYTES = 16000 * 2 * 5  # 5 segundos mono PCM16.
 
 
-def decode_pcm16_base64(encoded: str) -> list[float]:
-    """Convierte base64 PCM16 LE mono a floats [-1, 1] con límite de tamaño."""
-    try:
-        raw = base64.b64decode(encoded, validate=True)
-    except Exception as exc:  # binascii.Error varía entre versiones.
-        raise ValueError("Audio base64 inválido") from exc
+def decode_pcm16_bytes(raw: bytes) -> np.ndarray:
+    """Convierte PCM16 LE mono a ``float32`` con una copia vectorizada mínima."""
+
     if not raw or len(raw) % 2:
         raise ValueError("PCM16 inválido")
     if len(raw) > MAX_AUDIO_CHUNK_BYTES:
         raise ValueError("Chunk de audio demasiado grande")
-    count = len(raw) // 2
-    samples = struct.unpack(f"<{count}h", raw)
-    return [sample / 32768.0 for sample in samples]
+    pcm = np.frombuffer(raw, dtype="<i2")
+    return pcm.astype(np.float32) / np.float32(32768.0)
+
+
+def decode_pcm16_base64(encoded: str) -> list[float]:
+    """Fallback compatible: Base64 → PCM16 → lista normalizada."""
+
+    try:
+        raw = base64.b64decode(encoded, validate=True)
+    except Exception as exc:  # binascii.Error varía entre versiones.
+        raise ValueError("Audio base64 inválido") from exc
+    return decode_pcm16_bytes(raw).tolist()
 
 
 class PcmChunkBuffer:

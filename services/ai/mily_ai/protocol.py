@@ -3,11 +3,16 @@
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass
 from typing import Any
 
 PROTOCOL_VERSION = 1
 ALLOWED_SOURCES = {"auto", "en", "zh"}
+ALLOWED_SESSION_MODES = {"meeting", "education", "karaoke", "compact"}
+ALLOWED_SOURCE_MODES = {"browser_tab", "microphone", "media_file", "system_loopback"}
+ALLOWED_SPEAKER_FOCUS = {"all", "dominant", "fixed"}
+SPEAKER_ID = re.compile(r"^speaker-[a-z]$")
 
 
 class ProtocolError(ValueError):
@@ -16,7 +21,7 @@ class ProtocolError(ValueError):
 
 @dataclass(slots=True)
 class ClientMessage:
-    """Mensaje normalizado recibido desde la extensión Chromium."""
+    """Mensaje normalizado recibido desde la extensión Chromium/Desktop."""
 
     type: str
     protocol: int = PROTOCOL_VERSION
@@ -25,6 +30,14 @@ class ClientMessage:
     audio_base64: str | None = None
     sample_rate: int = 16000
     persist_transcript: bool = False
+    binary_pcm: bool = False
+    session_mode: str = "meeting"
+    source_mode: str = "browser_tab"
+    external_pcm: bool = False
+    speaker_detection: bool = False
+    speaker_focus_mode: str = "all"
+    speaker_id: str | None = None
+    tts_text: str | None = None
 
     @classmethod
     def parse(cls, raw: str) -> "ClientMessage":
@@ -39,7 +52,15 @@ class ClientMessage:
             raise ProtocolError("Versión de protocolo no compatible")
 
         message_type = str(payload.get("type", ""))
-        if message_type not in {"client.hello", "audio.chunk", "audio.stop", "ping"}:
+        if message_type not in {
+            "client.hello",
+            "audio.chunk",
+            "audio.stop",
+            "speaker.focus",
+            "tts.started",
+            "tts.finished",
+            "ping",
+        }:
             raise ProtocolError("Tipo de mensaje no permitido")
 
         source = str(payload.get("sourceLanguage", "auto"))
@@ -49,6 +70,32 @@ class ClientMessage:
         target = str(payload.get("targetLanguage", "es"))
         if target != "es":
             raise ProtocolError("Esta versión solo admite español como destino")
+
+        session_mode = str(payload.get("sessionMode", "meeting"))
+        if session_mode not in ALLOWED_SESSION_MODES:
+            raise ProtocolError("Modo de sesión no permitido")
+
+        source_mode = str(payload.get("sourceMode", "browser_tab"))
+        if source_mode not in ALLOWED_SOURCE_MODES:
+            raise ProtocolError("Fuente de audio no permitida")
+
+        speaker_focus_mode = str(payload.get("speakerFocusMode", "all"))
+        if speaker_focus_mode not in ALLOWED_SPEAKER_FOCUS:
+            raise ProtocolError("Modo de foco de hablante no permitido")
+
+        raw_speaker_id = payload.get("speakerId")
+        speaker_id = str(raw_speaker_id) if raw_speaker_id is not None else None
+        if speaker_id is not None and not SPEAKER_ID.fullmatch(speaker_id):
+            raise ProtocolError("Identificador de hablante no permitido")
+        if message_type == "speaker.focus" and speaker_focus_mode == "fixed" and not speaker_id:
+            raise ProtocolError("speaker.focus fixed requiere speakerId")
+
+        tts_text: str | None = None
+        if message_type == "tts.started":
+            raw_text = payload.get("text")
+            if not isinstance(raw_text, str) or not raw_text.strip():
+                raise ProtocolError("tts.started requiere texto")
+            tts_text = raw_text.strip()[:1200]
 
         audio_base64 = payload.get("audioBase64")
         if message_type == "audio.chunk" and not isinstance(audio_base64, str):
@@ -66,6 +113,14 @@ class ClientMessage:
             audio_base64=audio_base64,
             sample_rate=sample_rate,
             persist_transcript=bool(payload.get("persistTranscript", False)),
+            binary_pcm=bool(payload.get("binaryPcm", False)),
+            session_mode=session_mode,
+            source_mode=source_mode,
+            external_pcm=bool(payload.get("externalPcm", False)),
+            speaker_detection=bool(payload.get("speakerDetection", False)),
+            speaker_focus_mode=speaker_focus_mode,
+            speaker_id=speaker_id,
+            tts_text=tts_text,
         )
 
 

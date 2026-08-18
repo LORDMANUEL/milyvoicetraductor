@@ -9,3 +9,4 @@ torch>=2.7,<3
 huggingface-hub>=0.34,<2
 sentencepiece>=0.2,<1
 safetensors>=0.5,<1
+PyAudioWPatch==0.2.12.8; sys_platform == "win32"

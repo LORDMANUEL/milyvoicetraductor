@@ -5,8 +5,14 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+from mily_ai.cpu_budget import CpuBudget
 from mily_ai.models import ModelCatalog, _convert_m2m100_to_ctranslate2
-from mily_ai.providers import CachedTranslator, Translator
+from mily_ai.providers import (
+    CachedTranslator,
+    FasterWhisperAsr,
+    M2M100CTranslate2Translator,
+    Translator,
+)
 
 
 class FakeTranslator(Translator):
@@ -32,6 +38,56 @@ class FakeTransformersConverter:
         )
 
 
+class RecordingWhisperModel:
+    last_args = None
+    last_kwargs = None
+    transcribe_calls = 0
+
+    def __init__(self, *args, **kwargs):
+        type(self).last_args = args
+        type(self).last_kwargs = kwargs
+
+    def transcribe(self, *_args, **_kwargs):
+        type(self).transcribe_calls += 1
+        info = types.SimpleNamespace(language="en", language_probability=1.0)
+        return iter(()), info
+
+
+class RecordingCt2Translator:
+    last_args = None
+    last_kwargs = None
+    calls = []
+
+    def __init__(self, *args, **kwargs):
+        type(self).last_args = args
+        type(self).last_kwargs = kwargs
+
+    def translate_batch(self, *args, **kwargs):
+        type(self).calls.append((args, kwargs))
+        return [types.SimpleNamespace(hypotheses=[["__es__", "hola"]])]
+
+
+class FakeAutoTokenizer:
+    src_lang = "en"
+    lang_code_to_token = {"es": "__es__"}
+
+    @classmethod
+    def from_pretrained(cls, *_args, **_kwargs):
+        return cls()
+
+    def encode(self, text):
+        return list(range(max(1, len(text.split()))))
+
+    def convert_ids_to_tokens(self, ids):
+        return [f"t{value}" for value in ids]
+
+    def convert_tokens_to_ids(self, tokens):
+        return list(range(len(tokens)))
+
+    def decode(self, _ids, skip_special_tokens=True):
+        return "hola"
+
+
 class RealtimeOptimizationTests(unittest.TestCase):
     def test_translation_cache_avoids_recomputing_overlap_text(self):
         inner = FakeTranslator()
@@ -51,6 +107,94 @@ class RealtimeOptimizationTests(unittest.TestCase):
         translator.translate("hola", "zh")
 
         self.assertEqual(inner.calls, 2)
+
+    def test_whisper_uses_budgeted_cpu_threads(self):
+        budget = CpuBudget(
+            profile="balanced",
+            physical_cores=8,
+            asr_threads=5,
+            translation_threads=2,
+            parallel_stages=True,
+        )
+        fake_whisper = types.SimpleNamespace(WhisperModel=RecordingWhisperModel)
+        fake_ct2 = types.SimpleNamespace(get_cuda_device_count=lambda: 0)
+        with patch.dict(
+            sys.modules,
+            {"faster_whisper": fake_whisper, "ctranslate2": fake_ct2},
+        ):
+            provider = FasterWhisperAsr(Path("asr"), "cpu", cpu_budget=budget)
+            provider._load()
+
+        self.assertEqual(RecordingWhisperModel.last_kwargs["device"], "cpu")
+        self.assertEqual(RecordingWhisperModel.last_kwargs["compute_type"], "int8")
+        self.assertEqual(RecordingWhisperModel.last_kwargs["cpu_threads"], 5)
+        self.assertEqual(RecordingWhisperModel.last_kwargs["num_workers"], 1)
+
+    def test_whisper_warmup_runs_only_once(self):
+        RecordingWhisperModel.transcribe_calls = 0
+        budget = CpuBudget("balanced", 8, 5, 2, True)
+        fake_whisper = types.SimpleNamespace(WhisperModel=RecordingWhisperModel)
+        fake_ct2 = types.SimpleNamespace(get_cuda_device_count=lambda: 0)
+        with patch.dict(
+            sys.modules,
+            {"faster_whisper": fake_whisper, "ctranslate2": fake_ct2},
+        ):
+            provider = FasterWhisperAsr(Path("asr"), "cpu", cpu_budget=budget)
+            provider.warm_up("en")
+            provider.warm_up("en")
+        self.assertEqual(RecordingWhisperModel.transcribe_calls, 1)
+
+    def test_m2m100_uses_budgeted_cpu_threads(self):
+        budget = CpuBudget(
+            profile="balanced",
+            physical_cores=8,
+            asr_threads=5,
+            translation_threads=2,
+            parallel_stages=True,
+        )
+        fake_ct2 = types.SimpleNamespace(
+            get_cuda_device_count=lambda: 0,
+            Translator=RecordingCt2Translator,
+        )
+        fake_transformers = types.SimpleNamespace(AutoTokenizer=FakeAutoTokenizer)
+        with patch.dict(
+            sys.modules,
+            {"ctranslate2": fake_ct2, "transformers": fake_transformers},
+        ):
+            provider = M2M100CTranslate2Translator(
+                Path("translation"), "cpu", cpu_budget=budget
+            )
+            provider._load()
+
+        self.assertEqual(RecordingCt2Translator.last_kwargs["device"], "cpu")
+        self.assertEqual(RecordingCt2Translator.last_kwargs["compute_type"], "int8")
+        self.assertEqual(RecordingCt2Translator.last_kwargs["inter_threads"], 1)
+        self.assertEqual(RecordingCt2Translator.last_kwargs["intra_threads"], 2)
+
+    def test_m2m100_realtime_decode_disables_scores_and_caps_length(self):
+        RecordingCt2Translator.calls = []
+        budget = CpuBudget("balanced", 8, 5, 2, True)
+        provider = M2M100CTranslate2Translator(
+            Path("translation"), "cpu", cpu_budget=budget
+        )
+        provider._translator = RecordingCt2Translator()
+        provider._tokenizer = FakeAutoTokenizer()
+
+        provider.translate("one two three four five", "en")
+        _args, kwargs = RecordingCt2Translator.calls[-1]
+        self.assertEqual(kwargs["beam_size"], 1)
+        self.assertFalse(kwargs["return_scores"])
+        self.assertLess(kwargs["max_decoding_length"], 192)
+        self.assertGreaterEqual(kwargs["max_decoding_length"], 24)
+
+    def test_m2m100_warmup_runs_only_once(self):
+        RecordingCt2Translator.calls = []
+        provider = M2M100CTranslate2Translator(Path("translation"), "cpu")
+        provider._translator = RecordingCt2Translator()
+        provider._tokenizer = FakeAutoTokenizer()
+        provider.warm_up()
+        provider.warm_up()
+        self.assertEqual(len(RecordingCt2Translator.calls), 1)
 
     def test_realtime_commercial_pack_uses_m2m100_ctranslate2_int8(self):
         with tempfile.TemporaryDirectory() as tmp:

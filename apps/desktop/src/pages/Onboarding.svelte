@@ -14,6 +14,8 @@
     modelState: 'notInstalled',
     downloadedBytes: 0,
     totalBytes: null,
+    modelPhase: 'idle',
+    modelMessage: null,
     bootstrapState: 'unknown',
     errorCode: null,
     errorMessage: null
@@ -42,6 +44,16 @@
   function stopPolling() {
     if (pollTimer) clearInterval(pollTimer);
     pollTimer = null;
+  }
+
+  function modelStatusText(): string {
+    if (state.modelState === 'ready') return 'Modelo verificado y optimizado para CPU/GPU';
+    if (!installing) return state.modelMessage || 'Pendiente de preparación';
+    const message = state.modelMessage || 'Preparando modelo local…';
+    if (state.modelPhase === 'download' && state.downloadedBytes > 0) {
+      return `${message} · ${bytesLabel(state.downloadedBytes)} guardados`;
+    }
+    return message;
   }
 
   async function prepareModel() {
@@ -127,9 +139,9 @@
         <span class="step-index">3</span>
         <div>
           <strong>Modelo Tiempo Real INT8</strong>
-          <small>{state.modelState === 'ready' ? 'Modelo verificado y optimizado para CPU/GPU' : installing ? `Descargando/optimizando · ${bytesLabel(state.downloadedBytes)} guardados` : 'Pendiente de preparación'}</small>
+          <small>{modelStatusText()}</small>
         </div>
-        <b>{state.modelState === 'ready' ? '✓' : installing ? '↓' : '…'}</b>
+        <b>{state.modelState === 'ready' ? '✓' : installing ? state.modelPhase === 'optimize' ? '⚙' : '↓' : '…'}</b>
       </article>
       <article class:done={state.extensionDetected}>
         <span class="step-index">4</span>
@@ -139,8 +151,12 @@
     </div>
 
     {#if installing}
-      <div class="download-progress" aria-label="Descargando modelos"><span></span></div>
-      <p class="onboarding-note">La descarga se reanuda y la traducción se convierte una sola vez a INT8 para reducir latencia y memoria. Si Internet se corta, Reintentar conserva los archivos válidos.</p>
+      <div class="download-progress" aria-label="Preparando modelos"><span></span></div>
+      <p class="onboarding-note">
+        {state.modelPhase === 'optimize'
+          ? 'La descarga ya terminó. MilyVoiceTraductor está convirtiendo el traductor a INT8 dentro de la aplicación; durante esta fase el contador de MB puede no cambiar.'
+          : 'La descarga se reanuda si Internet se corta. Todo ocurre dentro de MilyVoiceTraductor y no necesitas mantener abierta ninguna consola externa.'}
+      </p>
     {/if}
 
     {#if state.bootstrapState === 'failed' || !state.runtimeReady}
