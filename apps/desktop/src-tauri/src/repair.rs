@@ -1,8 +1,10 @@
+#[cfg(any(windows, test))]
 use std::path::{Path, PathBuf};
 #[cfg(windows)]
 use std::process::{Command, Stdio};
 use thiserror::Error;
 
+#[cfg(any(windows, test))]
 pub fn bundled_bootstrap_from_exe(executable: &Path) -> Option<PathBuf> {
     executable
         .parent()
@@ -56,12 +58,16 @@ pub fn repair_current_installation() -> Result<(), RepairError> {
 pub enum RepairError {
     #[error("no se pudo localizar el ejecutable: {0}")]
     Io(#[from] std::io::Error),
+    #[cfg(windows)]
     #[error("no se encontró la raíz de instalación")]
     InstallRootMissing,
+    #[cfg(windows)]
     #[error("no se encontró el bootstrap incluido")]
     BootstrapMissing,
+    #[cfg(windows)]
     #[error("el bootstrap devolvió error")]
     BootstrapFailed,
+    #[cfg(not(windows))]
     #[error("reparación no soportada en esta plataforma")]
     UnsupportedPlatform,
 }
