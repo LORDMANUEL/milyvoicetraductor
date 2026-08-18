@@ -8,8 +8,8 @@ index = ROOT / "apps" / "site" / "index.html"
 styles = ROOT / "apps" / "site" / "styles.css"
 logo = ROOT / "apps" / "site" / "assets" / "logo.svg"
 
-WINDOWS_DOWNLOAD = "https://github.com/LORDMANUEL/milyvoicetraductor/releases/download/v1.0.0-rc.1/MilyVoiceTraductor_1.0.0-rc.1_x64-setup.exe"
-CHROMIUM_DOWNLOAD = "https://github.com/LORDMANUEL/milyvoicetraductor/releases/download/v1.0.0-rc.1/MilyVoiceTraductor-Chromium-Extension.zip"
+WINDOWS_DOWNLOAD = "https://github.com/LORDMANUEL/milyvoicetraductor/releases/download/v1.0.5/MilyVoiceTraductor_1.0.5_x64-setup.exe"
+CHROMIUM_DOWNLOAD = "https://github.com/LORDMANUEL/milyvoicetraductor/releases/download/v1.0.5/MilyVoiceTraductor-Chromium-Extension.zip"
 
 errors: list[str] = []
 if not index.exists():
@@ -22,6 +22,7 @@ else:
         'id="arquitectura"',
         'id="estado"',
         "Sin telemetría",
+        "MilyVoiceTraductor 1.0.5",
         WINDOWS_DOWNLOAD,
         CHROMIUM_DOWNLOAD,
     ]:
@@ -41,4 +42,4 @@ if errors:
     for error in errors:
         print(f"- {error}")
     sys.exit(1)
-print("SITE CHECK OK: branding, privacidad y descargas RC1 presentes.")
+print("SITE CHECK OK: branding, privacidad y descargas 1.0.5 presentes.")
