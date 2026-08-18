@@ -9,6 +9,7 @@ from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
 
 from .audio import decode_pcm16_base64, decode_pcm16_bytes
+from .event_payloads import pipeline_event_fields
 from .logging_safe import build_logger, close_logger
 from .models import HuggingFacePackInstaller, ModelCatalog, ModelOperationError
 from .pipeline import RealtimePipeline
@@ -180,15 +181,7 @@ def create_app(paths: RuntimePaths, port: int = 8765, parent_pid: int | None = N
 
         async def send_pipeline_events(items) -> None:
             for item in items:
-                fields = {
-                    "start": item.start,
-                    "end": item.end,
-                    "original": item.original,
-                    "language": item.language,
-                }
-                if item.translation:
-                    fields["translation"] = item.translation
-                await safe_send(event(item.type, **fields))
+                await safe_send(event(item.type, **pipeline_event_fields(item)))
 
         def telemetry_snapshot(current: RealtimePipeline):
             snapshot = current.telemetry.snapshot(
@@ -503,6 +496,7 @@ def create_app(paths: RuntimePaths, port: int = 8765, parent_pid: int | None = N
                             message.source_language,
                             settings.compute_profile,
                             recorder,
+                            session_mode=message.session_mode,
                         )
                     except Exception as exc:
                         logger.error(
@@ -542,6 +536,7 @@ def create_app(paths: RuntimePaths, port: int = 8765, parent_pid: int | None = N
                         event(
                             "session.started",
                             sessionId=session_id,
+                            sessionMode=message.session_mode,
                             binaryPcm=binary_pcm_enabled,
                             parallelStages=pipeline.cpu_budget.parallel_stages,
                         )
