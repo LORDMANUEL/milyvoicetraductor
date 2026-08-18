@@ -66,7 +66,7 @@ jobs:
       - name: Pin npm
         run: npm install --global npm@10.9.9
       - name: Install frontend dependencies
-        run: npm install --prefix apps/desktop --workspaces=false --no-audit --no-fund
+        run: npm install --prefix apps/desktop --workspaces=false --legacy-peer-deps --no-audit --no-fund
       - name: Typecheck
         run: npm run --prefix apps/desktop typecheck
       - name: Tests
@@ -134,7 +134,7 @@ jobs:
         with:
           components: rustfmt, clippy
       - name: Install frontend dependencies
-        run: npm install --prefix apps/desktop --workspaces=false --no-audit --no-fund
+        run: npm install --prefix apps/desktop --workspaces=false --legacy-peer-deps --no-audit --no-fund
       - name: Frontend build
         run: npm run --prefix apps/desktop build
       - name: Install lightweight AI test dependencies
