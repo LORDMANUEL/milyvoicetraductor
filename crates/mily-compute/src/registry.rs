@@ -28,12 +28,15 @@ impl BackendRegistry {
             return;
         }
         let evidence = evidence.into();
-        let capability = self.capabilities.entry(backend).or_insert(BackendCapability {
-            backend,
-            runtime_detected: false,
-            adapter_ready: false,
-            evidence: Vec::new(),
-        });
+        let capability = self
+            .capabilities
+            .entry(backend)
+            .or_insert(BackendCapability {
+                backend,
+                runtime_detected: false,
+                adapter_ready: false,
+                evidence: Vec::new(),
+            });
         capability.runtime_detected = true;
         if !evidence.trim().is_empty() && !capability.evidence.contains(&evidence) {
             capability.evidence.push(evidence);
