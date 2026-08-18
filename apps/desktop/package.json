@@ -1,6 +1,6 @@
 {
   "name": "@milyvoice/desktop",
-  "version": "1.0.0-rc.1",
+  "version": "1.0.5",
   "private": true,
   "type": "module",
   "scripts": {
