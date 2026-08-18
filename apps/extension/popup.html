@@ -26,6 +26,14 @@
     <label>Modo<select id="sessionMode"><option value="meeting">Reunión</option><option value="education">Educativo</option><option value="karaoke">Karaoke / canción</option><option value="compact">Compacto</option></select></label>
     <label class="check"><input id="persist" type="checkbox"><span>Guardar transcripción local</span></label>
     <label class="check"><input id="showOriginal" type="checkbox" checked><span>Mostrar texto original</span></label>
+    <label class="check"><input id="speakerDetection" type="checkbox"><span>Identificar Hablante A/B/C</span></label>
+    <div id="speakerControls" hidden>
+      <label>Escuchar<select id="speakerFocus"><option value="all">Todos</option><option value="dominant">Voz dominante</option><option value="fixed">Fijar hablante</option></select></label>
+      <label id="fixedSpeakerWrap" hidden>Hablante<select id="fixedSpeaker"><option value="">Seleccione…</option></select></label>
+    </div>
+    <label class="check"><input id="ttsEnabled" type="checkbox"><span>Voz española en tiempo real</span></label>
+    <label id="ttsVoiceWrap" hidden>Voz predeterminada<select id="ttsVoice"><option value="">Voz del sistema</option></select></label>
+    <section id="speakerVoiceList" class="speaker-voices" hidden aria-label="Voces por hablante"></section>
     <button id="toggle" class="primary" disabled>Preparando…</button>
     <p id="status" class="status" role="status">Detectando MilyVoiceTraductor…</p>
     <a id="downloadApp" class="download-link" href="https://github.com/LORDMANUEL/milyvoicetraductor/releases/latest" target="_blank" hidden>Descargar aplicación</a>
