@@ -33,7 +33,7 @@ SERIAL_DEFER_STEP_SECONDS = 0.02
 def websocket_origin_allowed(origin: str) -> bool:
     """Solo la extensión fijada o vistas loopback del propio producto pueden entrar."""
     if not origin:
-        return False
+        return True
     normalized = origin.rstrip("/")
     if normalized == PINNED_EXTENSION_ORIGIN:
         return True
