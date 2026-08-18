@@ -62,13 +62,44 @@ export interface RuntimeLocations {
   extension: string;
 }
 
+export interface CpuFeatures {
+  sse42: boolean;
+  avx: boolean;
+  avx2: boolean;
+  fma: boolean;
+  avx512f: boolean;
+  neon: boolean;
+}
+
 export interface SystemSnapshot {
   operatingSystem: string;
   architecture: string;
   cpuBrand: string;
   logicalCpus: number;
+  physicalCpus: number;
   totalMemoryMb: number;
+  availableMemoryMb: number;
+  cpuFeatures: CpuFeatures;
   gpu: string | null;
+}
+
+export type ComputeBackend = 'cpu' | 'cuda' | 'directMl' | 'openVino' | 'vulkan';
+
+export interface BackendCapability {
+  backend: ComputeBackend;
+  runtimeDetected: boolean;
+  adapterReady: boolean;
+  evidence: string[];
+}
+
+export interface HardwareAdvisor {
+  system: SystemSnapshot;
+  backends: BackendCapability[];
+  recommendedBackend: ComputeBackend;
+  recommendedProfile: 'legacy' | 'balanced' | 'performance' | string;
+  legacyHaswellCompatible: boolean;
+  benchmarkRequired: boolean;
+  message: string;
 }
 
 export interface AppConfig {
