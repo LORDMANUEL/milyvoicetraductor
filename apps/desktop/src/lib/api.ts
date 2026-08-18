@@ -1,7 +1,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import type {
   AppConfig, AppStatus, CacheStatus, EngineRuntimeStatus, ModelPackInfo,
-  RuntimeLocations, SessionSummary, SystemSnapshot
+  OnboardingStatus, RuntimeLocations, SessionSummary, SystemSnapshot
 } from '../types';
 
 export const defaultConfig: AppConfig = {
@@ -33,6 +33,21 @@ export class DesktopApi {
       installedModels: 0, extensionConnected: false, activeModelPack: null
     };
     return invoke<AppStatus>('get_app_status');
+  }
+
+  async getOnboardingStatus(): Promise<OnboardingStatus> {
+    if (!isTauriEnvironment()) return {
+      runtimeReady: false,
+      bridgeReady: false,
+      extensionDetected: false,
+      modelState: 'notInstalled',
+      downloadedBytes: 0,
+      totalBytes: null,
+      bootstrapState: 'unknown',
+      errorCode: null,
+      errorMessage: null
+    };
+    return invoke<OnboardingStatus>('get_onboarding_status');
   }
 
   async getSystemInfo(): Promise<SystemSnapshot> {
@@ -76,11 +91,6 @@ export class DesktopApi {
   async stopEngine(): Promise<EngineRuntimeStatus> {
     if (!isTauriEnvironment()) return this.getEngineStatus();
     return invoke<EngineRuntimeStatus>('stop_engine');
-  }
-
-  async getPairingToken(): Promise<string> {
-    if (!isTauriEnvironment()) return 'preview-token-not-valid';
-    return invoke<string>('get_pairing_token');
   }
 
   async getModelCatalog(): Promise<ModelPackInfo[]> {
