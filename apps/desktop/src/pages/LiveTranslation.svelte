@@ -2,7 +2,7 @@
   import { onDestroy, onMount } from 'svelte';
   import { desktopApi } from '../lib/api';
   import { DesktopAudioCapture } from '../lib/realtime';
-  import type { AppStatus, RealtimeEvent } from '../types';
+  import type { AppStatus, RealtimeEvent, RealtimeWord } from '../types';
 
   type SourceMode = 'browser' | 'microphone' | 'system' | 'media';
   type VisualMode = 'meeting' | 'education' | 'karaoke' | 'compact';
@@ -22,6 +22,10 @@
   let error = '';
   let currentOriginal = '';
   let currentTranslation = '';
+  let currentWords: RealtimeWord[] = [];
+  let karaokeClock = 0;
+  let sessionStartedAt = 0;
+  let frameRequest = 0;
   let audioRms = 0;
   let silentMs = 0;
   let pressure: 'healthy' | 'pressure' | 'overloaded' = 'healthy';
@@ -43,6 +47,16 @@
   function activeMediaElement(): HTMLMediaElement | null {
     if (!mediaUrl) return null;
     return mediaIsVideo ? videoElement : audioElement;
+  }
+
+  function tickKaraoke() {
+    if (source === 'media') karaokeClock = activeMediaElement()?.currentTime || 0;
+    else if (sessionStartedAt > 0) karaokeClock = Math.max(0, performance.now() / 1000 - sessionStartedAt);
+    frameRequest = window.requestAnimationFrame(tickKaraoke);
+  }
+
+  function isActiveWord(word: RealtimeWord): boolean {
+    return pressure === 'healthy' && karaokeClock >= word.start && karaokeClock < word.end;
   }
 
   function refreshVoices() {
@@ -80,9 +94,18 @@
     window.speechSynthesis.speak(utterance);
   }
 
+  function acceptWords(event: RealtimeEvent) {
+    if (event.words?.length) currentWords = event.words;
+  }
+
   function handleRealtimeEvent(event: RealtimeEvent) {
     if (event.type === 'engine.loading') { message = 'Precalentando Whisper y M2M100…'; return; }
-    if (event.type === 'session.started') { message = 'Sesión lista · esperando audio.'; return; }
+    if (event.type === 'session.started') {
+      sessionStartedAt = performance.now() / 1000;
+      karaokeClock = 0;
+      message = 'Sesión lista · esperando audio.';
+      return;
+    }
     if (event.type === 'audio.level') {
       audioRms = Number(event.rms || 0); silentMs = Number(event.silentMs || 0);
       if (event.speech) message = 'Audio detectado · escuchando…';
@@ -94,21 +117,24 @@
       pressure = event.pressure || 'healthy';
       asrP50 = Number(event.asrP50Ms || 0); translationP50 = Number(event.translationP50Ms || 0);
       realTimeFactor = Number(event.realTimeFactor || 0);
-      if (pressure === 'overloaded') message = 'CPU al límite · priorizando frases finales.';
-      else if (pressure === 'pressure') message = 'CPU ocupada · reduciendo parciales.';
+      if (pressure === 'overloaded') message = 'CPU al límite · karaoke por frase y prioridad a finales.';
+      else if (pressure === 'pressure') message = 'CPU ocupada · karaoke por frase y menos parciales.';
       return;
     }
     if (event.type === 'transcription.partial' || event.type === 'transcription.final') {
       currentOriginal = event.original || currentOriginal;
+      acceptWords(event);
       if (event.type === 'transcription.partial') message = 'Transcribiendo…';
       return;
     }
     if (event.type === 'translation.partial') {
       currentOriginal = event.original || currentOriginal; currentTranslation = event.translation || currentTranslation;
+      acceptWords(event);
       message = 'Traduciendo frase…'; return;
     }
     if (event.type === 'translation.final') {
       currentOriginal = event.original || currentOriginal; currentTranslation = event.translation || '';
+      acceptWords(event);
       transcript = [...transcript, { start: Number(event.start || 0), original: currentOriginal, translation: currentTranslation }].slice(-80);
       message = 'Traducción al día.'; speakSpanish(currentTranslation); return;
     }
@@ -126,12 +152,12 @@
     if (source === 'media' && !mediaUrl) { error = 'Seleccione primero un archivo de video o audio.'; return; }
     busy = true; message = 'Preparando motor y modelos locales…';
     try {
-      if (source === 'microphone') await capture.startMicrophone(sourceLanguage, persistTranscript);
-      else if (source === 'system') await capture.startSystemAudio(sourceLanguage, persistTranscript);
+      if (source === 'microphone') await capture.startMicrophone(sourceLanguage, persistTranscript, visualMode);
+      else if (source === 'system') await capture.startSystemAudio(sourceLanguage, persistTranscript, visualMode);
       else {
         const element = activeMediaElement();
         if (!element) throw new Error('El archivo multimedia todavía no está listo.');
-        await capture.startMediaElement(element, sourceLanguage, persistTranscript);
+        await capture.startMediaElement(element, sourceLanguage, persistTranscript, visualMode);
         message = 'Motor listo. Pulse Play en el reproductor para comenzar.';
       }
       active = true;
@@ -145,7 +171,7 @@
       ttsGeneration += 1;
       if ('speechSynthesis' in window) window.speechSynthesis.cancel();
       capture.setOutputSuppressed(false); capture.setPlaybackGain(1);
-      await capture.stop(); active = false; message = 'Traducción detenida.';
+      await capture.stop(); active = false; sessionStartedAt = 0; message = 'Traducción detenida.';
     } finally { busy = false; }
   }
 
@@ -164,7 +190,7 @@
     if (!file) return;
     if (mediaUrl) URL.revokeObjectURL(mediaUrl);
     mediaUrl = URL.createObjectURL(file); mediaName = file.name; mediaIsVideo = file.type.startsWith('video/');
-    currentOriginal = ''; currentTranslation = ''; transcript = [];
+    currentOriginal = ''; currentTranslation = ''; currentWords = []; transcript = [];
   }
 
   function formatTime(seconds: number) {
@@ -177,11 +203,13 @@
     appStatus = await desktopApi.getAppStatus();
     const config = await desktopApi.getConfig(); sourceLanguage = config.sourceLanguage; persistTranscript = config.persistTranscripts;
     refreshVoices();
+    frameRequest = window.requestAnimationFrame(tickKaraoke);
     if ('speechSynthesis' in window) window.speechSynthesis.onvoiceschanged = refreshVoices;
   });
 
   onDestroy(() => {
     ttsGeneration += 1;
+    window.cancelAnimationFrame(frameRequest);
     if ('speechSynthesis' in window) { window.speechSynthesis.cancel(); window.speechSynthesis.onvoiceschanged = null; }
     capture?.stop().catch(() => undefined);
     if (mediaUrl) URL.revokeObjectURL(mediaUrl);
@@ -206,7 +234,7 @@
       <div class="panel-title"><h3>Sesión</h3><span class="pill ok">127.0.0.1</span></div>
       <div class="control-grid">
         <label>Idioma de origen<select bind:value={sourceLanguage} disabled={active || busy}><option value="auto">Automático</option><option value="en">Inglés</option><option value="zh">Chino</option></select></label>
-        <label>Vista<select bind:value={visualMode}><option value="meeting">Reunión</option><option value="education">Educativo</option><option value="karaoke">Karaoke</option><option value="compact">Compacto</option></select></label>
+        <label>Vista<select bind:value={visualMode} disabled={active || busy}><option value="meeting">Reunión</option><option value="education">Educativo</option><option value="karaoke">Karaoke</option><option value="compact">Compacto</option></select></label>
         <label>Tema<select bind:value={visualTheme}><option value="mily">Mily azul</option><option value="cinema">Oscuro cine</option><option value="class">Clase clara</option><option value="contrast">Alto contraste</option><option value="neon">Karaoke neón</option></select></label>
       </div>
       <label class="switch-line"><input type="checkbox" bind:checked={persistTranscript} disabled={active} /> Guardar transcripción local</label>
@@ -218,7 +246,7 @@
       {:else if source === 'browser'}
         <div class="browser-hint"><strong>{appStatus?.extensionConnected ? 'Extensión conectada' : 'Extensión no detectada todavía'}</strong><p>Abra cualquier pestaña web con audio, pulse la extensión MilyVoiceTraductor y después “Iniciar traducción”. El overlay se inyecta solo en esa pestaña.</p></div>
       {:else if source === 'system'}
-        <div class="browser-hint"><strong>Selector protegido de Windows</strong><p>Al iniciar, elija una pantalla/ventana y active “Compartir audio”. Si WebView2 no ofrece audio, el siguiente fallback será WASAPI loopback nativo.</p></div>
+        <div class="browser-hint"><strong>Audio de Windows</strong><p>Actualmente se usa el selector protegido de Windows; el backend WASAPI loopback nativo se valida en el siguiente bloque del MASTER.</p></div>
       {/if}
 
       <button class:stop-button={active} class="primary main-action" on:click={toggle} disabled={busy || source === 'browser'}>{busy ? 'Preparando…' : active ? 'Detener traducción' : 'Iniciar traducción'}</button>
@@ -241,14 +269,23 @@
       <div class="caption-layer mode-{visualMode}">
         {#if visualMode === 'meeting'}<small>{currentOriginal || 'Original…'}</small><strong>{currentTranslation || 'La traducción aparecerá aquí.'}</strong>
         {:else if visualMode === 'education'}<strong>{currentTranslation || 'Español…'}</strong><small>{currentOriginal || 'English / 中文…'}</small>
-        {:else if visualMode === 'karaoke'}<strong>{currentTranslation || 'Traducción española…'}</strong><small class="karaoke-line">{currentOriginal || 'Original sincronizado por frase…'}</small>
+        {:else if visualMode === 'karaoke'}
+          <strong>{currentTranslation || 'Traducción española…'}</strong>
+          <small class="karaoke-line">
+            {#if currentWords.length && pressure === 'healthy'}
+              {#each currentWords as word}<span class:active-word={isActiveWord(word)}>{word.text} </span>{/each}
+            {:else}{currentOriginal || 'Original sincronizado por frase…'}{/if}
+          </small>
         {:else}<strong>{currentTranslation || currentOriginal || 'Esperando audio…'}</strong>{/if}
       </div>
     </article>
   {:else}
     <article class="caption-preview theme-{visualTheme} mode-{visualMode}">
       {#if visualMode === 'meeting'}<small>{currentOriginal || 'Original en tiempo real…'}</small><strong>{currentTranslation || 'La traducción al español aparecerá aquí.'}</strong>
-      {:else if visualMode === 'education' || visualMode === 'karaoke'}<strong>{currentTranslation || 'Español…'}</strong><small class:karaoke-line={visualMode === 'karaoke'}>{currentOriginal || 'English / 中文…'}</small>
+      {:else if visualMode === 'education'}<strong>{currentTranslation || 'Español…'}</strong><small>{currentOriginal || 'English / 中文…'}</small>
+      {:else if visualMode === 'karaoke'}
+        <strong>{currentTranslation || 'Español…'}</strong>
+        <small class="karaoke-line">{#if currentWords.length && pressure === 'healthy'}{#each currentWords as word}<span class:active-word={isActiveWord(word)}>{word.text} </span>{/each}{:else}{currentOriginal || 'English / 中文…'}{/if}</small>
       {:else}<strong>{currentTranslation || currentOriginal || 'Esperando audio…'}</strong>{/if}
       <em>MILYVOICETRADUCTOR · LOCAL</em>
     </article>
@@ -301,6 +338,8 @@
   .mode-compact small { display:none; }
   .mode-compact strong { font-size:20px; }
   .karaoke-line { border-bottom:3px solid var(--caption-accent); padding-bottom:4px; }
+  .karaoke-line span { transition:color .08s linear, background .08s linear; border-radius:4px; padding:0 1px; }
+  .karaoke-line .active-word { color:var(--caption-bg); background:var(--caption-accent); }
   .theme-mily { --caption-bg:rgba(16,36,62,.96); --caption-fg:#fff; --caption-muted:#a9bdd9; --caption-accent:#6fe0bd; }
   .theme-cinema { --caption-bg:rgba(3,5,8,.94); --caption-fg:#fff4d6; --caption-muted:#d3c7a7; --caption-accent:#e9b949; }
   .theme-class { --caption-bg:rgba(255,255,255,.97); --caption-fg:#10243e; --caption-muted:#45627f; --caption-accent:#008b69; }
