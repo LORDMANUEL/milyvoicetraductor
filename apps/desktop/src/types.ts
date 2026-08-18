@@ -88,6 +88,10 @@ export interface AppConfig {
   showOriginalSubtitle: boolean;
 }
 
+export type SessionMode = 'meeting' | 'education' | 'karaoke' | 'compact';
+export type SpeakerFocusMode = 'all' | 'dominant' | 'fixed';
+export type AudioSourceMode = 'browser_tab' | 'microphone' | 'media_file' | 'system_loopback';
+
 export interface RealtimeWord {
   start: number;
   end: number;
@@ -103,7 +107,11 @@ export interface RealtimeEvent {
   translation?: string;
   language?: string;
   words?: RealtimeWord[];
-  sessionMode?: 'meeting' | 'education' | 'karaoke' | 'compact';
+  sessionMode?: SessionMode;
+  sourceMode?: AudioSourceMode;
+  speakerDetection?: boolean;
+  speakerId?: string | null;
+  focusMode?: SpeakerFocusMode;
   rms?: number;
   peak?: number;
   silentMs?: number;
