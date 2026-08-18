@@ -86,11 +86,22 @@ class RealtimePipeline:
             translator = QwenTranslator(translation_path, compute_profile)
         else:
             translator = NllbTranslator(translation_path, compute_profile)
+        self._translator_provider = translator
         self.translator = CachedTranslator(translator)
 
     @property
     def audio_level(self) -> AudioLevel:
         return self.segmenter.level
+
+    def warm_up_asr(self) -> None:
+        warm_up = getattr(self.asr, "warm_up", None)
+        if callable(warm_up):
+            warm_up(self.source_language)
+
+    def warm_up_translation(self) -> None:
+        warm_up = getattr(self._translator_provider, "warm_up", None)
+        if callable(warm_up):
+            warm_up()
 
     @staticmethod
     def _normalize(text: str) -> str:
