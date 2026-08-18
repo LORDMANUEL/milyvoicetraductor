@@ -20,7 +20,7 @@
       <a href="#arquitectura">Cómo funciona</a>
       <a href="#estado">Descargas</a>
     </nav>
-    <a class="ghost-button" href="https://github.com/LORDMANUEL/milyvoicetraductor/releases/download/v1.0.0-rc.1/MilyVoiceTraductor_1.0.0-rc.1_x64-setup.exe">Descargar</a>
+    <a class="ghost-button" href="https://github.com/LORDMANUEL/milyvoicetraductor/releases/download/v1.0.5/MilyVoiceTraductor_1.0.5_x64-setup.exe">Descargar</a>
   </header>
 
   <main id="inicio">
@@ -30,8 +30,8 @@
         <h1>Entiende la reunión.<br /><span>Sin regalar el audio.</span></h1>
         <p>Traduce reuniones web en inglés o chino a español con subtítulos y procesamiento local. Instala la app y la extensión: se reconocen automáticamente, sin copiar tokens ni configurar puertos.</p>
         <div class="actions">
-          <a class="primary-button" href="https://github.com/LORDMANUEL/milyvoicetraductor/releases/download/v1.0.0-rc.1/MilyVoiceTraductor_1.0.0-rc.1_x64-setup.exe">Descargar para Windows</a>
-          <a class="text-link" href="https://github.com/LORDMANUEL/milyvoicetraductor/releases/download/v1.0.0-rc.1/MilyVoiceTraductor-Chromium-Extension.zip">Extensión Chromium →</a>
+          <a class="primary-button" href="https://github.com/LORDMANUEL/milyvoicetraductor/releases/download/v1.0.5/MilyVoiceTraductor_1.0.5_x64-setup.exe">Descargar para Windows</a>
+          <a class="text-link" href="https://github.com/LORDMANUEL/milyvoicetraductor/releases/download/v1.0.5/MilyVoiceTraductor-Chromium-Extension.zip">Extensión Chromium →</a>
         </div>
         <ul class="trust-row" aria-label="Principios principales">
           <li><span>✓</span> Python incluido</li>
@@ -71,7 +71,7 @@
       <div class="feature-grid">
         <article><div class="feature-icon emerald">01</div><h3>Runtime incluido</h3><p>Python 3.13 y las dependencias del motor viajan dentro del instalador. No necesitas winget, Python del sistema ni pip durante la instalación.</p></article>
         <article><div class="feature-icon sapphire">02</div><h3>Autoreconocimiento</h3><p>App y extensión se descubren por Native Messaging local. Sin token que copiar y sin puerto que escribir.</p></article>
-        <article><div class="feature-icon emerald">03</div><h3>Modelo automático</h3><p>Business Qwen se descarga, verifica y activa desde una pantalla de primera preparación con reintento recuperable.</p></article>
+        <article><div class="feature-icon emerald">03</div><h3>Modelo Tiempo Real INT8</h3><p>Whisper Small y M2M100 se descargan desde Hugging Face; la app convierte M2M100 a INT8 y muestra cada fase sin abrir consolas externas.</p></article>
         <article><div class="feature-icon sapphire">04</div><h3>IA en tu equipo</h3><p>Reconocimiento y traducción se ejecutan localmente, con CPU como base y aceleración GPU opcional.</p></article>
       </div>
     </section>
@@ -103,23 +103,23 @@
     </section>
 
     <section id="estado" class="section wrap">
-      <div class="section-heading"><span>Release candidate</span><h2>MilyVoiceTraductor 1.0.0-rc.1</h2><p>El EXE ya incluye runtime y dependencias. La primera conexión a Internet se usa para descargar los pesos del modelo; después la traducción está diseñada para ejecutarse localmente.</p></div>
+      <div class="section-heading"><span>Versión actual</span><h2>MilyVoiceTraductor 1.0.5</h2><p>El EXE incluye runtime y dependencias. Los pesos del modelo se descargan desde Hugging Face y después se usan localmente; la conversión INT8 ocurre dentro de la propia aplicación.</p></div>
       <div class="roadmap">
         <article class="done"><span>1</span><div><b>Instalar</b><p>Desktop, Python privado, motor, bridge y extensión quedan preparados desde el paquete Windows.</p></div></article>
         <article class="done"><span>2</span><div><b>Reconocer</b><p>La extensión encuentra la aplicación automáticamente; no pide token ni puerto.</p></div></article>
-        <article class="done"><span>3</span><div><b>Preparar IA</b><p>El modelo recomendado se descarga con staging, verificación y reintento recuperable.</p></div></article>
+        <article class="done"><span>3</span><div><b>Preparar IA</b><p>La app muestra descarga de reconocimiento, descarga del traductor, optimización INT8 y verificación.</p></div></article>
         <article class="done"><span>4</span><div><b>Traducir</b><p>Abre Meet, Teams Web o Zoom Web y pulsa Iniciar traducción.</p></div></article>
       </div>
       <div class="cta-card">
-        <div><small>WINDOWS X64 · RC1</small><h2>Pruébalo en una reunión real.</h2><p>Si el runtime incluido necesita recuperación, la propia aplicación ofrece Reparar instalación.</p></div>
-        <a class="primary-button" href="https://github.com/LORDMANUEL/milyvoicetraductor/releases/download/v1.0.0-rc.1/MilyVoiceTraductor_1.0.0-rc.1_x64-setup.exe">Descargar Windows</a>
+        <div><small>WINDOWS X64 · 1.0.5</small><h2>Pruébalo en una reunión real.</h2><p>Si el runtime incluido necesita recuperación, la propia aplicación ofrece Reparar instalación.</p></div>
+        <a class="primary-button" href="https://github.com/LORDMANUEL/milyvoicetraductor/releases/download/v1.0.5/MilyVoiceTraductor_1.0.5_x64-setup.exe">Descargar Windows</a>
       </div>
     </section>
   </main>
 
   <footer class="wrap">
     <div class="brand footer-brand"><img src="./assets/logo.svg" alt="" /><span><b>Mily</b><em>Voice</em>Traductor</span></div>
-    <p>1.0.0-rc.1 · Runtime privado · Procesamiento local · Sin telemetría.</p>
+    <p>1.0.5 · Runtime privado · Procesamiento local · Sin telemetría.</p>
   </footer>
   <script src="./app.js" defer></script>
 </body>
