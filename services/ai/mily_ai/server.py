@@ -5,6 +5,7 @@ import json
 import os
 import secrets
 import time
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
 
 from .audio import decode_pcm16_base64, decode_pcm16_bytes
@@ -12,11 +13,14 @@ from .logging_safe import build_logger, close_logger
 from .models import HuggingFacePackInstaller, ModelCatalog, ModelOperationError
 from .pipeline import RealtimePipeline
 from .protocol import ClientMessage, ProtocolError, event
+from .queueing import enqueue_translation
 from .runtime import EngineSettings, RuntimePaths, parent_process_alive
 from .security import EphemeralCredentialService, PairingTokenService
 from .sessions import SessionRecorder
 
 PINNED_EXTENSION_ORIGIN = "chrome-extension://edcpjonegaempcifgodcmgejbcpdpddm"
+AUDIO_QUEUE_MAX = 16
+TRANSLATION_QUEUE_MAX = 8
 
 
 def websocket_origin_allowed(origin: str) -> bool:
@@ -153,9 +157,21 @@ def create_app(paths: RuntimePaths, port: int = 8765, parent_pid: int | None = N
             await websocket.close(code=4401)
             return
         await websocket.accept()
+
         pipeline: RealtimePipeline | None = None
         recorder: SessionRecorder | None = None
         binary_pcm_enabled = False
+        audio_queue: asyncio.Queue = asyncio.Queue(maxsize=AUDIO_QUEUE_MAX)
+        translation_queue: asyncio.Queue = asyncio.Queue(maxsize=TRANSLATION_QUEUE_MAX)
+        asr_executor: ThreadPoolExecutor | None = None
+        translation_executor: ThreadPoolExecutor | None = None
+        audio_task: asyncio.Task | None = None
+        translation_task: asyncio.Task | None = None
+        send_lock = asyncio.Lock()
+
+        async def safe_send(payload: dict) -> None:
+            async with send_lock:
+                await websocket.send_json(payload)
 
         async def send_pipeline_events(items) -> None:
             for item in items:
@@ -167,12 +183,162 @@ def create_app(paths: RuntimePaths, port: int = 8765, parent_pid: int | None = N
                 }
                 if item.translation:
                     fields["translation"] = item.translation
-                await websocket.send_json(event(item.type, **fields))
+                await safe_send(event(item.type, **fields))
 
-        async def process_samples(samples) -> None:
+        async def queue_translation_requests(requests) -> None:
+            for request in requests:
+                accepted = await enqueue_translation(translation_queue, request)
+                if not accepted:
+                    logger.debug("Parcial de traducción omitido por backpressure.")
+
+        async def audio_worker() -> None:
             nonlocal pipeline
+            loop = asyncio.get_running_loop()
+            while True:
+                samples = await audio_queue.get()
+                try:
+                    if samples is None:
+                        return
+                    current = pipeline
+                    executor = asr_executor
+                    if current is None or executor is None:
+                        continue
+                    try:
+                        events, requests = await loop.run_in_executor(
+                            executor, current.ingest, samples
+                        )
+                    except Exception as exc:
+                        logger.warning(
+                            "Error procesando audio ASR: %s", exc.__class__.__name__
+                        )
+                        await safe_send(
+                            event(
+                                "engine.error",
+                                code="AUDIO_PROCESS",
+                                message="No se pudo procesar un fragmento de audio.",
+                            )
+                        )
+                        continue
+                    heartbeat_path.write_text(
+                        json.dumps({"at": time.time()}), encoding="utf-8"
+                    )
+                    await send_pipeline_events(events)
+                    await queue_translation_requests(requests)
+                finally:
+                    audio_queue.task_done()
+
+        async def translation_worker() -> None:
+            nonlocal pipeline
+            loop = asyncio.get_running_loop()
+            while True:
+                request = await translation_queue.get()
+                try:
+                    if request is None:
+                        return
+                    current = pipeline
+                    executor = translation_executor
+                    if current is None or executor is None:
+                        continue
+                    try:
+                        translated = await loop.run_in_executor(
+                            executor, current.execute_translation, request
+                        )
+                    except Exception as exc:
+                        logger.warning(
+                            "Error en traducción local: %s", exc.__class__.__name__
+                        )
+                        if request.final:
+                            await safe_send(
+                                event(
+                                    "engine.error",
+                                    code="TRANSLATION_PROCESS",
+                                    message="No se pudo traducir una frase final.",
+                                )
+                            )
+                        continue
+                    await send_pipeline_events([translated])
+                finally:
+                    translation_queue.task_done()
+
+        async def start_workers() -> None:
+            nonlocal audio_queue, translation_queue
+            nonlocal asr_executor, translation_executor, audio_task, translation_task
             if pipeline is None:
-                await websocket.send_json(
+                return
+            audio_queue = asyncio.Queue(maxsize=AUDIO_QUEUE_MAX)
+            translation_queue = asyncio.Queue(maxsize=TRANSLATION_QUEUE_MAX)
+            asr_executor = ThreadPoolExecutor(
+                max_workers=1, thread_name_prefix="mily-asr"
+            )
+            if pipeline.cpu_budget.parallel_stages:
+                translation_executor = ThreadPoolExecutor(
+                    max_workers=1, thread_name_prefix="mily-translate"
+                )
+            else:
+                translation_executor = asr_executor
+            audio_task = asyncio.create_task(audio_worker(), name="mily-audio-worker")
+            translation_task = asyncio.create_task(
+                translation_worker(), name="mily-translation-worker"
+            )
+
+        def shutdown_executors(*, wait: bool) -> None:
+            nonlocal asr_executor, translation_executor
+            seen: set[int] = set()
+            for executor in (translation_executor, asr_executor):
+                if executor is None or id(executor) in seen:
+                    continue
+                seen.add(id(executor))
+                executor.shutdown(wait=wait, cancel_futures=True)
+            asr_executor = None
+            translation_executor = None
+
+        async def finish_workers(*, flush: bool) -> None:
+            nonlocal audio_task, translation_task
+            current = pipeline
+            executor = asr_executor
+            if audio_task is None and translation_task is None:
+                return
+
+            if flush and current is not None and executor is not None:
+                await audio_queue.join()
+                try:
+                    events, requests = await asyncio.get_running_loop().run_in_executor(
+                        executor, current.flush_ingest
+                    )
+                    await send_pipeline_events(events)
+                    await queue_translation_requests(requests)
+                except Exception as exc:
+                    logger.warning(
+                        "No se pudo finalizar buffer ASR: %s", exc.__class__.__name__
+                    )
+                await translation_queue.join()
+
+            await audio_queue.put(None)
+            await translation_queue.put(None)
+            await asyncio.gather(
+                *(task for task in (audio_task, translation_task) if task is not None),
+                return_exceptions=True,
+            )
+            audio_task = None
+            translation_task = None
+            shutdown_executors(wait=True)
+
+        async def abort_workers() -> None:
+            nonlocal audio_task, translation_task
+            for task in (audio_task, translation_task):
+                if task is not None:
+                    task.cancel()
+            await asyncio.gather(
+                *(task for task in (audio_task, translation_task) if task is not None),
+                return_exceptions=True,
+            )
+            audio_task = None
+            translation_task = None
+            shutdown_executors(wait=False)
+
+        async def enqueue_audio(samples) -> None:
+            if pipeline is None or audio_task is None:
+                await safe_send(
                     event(
                         "engine.error",
                         code="SESSION_NOT_STARTED",
@@ -180,29 +346,11 @@ def create_app(paths: RuntimePaths, port: int = 8765, parent_pid: int | None = N
                     )
                 )
                 return
-            try:
-                items = await asyncio.get_running_loop().run_in_executor(
-                    None, pipeline.push, samples
-                )
-            except Exception as exc:
-                logger.warning("Error procesando audio: %s", exc.__class__.__name__)
-                await websocket.send_json(
-                    event(
-                        "engine.error",
-                        code="AUDIO_PROCESS",
-                        message="No se pudo procesar un fragmento de audio.",
-                    )
-                )
-                return
-            heartbeat_path.write_text(
-                json.dumps({"at": time.time()}), encoding="utf-8"
-            )
-            await send_pipeline_events(items)
+            # Cola limitada: aplica backpressure al socket en vez de crecer sin límite.
+            await audio_queue.put(samples)
 
         try:
-            await websocket.send_json(
-                event("engine.ready", version="1.0.5", protocolVersion=1)
-            )
+            await safe_send(event("engine.ready", version="1.0.5", protocolVersion=1))
             while True:
                 packet = await websocket.receive()
                 if packet.get("type") == "websocket.disconnect":
@@ -211,7 +359,7 @@ def create_app(paths: RuntimePaths, port: int = 8765, parent_pid: int | None = N
                 raw_bytes = packet.get("bytes")
                 if raw_bytes is not None:
                     if not binary_pcm_enabled:
-                        await websocket.send_json(
+                        await safe_send(
                             event(
                                 "engine.error",
                                 code="PROTOCOL",
@@ -222,7 +370,7 @@ def create_app(paths: RuntimePaths, port: int = 8765, parent_pid: int | None = N
                     try:
                         samples = decode_pcm16_bytes(raw_bytes)
                     except ValueError:
-                        await websocket.send_json(
+                        await safe_send(
                             event(
                                 "engine.error",
                                 code="AUDIO_PROCESS",
@@ -230,7 +378,7 @@ def create_app(paths: RuntimePaths, port: int = 8765, parent_pid: int | None = N
                             )
                         )
                         continue
-                    await process_samples(samples)
+                    await enqueue_audio(samples)
                     continue
 
                 raw = packet.get("text")
@@ -239,22 +387,24 @@ def create_app(paths: RuntimePaths, port: int = 8765, parent_pid: int | None = N
                 try:
                     message = ClientMessage.parse(raw)
                 except ProtocolError:
-                    await websocket.send_json(
+                    await safe_send(
                         event("engine.error", code="PROTOCOL", message="Mensaje no válido.")
                     )
                     continue
 
                 if message.type == "ping":
-                    await websocket.send_json(event("pong"))
+                    await safe_send(event("pong"))
                     continue
 
                 if message.type == "client.hello":
+                    if pipeline is not None:
+                        await finish_workers(flush=True)
                     heartbeat_path.write_text(
                         json.dumps({"at": time.time()}), encoding="utf-8"
                     )
                     active = catalog.active_pack()
                     if active is None:
-                        await websocket.send_json(
+                        await safe_send(
                             event(
                                 "engine.error",
                                 code="MODEL_NOT_INSTALLED",
@@ -269,7 +419,7 @@ def create_app(paths: RuntimePaths, port: int = 8765, parent_pid: int | None = N
                     session_id = recorder.start(
                         message.source_language, message.target_language
                     )
-                    await websocket.send_json(
+                    await safe_send(
                         event("engine.loading", modelPack=f"{active.id}@{active.version}")
                     )
                     try:
@@ -283,7 +433,7 @@ def create_app(paths: RuntimePaths, port: int = 8765, parent_pid: int | None = N
                         logger.error(
                             "No se pudo preparar pipeline: %s", exc.__class__.__name__
                         )
-                        await websocket.send_json(
+                        await safe_send(
                             event(
                                 "engine.error",
                                 code="PIPELINE_INIT",
@@ -291,13 +441,16 @@ def create_app(paths: RuntimePaths, port: int = 8765, parent_pid: int | None = N
                             )
                         )
                         pipeline = None
+                        recorder = None
                         continue
+                    await start_workers()
                     binary_pcm_enabled = message.binary_pcm
-                    await websocket.send_json(
+                    await safe_send(
                         event(
                             "session.started",
                             sessionId=session_id,
                             binaryPcm=binary_pcm_enabled,
+                            parallelStages=pipeline.cpu_budget.parallel_stages,
                         )
                     )
                     continue
@@ -306,7 +459,7 @@ def create_app(paths: RuntimePaths, port: int = 8765, parent_pid: int | None = N
                     try:
                         samples = decode_pcm16_base64(message.audio_base64 or "")
                     except ValueError:
-                        await websocket.send_json(
+                        await safe_send(
                             event(
                                 "engine.error",
                                 code="AUDIO_PROCESS",
@@ -314,22 +467,13 @@ def create_app(paths: RuntimePaths, port: int = 8765, parent_pid: int | None = N
                             )
                         )
                         continue
-                    await process_samples(samples)
+                    await enqueue_audio(samples)
                     continue
 
                 if message.type == "audio.stop":
-                    if pipeline is not None:
-                        try:
-                            remaining = await asyncio.get_running_loop().run_in_executor(
-                                None, pipeline.flush
-                            )
-                            await send_pipeline_events(remaining)
-                        except Exception as exc:
-                            logger.warning(
-                                "No se pudo vaciar buffer: %s", exc.__class__.__name__
-                            )
+                    await finish_workers(flush=True)
                     result = recorder.finish() if recorder is not None else None
-                    await websocket.send_json(
+                    await safe_send(
                         event(
                             "session.finished",
                             sessionId=result.session_id if result else None,
@@ -341,8 +485,10 @@ def create_app(paths: RuntimePaths, port: int = 8765, parent_pid: int | None = N
                     binary_pcm_enabled = False
         except WebSocketDisconnect:
             logger.info("Extensión desconectada.")
+            await abort_workers()
         except Exception as exc:
             logger.error("Conexión finalizó con error: %s", exc.__class__.__name__)
+            await abort_workers()
             try:
                 await websocket.close(code=1011)
             except Exception:
