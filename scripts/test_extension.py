@@ -57,11 +57,15 @@ assert "chrome.tts.speak" in tts, "La extensión debe usar síntesis local de Ch
 
 # Un motor instalado pero detenido NO debe bloquear Teams Web. START_CAPTURE usa
 # `hello`, y es precisamente esa llamada la que arranca el motor automáticamente.
+# En cambio notInstalled/error sí deben seguir bloqueados para no mostrar un botón falso.
 assert "state?.engine === 'ready' && state?.modelPack" not in popup_script, (
     "El popup no debe deshabilitar Inicio solo porque el motor esté detenido."
 )
-assert "Boolean(connected && state?.modelPack)" in popup_script, (
-    "Con app/bridge y modelo disponibles, el usuario debe poder iniciar y auto-arrancar el motor."
+assert "state?.engine === 'ready' || state?.engine === 'stopped'" in popup_script, (
+    "Teams debe admitir un motor listo o instalado/detenido, no estados rotos."
+)
+assert "Boolean(connected && engineStartable && state?.modelPack)" in popup_script, (
+    "Con bridge, modelo y motor arrancable, el usuario debe poder iniciar Teams."
 )
 
 # Teams/Meet/Zoom deben conservar el audio audible a la frecuencia nativa del
