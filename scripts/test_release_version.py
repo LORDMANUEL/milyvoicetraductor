@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import re
+import tomllib
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -26,6 +27,8 @@ check(
     "tauri.conf.json",
     json.loads((ROOT / "apps/desktop/src-tauri/tauri.conf.json").read_text(encoding="utf-8")).get("version"),
 )
+ai_project = tomllib.loads((ROOT / "services/ai/pyproject.toml").read_text(encoding="utf-8"))
+check("services/ai/pyproject.toml", ai_project.get("project", {}).get("version"))
 
 extension = json.loads((ROOT / "apps/extension/manifest.json").read_text(encoding="utf-8"))
 check("extension manifest version", extension.get("version"))
