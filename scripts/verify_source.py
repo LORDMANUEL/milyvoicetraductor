@@ -74,8 +74,9 @@ bootstrap_path = ROOT / "installer/windows/setup-installed.ps1"
 register_path = ROOT / "installer/windows/register-native-host.ps1"
 runtime_builder = ROOT / "installer/windows/build-python-runtime.ps1"
 native_template = ROOT / "installer/windows/native-host-template.json"
+model_service_path = ROOT / "crates/mily-models/src/lib.rs"
 
-for required in (hooks_path, bootstrap_path, register_path, runtime_builder, native_template):
+for required in (hooks_path, bootstrap_path, register_path, runtime_builder, native_template, model_service_path):
     if not required.is_file():
         fail(f"Falta componente Windows: {required.relative_to(ROOT)}")
 
@@ -93,6 +94,12 @@ if bootstrap_path.is_file():
     for prohibited in ("winget install", "-m venv", "-m pip install", "models `"):
         if prohibited in bootstrap_text:
             fail(f"Bootstrap normal todavía depende de instalación online: {prohibited}")
+
+if model_service_path.is_file():
+    model_service = model_service_path.read_text(encoding="utf-8")
+    for marker in ("CREATE_NO_WINDOW", "command.creation_flags(CREATE_NO_WINDOW)"):
+        if marker not in model_service:
+            fail(f"El instalador/optimizador de modelos puede abrir una consola visible en Windows: falta {marker}")
 
 if runtime_builder.is_file():
     builder_text = runtime_builder.read_text(encoding="utf-8")
