@@ -35,6 +35,7 @@ class HypothesisStabilizer:
     def __init__(self) -> None:
         self._previous_words: list[str] = []
         self._stable_words: list[str] = []
+        self._previous_text = ""
 
     @staticmethod
     def _common_prefix_length(left: list[str], right: list[str]) -> int:
@@ -54,6 +55,7 @@ class HypothesisStabilizer:
             self._stable_words = current_words[:common]
 
         self._previous_words = current_words
+        self._previous_text = partial
         return HypothesisState(
             partial=partial,
             stable=" ".join(self._stable_words),
@@ -61,10 +63,14 @@ class HypothesisStabilizer:
         )
 
     def finalize(self, text: str) -> str:
-        final = _normalize_text(text)
+        # Un corte de silencio muy corto puede hacer que el último decode no emita
+        # nada; en ese caso conservamos la última hipótesis visible en vez de perder
+        # la utterance al cerrar la sesión.
+        final = _normalize_text(text) or self._previous_text
         self.reset()
         return final
 
     def reset(self) -> None:
         self._previous_words.clear()
         self._stable_words.clear()
+        self._previous_text = ""
