@@ -12,6 +12,7 @@ from .cpu_budget import detect_cpu_budget
 from .hypothesis import HypothesisStabilizer
 from .models import InstalledPack
 from .providers import (
+    AsrWord,
     CachedTranslator,
     FasterWhisperAsr,
     M2M100CTranslate2Translator,
@@ -19,7 +20,7 @@ from .providers import (
     QwenTranslator,
     Translator,
 )
-from .sessions import SessionRecorder, TranscriptSegment
+from .sessions import SessionRecorder, TranscriptSegment, TranscriptWord
 from .streaming import AdaptiveSpeechSegmenter, AudioLevel, StreamingEvent
 from .telemetry import RealtimeTelemetry
 
@@ -39,6 +40,7 @@ class PipelineEvent:
     original: str
     language: str
     translation: str = ""
+    words: tuple[AsrWord, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -50,6 +52,7 @@ class TranslationRequest:
     end: float
     original: str
     language: str
+    words: tuple[AsrWord, ...] = ()
 
     @property
     def final(self) -> bool:
@@ -57,12 +60,34 @@ class TranslationRequest:
 
 
 class RealtimePipeline:
-    def __init__(self, pack: InstalledPack, source_language: str, compute_profile: str, recorder: SessionRecorder):
-        metadata = __import__("json").loads((pack.path / "pack.json").read_text(encoding="utf-8"))
+    def __init__(
+        self,
+        pack: InstalledPack,
+        source_language: str,
+        compute_profile: str,
+        recorder: SessionRecorder,
+        session_mode: str = "meeting",
+    ):
+        metadata = __import__("json").loads(
+            (pack.path / "pack.json").read_text(encoding="utf-8")
+        )
         components = metadata["components"]
         self.source_language = source_language
+        self.session_mode = session_mode if session_mode in {
+            "meeting", "education", "karaoke", "compact"
+        } else "meeting"
         self.sample_rate = 16000
-        self.segmenter = AdaptiveSpeechSegmenter(sample_rate=self.sample_rate)
+        if self.session_mode == "karaoke":
+            self.segmenter = AdaptiveSpeechSegmenter(
+                sample_rate=self.sample_rate,
+                first_decode_ms=1200,
+                partial_step_ms=650,
+                finalize_silence_ms=450,
+                max_utterance_ms=4000,
+                energy_threshold=0.008,
+            )
+        else:
+            self.segmenter = AdaptiveSpeechSegmenter(sample_rate=self.sample_rate)
         self.stabilizer = HypothesisStabilizer()
         self.telemetry = RealtimeTelemetry()
         self.recorder = recorder
@@ -75,6 +100,7 @@ class RealtimePipeline:
             pack.path / "components" / "asr",
             compute_profile,
             cpu_budget=self.cpu_budget,
+            word_timestamps=self.session_mode == "karaoke",
         )
         provider = components["translation"]["provider"]
         translation_path = pack.path / "components" / "translation"
@@ -153,6 +179,10 @@ class RealtimePipeline:
                     end=request.end,
                     original=request.original,
                     translation=translated,
+                    words=tuple(
+                        TranscriptWord(word.start, word.end, word.text)
+                        for word in request.words
+                    ),
                 )
             )
         return PipelineEvent(
@@ -162,6 +192,7 @@ class RealtimePipeline:
             original=request.original,
             language=request.language,
             translation=translated,
+            words=request.words,
         )
 
     def push(self, samples) -> list[PipelineEvent]:
@@ -178,7 +209,9 @@ class RealtimePipeline:
         events.extend(self.execute_translation(request) for request in requests)
         return events
 
-    def _transcribe_window(self, window: StreamingEvent) -> tuple[str, str]:
+    def _transcribe_window(
+        self, window: StreamingEvent
+    ) -> tuple[str, str, tuple[AsrWord, ...]]:
         started = time.perf_counter()
         segments = self.asr.transcribe(window.samples, self.source_language)
         elapsed_ms = (time.perf_counter() - started) * 1000.0
@@ -186,17 +219,34 @@ class RealtimePipeline:
             elapsed_ms,
             audio_ms=len(window.samples) * 1000.0 / self.sample_rate,
         )
-        original = self._normalize(" ".join(segment.text for segment in segments if segment.text))
+        original = self._normalize(
+            " ".join(segment.text for segment in segments if segment.text)
+        )
         detected = next(
-            (segment.language for segment in segments if segment.language in {"en", "zh"}),
+            (
+                segment.language
+                for segment in segments
+                if segment.language in {"en", "zh"}
+            ),
             self.source_language,
         )
-        return original, self._detect_language(original, detected, self.source_language)
+        offset = window.start_sample / self.sample_rate
+        words = tuple(
+            AsrWord(offset + word.start, offset + word.end, word.text)
+            for segment in segments
+            for word in segment.words
+            if word.text
+        )
+        return (
+            original,
+            self._detect_language(original, detected, self.source_language),
+            words,
+        )
 
     def _ingest_window(
         self, window: StreamingEvent
     ) -> tuple[list[PipelineEvent], list[TranslationRequest]]:
-        original, detected = self._transcribe_window(window)
+        original, detected, words = self._transcribe_window(window)
         start = window.start_sample / self.sample_rate
         end = window.end_sample / self.sample_rate
 
@@ -211,13 +261,15 @@ class RealtimePipeline:
                     end=end,
                     original=state.partial,
                     language=detected,
+                    words=words,
                 )
             ]
             requests: list[TranslationRequest] = []
             if (
                 state.stable_advanced
                 and len(state.stable.split()) >= 2
-                and state.stable.casefold() != self._last_partial_translation.casefold()
+                and state.stable.casefold()
+                != self._last_partial_translation.casefold()
             ):
                 self._last_partial_translation = state.stable
                 requests.append(
@@ -227,6 +279,7 @@ class RealtimePipeline:
                         end=end,
                         original=state.stable,
                         language=detected,
+                        words=words,
                     )
                 )
             return events, requests
@@ -246,6 +299,7 @@ class RealtimePipeline:
                 end=end,
                 original=final_original,
                 language=detected,
+                words=words,
             )
         ], [
             TranslationRequest(
@@ -254,5 +308,6 @@ class RealtimePipeline:
                 end=end,
                 original=final_original,
                 language=detected,
+                words=words,
             )
         ]
