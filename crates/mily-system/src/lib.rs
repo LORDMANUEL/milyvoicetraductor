@@ -99,18 +99,9 @@ impl SystemInfoService {
                 "MILY_LOGICAL_CPUS".into(),
                 snapshot.logical_cpus.to_string(),
             ),
-            (
-                "MILY_CPU_AVX2".into(),
-                bool_env(snapshot.cpu_features.avx2),
-            ),
-            (
-                "MILY_CPU_FMA".into(),
-                bool_env(snapshot.cpu_features.fma),
-            ),
-            (
-                "MILY_CPU_NEON".into(),
-                bool_env(snapshot.cpu_features.neon),
-            ),
+            ("MILY_CPU_AVX2".into(), bool_env(snapshot.cpu_features.avx2)),
+            ("MILY_CPU_FMA".into(), bool_env(snapshot.cpu_features.fma)),
+            ("MILY_CPU_NEON".into(), bool_env(snapshot.cpu_features.neon)),
         ]
     }
 }
