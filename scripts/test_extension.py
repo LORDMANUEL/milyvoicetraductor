@@ -10,6 +10,7 @@ root = Path(__file__).resolve().parents[1]
 ext = root / "apps" / "extension"
 manifest = json.loads((ext / "manifest.json").read_text(encoding="utf-8"))
 popup = (ext / "popup.html").read_text(encoding="utf-8")
+popup_script = (ext / "popup.js").read_text(encoding="utf-8")
 background = (ext / "background.js").read_text(encoding="utf-8")
 offscreen = (ext / "offscreen.js").read_text(encoding="utf-8")
 worklet = (ext / "audio-worklet.js").read_text(encoding="utf-8")
@@ -53,6 +54,15 @@ assert "ensureOverlay(tab.id)" in background, "START_CAPTURE debe preparar overl
 assert "speakTranslation" in background, "La traducción final debe poder activar TTS local"
 assert "tts.started" in offscreen and "tts.finished" in offscreen, "TTS debe avisar al motor para anti-feedback"
 assert "chrome.tts.speak" in tts, "La extensión debe usar síntesis local de Chromium/Windows"
+
+# Un motor instalado pero detenido NO debe bloquear Teams Web. START_CAPTURE usa
+# `hello`, y es precisamente esa llamada la que arranca el motor automáticamente.
+assert "state?.engine === 'ready' && state?.modelPack" not in popup_script, (
+    "El popup no debe deshabilitar Inicio solo porque el motor esté detenido."
+)
+assert "Boolean(connected && state?.modelPack)" in popup_script, (
+    "Con app/bridge y modelo disponibles, el usuario debe poder iniciar y auto-arrancar el motor."
+)
 
 # Teams/Meet/Zoom deben conservar el audio audible a la frecuencia nativa del
 # dispositivo. Solo la copia para ASR se reduce a 16 kHz dentro del worklet.
