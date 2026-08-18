@@ -49,12 +49,25 @@ function renderEngineEvent(event) {
   if (!event) return;
   status.classList.remove('error');
   if (event.type === 'engine.ready' || event.type === 'connected') status.textContent = 'Motor local conectado';
-  else if (event.type === 'engine.loading') status.textContent = 'Cargando modelos locales…';
+  else if (event.type === 'engine.loading') status.textContent = event.phase === 'warming' ? 'Precalentando modelos locales…' : 'Cargando modelos locales…';
   else if (event.type === 'session.started') status.textContent = 'Escuchando audio…';
   else if (event.type === 'transcription.partial') status.textContent = 'Transcribiendo en tiempo real…';
   else if (event.type === 'translation.partial') status.textContent = 'Traduciendo frase…';
   else if (event.type === 'translation.final') status.textContent = 'Traducción al día';
-  else if (event.type === 'engine.error' || event.type === 'error') {
+  else if (event.type === 'audio.level') {
+    if (event.speech) status.textContent = 'Audio detectado · escuchando…';
+    else if (Number(event.silentMs || 0) >= 3000) {
+      status.textContent = 'No se detecta audio en esta fuente.';
+      status.classList.add('error');
+    } else status.textContent = 'Silencio · esperando voz…';
+  } else if (event.type === 'pipeline.metrics') {
+    if (event.pressure === 'overloaded') {
+      status.textContent = 'CPU al límite · priorizando frases finales.';
+      status.classList.add('error');
+    } else if (event.pressure === 'pressure') {
+      status.textContent = 'CPU ocupada · reduciendo parciales.';
+    }
+  } else if (event.type === 'engine.error' || event.type === 'error') {
     status.textContent = event.message || 'Error del motor local';
     status.classList.add('error');
   } else if (event.type === 'disconnected') status.textContent = 'Motor desconectado';
