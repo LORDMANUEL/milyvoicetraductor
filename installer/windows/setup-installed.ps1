@@ -138,6 +138,52 @@ function Expand-RuntimeArchive([string]$Archive, [string]$Destination) {
     }
 }
 
+function Stop-MilyVoiceOwnedProcesses {
+    $ownedPaths = @(
+        (Join-Path $RuntimeRoot 'python.exe'),
+        $BridgeTarget
+    ) | ForEach-Object { [System.IO.Path]::GetFullPath($_) }
+
+    try {
+        $processes = Get-CimInstance Win32_Process -ErrorAction Stop
+    } catch {
+        throw 'RUNTIME_PROCESS_QUERY_FAILED|No se pudieron consultar los procesos locales antes de actualizar MilyVoice.'
+    }
+
+    foreach ($process in $processes) {
+        $rawPath = [string]$process.ExecutablePath
+        if ([string]::IsNullOrWhiteSpace($rawPath)) { continue }
+        try {
+            $processPath = [System.IO.Path]::GetFullPath($rawPath)
+        } catch {
+            continue
+        }
+        $owned = $false
+        foreach ($candidate in $ownedPaths) {
+            if ([string]::Equals($processPath, $candidate, [System.StringComparison]::OrdinalIgnoreCase)) {
+                $owned = $true
+                break
+            }
+        }
+        if (-not $owned) { continue }
+
+        Write-Step "Cerrando proceso anterior de MilyVoice PID=$($process.ProcessId)."
+        try {
+            Stop-Process -Id ([int]$process.ProcessId) -Force -ErrorAction Stop
+        } catch {
+            throw 'RUNTIME_PROCESS_STOP_FAILED|No se pudo cerrar un proceso anterior de MilyVoice antes de actualizar.'
+        }
+
+        for ($attempt = 0; $attempt -lt 30; $attempt++) {
+            if (-not (Get-Process -Id ([int]$process.ProcessId) -ErrorAction SilentlyContinue)) { break }
+            Start-Sleep -Milliseconds 100
+        }
+        if (Get-Process -Id ([int]$process.ProcessId) -ErrorAction SilentlyContinue) {
+            throw 'RUNTIME_PROCESS_STOP_FAILED|Un proceso anterior de MilyVoice siguió activo y bloquea la actualización.'
+        }
+    }
+}
+
 function Resolve-UnstructuredFailure([string]$Stage) {
     switch ($Stage) {
         'COMPONENTS_CHECK' { return @('BOOTSTRAP_COMPONENT_CHECK_FAILED', 'No se pudieron validar los componentes incluidos.') }
@@ -215,6 +261,7 @@ try {
 
     Set-BootstrapStage 'RUNTIME_ACTIVATE' 'Activando runtime privado.'
     Write-Step 'Activando runtime y motor.'
+    Stop-MilyVoiceOwnedProcesses
     if (Test-Path $RuntimeRoot) { Remove-Item $RuntimeRoot -Recurse -Force }
     Move-Item -LiteralPath $RuntimeNext -Destination $RuntimeRoot
 
