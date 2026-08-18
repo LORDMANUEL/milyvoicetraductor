@@ -5,7 +5,12 @@
 
 const OFFSCREEN_URL = chrome.runtime.getURL('offscreen.html');
 const NATIVE_HOST = 'com.milyvoice.traductor';
-const MEETING_URL = /^https:\/\/(meet\.google\.com|([^/]+\.)?teams\.microsoft\.com|([^/]+\.)?zoom\.us)\//;
+const WEB_URL = /^https?:\/\//i;
+const PROTECTED_HOSTS = new Set([
+  'chromewebstore.google.com',
+  'chrome.google.com',
+  'microsoftedge.microsoft.com'
+]);
 
 let nativePort = null;
 let pendingBridgeRequest = null;
@@ -112,6 +117,23 @@ function requestBridge(type = 'status', timeoutMs = 3500) {
   });
 }
 
+function assertCapturableTab(tab) {
+  const rawUrl = tab?.url || '';
+  if (!WEB_URL.test(rawUrl)) {
+    throw new Error('Esta página está protegida por el navegador y no permite captura. Abre un sitio web http/https.');
+  }
+  let parsed;
+  try {
+    parsed = new URL(rawUrl);
+  } catch (_) {
+    throw new Error('La pestaña activa no tiene una URL capturable.');
+  }
+  const host = parsed.hostname.toLowerCase();
+  if (PROTECTED_HOSTS.has(host) || (host === 'chrome.google.com' && parsed.pathname.startsWith('/webstore'))) {
+    throw new Error('La tienda de extensiones es una página protegida y no permite captura de audio.');
+  }
+}
+
 async function setCaptureState(state) {
   await chrome.storage.session.set({ captureState: state });
 }
@@ -119,9 +141,7 @@ async function setCaptureState(state) {
 async function startCapture(options) {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   if (!tab?.id) throw new Error('No hay una pestaña activa.');
-  if (!MEETING_URL.test(tab.url || '')) {
-    throw new Error('Abre Google Meet, Microsoft Teams Web o Zoom Web.');
-  }
+  assertCapturableTab(tab);
 
   // `hello` pide al bridge arrancar el motor si está detenido y emitir una
   // credencial efímera. Esa credencial solo vive en memoria y en el offscreen.
@@ -137,7 +157,12 @@ async function startCapture(options) {
   }
 
   await ensureOffscreenDocument();
-  const streamId = await chrome.tabCapture.getMediaStreamId({ targetTabId: tab.id });
+  let streamId;
+  try {
+    streamId = await chrome.tabCapture.getMediaStreamId({ targetTabId: tab.id });
+  } catch (_) {
+    throw new Error('Chrome/Edge no permitió capturar el audio de esta pestaña. Prueba otra pestaña o usa Audio del sistema en MilyVoiceTraductor.');
+  }
   const response = await chrome.runtime.sendMessage({
     target: 'offscreen',
     type: 'START_CAPTURE',
@@ -149,14 +174,14 @@ async function startCapture(options) {
     enginePort: bridge.port
   });
   if (!response?.ok) throw new Error(response?.error || 'No se pudo iniciar la captura.');
-  await setCaptureState({ active: true, tabId: tab.id, startedAt: Date.now() });
+  await setCaptureState({ active: true, tabId: tab.id, startedAt: Date.now(), source: 'browser_tab' });
   return { ok: true };
 }
 
 async function stopCapture() {
   await ensureOffscreenDocument();
   await chrome.runtime.sendMessage({ target: 'offscreen', type: 'STOP_CAPTURE' });
-  await setCaptureState({ active: false, tabId: null, startedAt: null });
+  await setCaptureState({ active: false, tabId: null, startedAt: null, source: null });
   return { ok: true };
 }
 
@@ -164,7 +189,6 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message?.target === 'offscreen') return false;
 
   if (message?.type === 'GET_BRIDGE_STATUS') {
-    // Consultar estado es pasivo: no arranca el motor ni solicita una credencial.
     requestBridge('status', 3500)
       .then((bridge) => sendResponse({ ok: true, state: publicBridgeState(bridge, true) }))
       .catch(async (error) => {
