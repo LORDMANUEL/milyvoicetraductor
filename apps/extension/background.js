@@ -164,7 +164,8 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message?.target === 'offscreen') return false;
 
   if (message?.type === 'GET_BRIDGE_STATUS') {
-    requestBridge('hello', 7000)
+    // Consultar estado es pasivo: no arranca el motor ni solicita una credencial.
+    requestBridge('status', 3500)
       .then((bridge) => sendResponse({ ok: true, state: publicBridgeState(bridge, true) }))
       .catch(async (error) => {
         const state = await persistPublicBridgeState(null, false);
