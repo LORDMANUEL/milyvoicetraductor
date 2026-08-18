@@ -17,6 +17,16 @@ Antes de escribir en GitHub:
 
 `main` no se toca durante desarrollo.
 
+## Freeze de integración MilyVoice 2.0.0
+
+La candidata actual se versiona como **2.0.0** por el salto conjunto de realtime, audio, MilyCompute, hardware routing y sistema de pruebas. Durante este freeze:
+
+- el trabajo independiente puede continuar dentro de archivos reservados a cada workstream;
+- los metadatos de versión, `Cargo.toml`, `.github/workflows/ci.yml`, `publish-rc.yml` y scripts de mega benchmark quedan en estado `INTEGRATION`;
+- ningún workstream debe volver a 1.0.5 esos archivos;
+- el artefacto final solo se considera candidato entregable cuando contenga EXE NSIS, extensión Chromium, `SHA256SUMS.txt` y reporte MegaBench 2.0.0 producidos por el mismo SHA;
+- los Model Labs Quality/Legacy no se promueven automáticamente a producción durante este freeze.
+
 ---
 
 ## Workstream A — Plataforma / Arquitectura / MilyCompute
@@ -50,7 +60,7 @@ Cerrar la fundación técnica que permite a MilyVoice ejecutar el mejor backend 
 - `MASTER.md`
 - `docs/WORKSTREAMS.md`
 - `crates/mily-system/**`
-- `crates/mily-compute/**` si se crea
+- `crates/mily-compute/**`
 - `services/ai/mily_ai/languages.py` si se crea
 - `services/ai/mily_ai/compute_router.py` si se crea
 - tests directamente asociados a MilyCompute/hardware/language contracts
@@ -62,8 +72,6 @@ Cerrar la fundación técnica que permite a MilyVoice ejecutar el mejor backend 
 - `services/ai/mily_ai/providers.py`
 - `services/ai/mily_ai/server.py`
 - `.github/workflows/ci.yml`
-
-Cuando Workstream A necesite uno de estos archivos, primero registra abajo el lock temporal.
 
 ---
 
@@ -99,21 +107,21 @@ Cerrar funcional y visualmente el producto realtime ya especificado y llevarlo h
 
 ### Archivos reservados a Workstream B mientras esté `ACTIVE`
 
-- `apps/desktop/**`
-- `apps/extension/**`
+- `apps/desktop/**` salvo metadatos de versión durante el freeze 2.0;
+- `apps/extension/**` salvo manifest de versión durante el freeze 2.0;
 - `services/ai/mily_ai/system_loopback.py`
 - `services/ai/mily_ai/speakers.py`
 - `services/ai/mily_ai/echo_guard.py`
 - `services/ai/mily_ai/sessions.py`
 - tests directamente asociados a realtime/UX/exportación/WASAPI/speakers/TTS
-- scripts de validación específica NSIS/extension/realtime, salvo gates explícitos de MilyCompute
+- scripts de validación específica NSIS/extension/realtime, salvo los scripts MegaBench 2.0 en integración.
 
 ### Restricciones
 
 - No cambiar el stack estable de modelos por TriCore/Legacy.
 - No declarar ES→EN o ES→ZH soportado hasta que el protocolo/router lo habilite realmente.
 - No modificar `MASTER.md` salvo registrar una contradicción para Workstream A.
-- Si necesita tocar `protocol.py`, `providers.py`, `server.py` o CI, registrar lock compartido antes.
+- Si necesita tocar `protocol.py`, `providers.py`, `server.py` o CI, respetar el lock de integración.
 
 ---
 
@@ -143,37 +151,26 @@ Entrenar, evaluar y exportar candidatos de modelos sin interferir con el cierre 
 
 ### Regla de aislamiento
 
-Workstream C no modifica `pruebas` de la aplicación para introducir un modelo experimental. Solo entrega:
-
-- artefacto versionado;
-- hashes;
-- licencia/proveniencia;
-- benchmark;
-- métricas de calidad;
-- formatos de exportación;
-- reporte PASS/FAIL.
-
-Workstream A decide si el candidato entra al Model Router; Workstream B no lo integra directamente.
+Workstream C no modifica `pruebas` de la aplicación para introducir un modelo experimental. Solo entrega artefacto, hashes, licencia/proveniencia, benchmark, métricas, formatos y reporte PASS/FAIL. Workstream A decide si el candidato entra al Model Router.
 
 ---
 
 ## Locks temporales de archivos compartidos
 
-Formato:
-
-`archivo | owner | motivo | estado`
+Formato: `archivo | owner | motivo | estado`
 
 Estado permitido: `FREE`, `LOCKED-A`, `LOCKED-B`, `INTEGRATION`.
 
-### Estado inicial
+### Estado durante freeze 2.0.0
 
-- `Cargo.toml` | — | workspace compartido | `FREE`
+- `Cargo.toml` | integración 2.0 | versionado/workspace | `INTEGRATION`
 - `services/ai/mily_ai/protocol.py` | — | contrato WebSocket/languages/realtime | `FREE`
 - `services/ai/mily_ai/providers.py` | — | ASR/MT/backends | `FREE`
-- `services/ai/mily_ai/server.py` | B preferente | realtime server; A debe evitarlo hasta integración compute | `LOCKED-B`
-- `.github/workflows/ci.yml` | — | gates de ambos workstreams | `FREE`
-
-Si un agente toma un lock, debe actualizar esta sección primero y liberar el lock al concluir el commit verificable.
+- `services/ai/mily_ai/server.py` | B preferente | realtime server | `LOCKED-B`
+- `.github/workflows/ci.yml` | integración 2.0 | mega gates + artefacto | `INTEGRATION`
+- `.github/workflows/publish-rc.yml` | integración 2.0 | publicación 2.0 | `INTEGRATION`
+- `scripts/test_release_version.py` | integración 2.0 | consistencia 2.0 | `INTEGRATION`
+- `installer/windows/test-realtime-model.ps1` y MegaBench | integración 2.0 | modelo real + velocidad | `INTEGRATION`
 
 ---
 
@@ -181,42 +178,30 @@ Si un agente toma un lock, debe actualizar esta sección primero y liberar el lo
 
 ### Checkpoint P1 — Realtime closure
 
-Workstream B demuestra:
-
-- frontend/tests/build verdes;
-- extensión/guards verdes;
-- WASAPI/fallback correcto;
-- speaker/TTS/karaoke/export funcional;
-- no pérdida deliberada de PCM durante TTS.
+Workstream B demuestra frontend/tests/build verdes, extensión/guards verdes, WASAPI/fallback correcto, speaker/TTS/karaoke/export funcional y no pérdida deliberada de PCM durante TTS.
 
 ### Checkpoint P2 — MilyCompute foundation
 
-Workstream A demuestra:
+Workstream A demuestra profiler CPU, inventario GPU cuando esté disponible, registry de backends, discovery conservador, benchmark/scoring determinista, fallback CPU y lenguaje Tier 1 desacoplado arquitectónicamente.
 
-- profiler CPU completo;
-- inventario GPU real al menos en Windows cuando esté disponible;
-- registry de backends;
-- discovery sin afirmar soporte inexistente;
-- benchmark/scoring determinista con tests;
-- fallback CPU siempre disponible;
-- lenguaje Tier 1 desacoplado de `target=es` en arquitectura/contratos.
+### Checkpoint P3 — MegaTest 2.0
 
-### Checkpoint P3 — Integración
+- pruebas unitarias Python/Frontend/Rust;
+- Clippy `-D warnings`;
+- stress de colas y backpressure;
+- modelo real Whisper Small + M2M100 CT2 INT8;
+- P50/P95 ASR y MT, RTF ASR, end-to-end cuando exista fixture válido;
+- EN→ES y ZH→ES smoke real obligatorios;
+- reporte JSON versionado 2.0.0;
+- runtime privado, `WINDOWS_GUI`, NSIS e instalación real;
+- extensión ZIP y SHA256 del mismo SHA.
 
-Solo después de P1 + P2:
-
-- integrar cambios que requieran `protocol.py`, `providers.py`, `server.py` y CI;
-- ejecutar suite completa;
-- Windows runtime privado;
-- NSIS real;
-- functional smoke;
-- real model pack gate.
+El benchmark del runner GitHub mide regresiones de la candidata; **no sustituye** el gate físico Legacy sobre un i3 Haswell real.
 
 ### Checkpoint P4 — Release candidate
 
-- PR #9 o su sucesor deja de ser draft solo con gates completos;
 - README no declara Stable antes del release real;
-- limpiar ramas antiguas solo después de verificar trabajo único;
+- limpiar ramas antiguas después de verificar trabajo único;
 - proteger `main` cuando los workflows requeridos estén definidos;
 - merge a `main` únicamente desde `pruebas` validada.
 
@@ -224,35 +209,22 @@ Solo después de P1 + P2:
 
 ## Regla sobre EN↔ES y ZH↔ES
 
-La prioridad debe interpretarse correctamente:
-
 ```text
 voz EN → ASR EN → MT EN→ES → texto/voz ES
 voz ZH → ASR ZH → MT ZH→ES → texto/voz ES
-
 voz ES → ASR ES → MT ES→EN → texto/voz EN
 voz ES → ASR ES → MT ES→ZH → texto/voz ZH
 ```
 
-EN→ES y ZH→ES son el flujo receptor prioritario original y no pueden empeorar.
-
-ES→EN y ES→ZH son igualmente Tier 1 para conversación bidireccional y deben alcanzar calidad equivalente antes de considerar cerrada la experiencia voice-to-voice futura.
-
----
+EN→ES y ZH→ES son el flujo receptor prioritario original y no pueden empeorar. ES→EN y ES→ZH son Tier 1 para conversación bidireccional futura.
 
 ## Regla sobre modelos
 
-Hoy la aplicación debe seguir pudiendo operar con el baseline estable Whisper Small + M2M100 CT2 INT8.
+Hoy la aplicación debe seguir operando con el baseline estable Whisper Small + M2M100 CT2 INT8.
 
-Los nombres `MilyASR-*`, `MilyMT-*`, `TriCore`, `Quality` o `Legacy` describen **candidatos/laboratorios** hasta que existan pesos reales y un reporte de promoción aprobado.
-
-Nunca convertir un `READY_FOR_GPU_FINETUNING`, trainer, adapter vacío, dry-run o configuración en una afirmación de “modelo entrenado”.
-
----
+Los nombres `MilyASR-*`, `MilyMT-*`, `TriCore`, `Quality` o `Legacy` describen **candidatos/laboratorios** hasta que existan pesos reales y un reporte de promoción aprobado. Nunca convertir un `READY_FOR_GPU_FINETUNING`, trainer, adapter vacío, dry-run o configuración en una afirmación de “modelo entrenado”.
 
 ## Cómo otro chat debe retomar trabajo
-
-Al comenzar una sesión:
 
 1. leer `MASTER.md`;
 2. leer este archivo;
@@ -261,4 +233,4 @@ Al comenzar una sesión:
 5. consultar HEAD de `pruebas`;
 6. validar último CI asociado al SHA relevante;
 7. continuar solo su lista;
-8. documentar cualquier nueva contradicción en este archivo, no improvisar un tercer diseño paralelo.
+8. no modificar archivos `INTEGRATION` hasta que se libere el freeze 2.0.
