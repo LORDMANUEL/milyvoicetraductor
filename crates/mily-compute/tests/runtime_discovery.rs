@@ -1,6 +1,4 @@
-use mily_compute::{
-    BackendRegistry, ComputeBackend, RuntimeProbe, discover_runtime_backends,
-};
+use mily_compute::{BackendRegistry, ComputeBackend, RuntimeProbe, discover_runtime_backends};
 use std::collections::HashSet;
 
 struct FakeProbe {
