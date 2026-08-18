@@ -306,8 +306,12 @@ mod tests {
     fn launch_spec_discovers_embedded_runtime_layout() {
         let dir = tempdir().unwrap();
         let paths = test_paths(dir.path());
-        let python = paths.data_dir.join("runtime/python/python.exe");
-        let script = paths.engine_dir.join("app/main.py");
+        let python = paths
+            .data_dir
+            .join("runtime")
+            .join("python")
+            .join("python.exe");
+        let script = paths.engine_dir.join("app").join("main.py");
         fs::create_dir_all(python.parent().unwrap()).unwrap();
         fs::create_dir_all(script.parent().unwrap()).unwrap();
         fs::write(&python, b"python").unwrap();
@@ -315,9 +319,7 @@ mod tests {
 
         let spec = LaunchSpec::discover(&paths).expect("embedded runtime must be discovered");
         assert_eq!(spec.program, python);
-        assert_eq!(
-            spec.prefix_args,
-            vec![script.to_string_lossy().into_owned()]
-        );
+        assert_eq!(spec.prefix_args.len(), 1);
+        assert_eq!(PathBuf::from(&spec.prefix_args[0]), script);
     }
 }

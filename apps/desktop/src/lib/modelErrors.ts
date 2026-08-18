@@ -11,6 +11,7 @@ const FALLBACK_MESSAGES: Record<string, string> = {
   MODEL_HASH_MISMATCH: 'La verificación de integridad falló. El pack no será activado hasta descargarse correctamente.',
   MODEL_RUNTIME_ERROR: 'El motor local no está preparado correctamente. Usa Reparar instalación y vuelve a intentarlo.',
   MODEL_PERMISSION_ERROR: 'Windows bloqueó la escritura en la carpeta local de modelos. Revisa permisos y vuelve a intentarlo.',
+  MODEL_CONVERSION_ERROR: 'El modelo se descargó, pero la optimización INT8 no pudo terminar. Pulsa Reintentar; si continúa, usa Reparar instalación.',
   MODEL_LICENSE_BLOCKED: 'Este pack no está permitido para el perfil de uso seleccionado.'
 };
 

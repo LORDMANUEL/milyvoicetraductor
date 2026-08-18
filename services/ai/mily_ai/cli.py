@@ -139,9 +139,11 @@ def cmd_diagnose(args) -> int:
         "uvicorn",
         "numpy",
         "faster_whisper",
+        "ctranslate2",
         "transformers",
         "torch",
         "huggingface_hub",
+        "sentencepiece",
     ):
         try:
             __import__(module)

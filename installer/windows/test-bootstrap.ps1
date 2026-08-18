@@ -8,6 +8,20 @@ $SetupPath = Join-Path $Root 'installer\windows\setup-installed.ps1'
 $RegisterPath = Join-Path $Root 'installer\windows\register-native-host.ps1'
 $TemplatePath = Join-Path $Root 'installer\windows\native-host-template.json'
 
+function Get-Sha256Hex([string]$Path) {
+    $stream = $null
+    $sha = $null
+    try {
+        $stream = [System.IO.File]::Open($Path, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, [System.IO.FileShare]::Read)
+        $sha = [System.Security.Cryptography.SHA256]::Create()
+        $bytes = $sha.ComputeHash($stream)
+        return ([System.BitConverter]::ToString($bytes)).Replace('-', '').ToLowerInvariant()
+    } finally {
+        if ($sha -ne $null) { $sha.Dispose() }
+        if ($stream -ne $null) { $stream.Dispose() }
+    }
+}
+
 foreach ($script in @($SetupPath, $RegisterPath)) {
     $tokens = $null
     $errors = $null
@@ -19,6 +33,9 @@ $setup = Get-Content $SetupPath -Raw -Encoding UTF8
 $prohibited = @('winget install', '-m venv', '-m pip install', 'models `')
 foreach ($pattern in $prohibited) {
     if ($setup.Contains($pattern)) { throw "El instalador normal todavía contiene una dependencia online prohibida: $pattern" }
+}
+if ($setup.Contains('Get-FileHash $RuntimeZip') -or $setup.Contains('Get-FileHash $nextPython')) {
+    throw 'El bootstrap instalado no debe depender de Get-FileHash para verificar el runtime.'
 }
 
 $template = Get-Content $TemplatePath -Raw -Encoding UTF8 | ConvertFrom-Json
@@ -32,8 +49,10 @@ if ($RequireRuntime) {
     $runtimeZip = Join-Path $Root 'dist\runtime\milyvoice-python-runtime.zip'
     $hashPath = "$runtimeZip.sha256"
     if (-not (Test-Path $runtimeZip) -or -not (Test-Path $hashPath)) { throw 'Falta el runtime privado preconstruido.' }
-    $expected = ((Get-Content $hashPath -Raw).Trim() -split '\s+')[0].ToLowerInvariant()
-    $actual = (Get-FileHash $runtimeZip -Algorithm SHA256).Hash.ToLowerInvariant()
+    $hashText = [System.IO.File]::ReadAllText($hashPath).Trim()
+    $expected = ($hashText -split '\s+')[0].Trim().ToLowerInvariant()
+    if ($expected -notmatch '^[0-9a-f]{64}$') { throw 'El SHA-256 del runtime privado tiene formato inválido.' }
+    $actual = Get-Sha256Hex $runtimeZip
     if ($expected -ne $actual) { throw 'El runtime privado no coincide con su SHA-256.' }
 }
 

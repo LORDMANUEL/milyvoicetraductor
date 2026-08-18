@@ -171,6 +171,10 @@ jobs:
         if: success()
         shell: pwsh
         run: .\installer\windows\test-installed-flow.ps1
+      - name: Exercise real realtime model pack
+        if: success() && github.event_name == 'push' && github.ref == 'refs/heads/main'
+        shell: pwsh
+        run: .\installer\windows\test-realtime-model.ps1
       - name: Rust tests
         if: success()
         run: cargo test --workspace
@@ -183,6 +187,10 @@ jobs:
       - name: Tauri NSIS bundle
         if: success()
         run: npm run tauri -- build
+      - name: Exercise generated NSIS installer
+        if: success()
+        shell: pwsh
+        run: .\installer\windows\test-nsis-installer.ps1
       - name: Package Chromium extension
         if: success()
         run: python scripts/build_extension_zip.py

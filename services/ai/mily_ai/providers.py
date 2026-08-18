@@ -1,8 +1,9 @@
-"""Proveedores intercambiables de ASR y traducción, cargados bajo demanda."""
+"""Proveedores intercambiables de ASR y traducción, optimizados para tiempo real."""
 
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from collections import OrderedDict
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Sequence
@@ -28,13 +29,44 @@ class Translator(ABC):
         raise NotImplementedError
 
 
+class CachedTranslator(Translator):
+    """LRU pequeño para no retraducir texto repetido por el solapamiento del ASR."""
+
+    def __init__(self, inner: Translator, max_entries: int = 192):
+        if max_entries <= 0:
+            raise ValueError("max_entries debe ser positivo")
+        self.inner = inner
+        self.max_entries = max_entries
+        self._cache: OrderedDict[tuple[str, str], str] = OrderedDict()
+
+    @staticmethod
+    def _normalize(text: str) -> str:
+        return " ".join(text.split())
+
+    def translate(self, text: str, source_language: str) -> str:
+        normalized = self._normalize(text)
+        if not normalized:
+            return ""
+        key = (source_language, normalized)
+        if key in self._cache:
+            value = self._cache.pop(key)
+            self._cache[key] = value
+            return value
+        value = self.inner.translate(normalized, source_language)
+        self._cache[key] = value
+        while len(self._cache) > self.max_entries:
+            self._cache.popitem(last=False)
+        return value
+
+
 class FasterWhisperAsr(AsrProvider):
-    """Whisper vía CTranslate2; CPU int8 por defecto, CUDA float16 opcional."""
+    """Whisper vía CTranslate2; CPU INT8 y CUDA FP16 con lenguaje estabilizado."""
 
     def __init__(self, model_path: Path, compute_profile: str = "auto"):
         self.model_path = Path(model_path)
         self.compute_profile = compute_profile
         self._model = None
+        self._locked_language: str | None = None
 
     def _load(self):
         if self._model is not None:
@@ -48,6 +80,7 @@ class FasterWhisperAsr(AsrProvider):
         if self.compute_profile in {"auto", "gpu"}:
             try:
                 import ctranslate2
+
                 if ctranslate2.get_cuda_device_count() > 0:
                     device, compute_type = "cuda", "float16"
                 elif self.compute_profile == "gpu":
@@ -55,7 +88,12 @@ class FasterWhisperAsr(AsrProvider):
             except ImportError:
                 if self.compute_profile == "gpu":
                     raise RuntimeError("CTranslate2/CUDA no disponible")
-        self._model = WhisperModel(str(self.model_path), device=device, compute_type=compute_type, local_files_only=True)
+        self._model = WhisperModel(
+            str(self.model_path),
+            device=device,
+            compute_type=compute_type,
+            local_files_only=True,
+        )
         return self._model
 
     def transcribe(self, samples: Sequence[float], source_language: str) -> list[AsrSegment]:
@@ -64,21 +102,84 @@ class FasterWhisperAsr(AsrProvider):
         except ImportError as exc:
             raise RuntimeError("numpy no está instalado") from exc
         model = self._load()
-        language = None if source_language == "auto" else source_language
+        language = self._locked_language or (None if source_language == "auto" else source_language)
         segments, info = model.transcribe(
             np.asarray(samples, dtype=np.float32),
             language=language,
             beam_size=1,
             vad_filter=True,
+            vad_parameters={"min_silence_duration_ms": 300, "speech_pad_ms": 80},
             condition_on_previous_text=False,
             word_timestamps=False,
+            temperature=0.0,
         )
-        detected = getattr(info, "language", None) or source_language or "auto"
+        detected = getattr(info, "language", None) or language or source_language or "auto"
+        probability = float(getattr(info, "language_probability", 0.0) or 0.0)
+        if source_language == "auto" and detected in {"en", "zh"} and probability >= 0.78:
+            self._locked_language = detected
         return [
             AsrSegment(float(segment.start), float(segment.end), segment.text.strip(), detected)
             for segment in segments
             if segment.text.strip()
         ]
+
+
+class M2M100CTranslate2Translator(Translator):
+    """M2M100 convertido una vez a CTranslate2 INT8 para traducción rápida local."""
+
+    def __init__(self, model_path: Path, compute_profile: str = "auto"):
+        self.model_path = Path(model_path)
+        self.compute_profile = compute_profile
+        self._translator = None
+        self._tokenizer = None
+
+    def _load(self):
+        if self._translator is not None:
+            return
+        try:
+            import ctranslate2
+            from transformers import AutoTokenizer
+        except ImportError as exc:
+            raise RuntimeError("CTranslate2/Transformers no están instalados") from exc
+
+        device = "cpu"
+        compute_type = "int8"
+        if self.compute_profile in {"auto", "gpu"}:
+            if ctranslate2.get_cuda_device_count() > 0:
+                device, compute_type = "cuda", "auto"
+            elif self.compute_profile == "gpu":
+                raise RuntimeError("Se solicitó GPU pero CUDA no está disponible")
+        self._translator = ctranslate2.Translator(
+            str(self.model_path),
+            device=device,
+            compute_type=compute_type,
+            inter_threads=1,
+        )
+        tokenizer_path = self.model_path / "tokenizer"
+        if not tokenizer_path.is_dir():
+            tokenizer_path = self.model_path
+        self._tokenizer = AutoTokenizer.from_pretrained(
+            str(tokenizer_path), local_files_only=True
+        )
+
+    def translate(self, text: str, source_language: str) -> str:
+        if not text.strip():
+            return ""
+        self._load()
+        assert self._translator is not None and self._tokenizer is not None
+        source_language = "zh" if source_language == "zh" else "en"
+        self._tokenizer.src_lang = source_language
+        source = self._tokenizer.convert_ids_to_tokens(self._tokenizer.encode(text))
+        target_prefix = [self._tokenizer.lang_code_to_token["es"]]
+        results = self._translator.translate_batch(
+            [source],
+            target_prefix=[target_prefix],
+            beam_size=1,
+            max_decoding_length=192,
+        )
+        target = results[0].hypotheses[0][1:]
+        token_ids = self._tokenizer.convert_tokens_to_ids(target)
+        return self._tokenizer.decode(token_ids, skip_special_tokens=True).strip()
 
 
 class NllbTranslator(Translator):
@@ -115,18 +216,24 @@ class NllbTranslator(Translator):
             return ""
         self._load()
         import torch
+
         assert self._tokenizer is not None and self._model is not None
         source_code = self.LANG_CODES.get(source_language, "eng_Latn")
         self._tokenizer.src_lang = source_code
         inputs = self._tokenizer(text, return_tensors="pt", truncation=True, max_length=512).to(self._device)
         target_id = self._tokenizer.convert_tokens_to_ids("spa_Latn")
         with torch.inference_mode():
-            generated = self._model.generate(**inputs, forced_bos_token_id=target_id, max_new_tokens=256, num_beams=1)
+            generated = self._model.generate(
+                **inputs,
+                forced_bos_token_id=target_id,
+                max_new_tokens=192,
+                num_beams=1,
+            )
         return self._tokenizer.batch_decode(generated, skip_special_tokens=True)[0].strip()
 
 
 class QwenTranslator(Translator):
-    """Traductor causal Apache-2.0 para el pack comercial opcional."""
+    """Traductor causal Apache-2.0; se conserva como perfil de contexto/calidad."""
 
     def __init__(self, model_path: Path, compute_profile: str = "auto"):
         self.model_path = Path(model_path)
@@ -149,7 +256,9 @@ class QwenTranslator(Translator):
         self._device = "cuda" if use_cuda else "cpu"
         dtype = torch.float16 if use_cuda else torch.float32
         self._tokenizer = AutoTokenizer.from_pretrained(str(self.model_path), local_files_only=True)
-        self._model = AutoModelForCausalLM.from_pretrained(str(self.model_path), local_files_only=True, torch_dtype=dtype)
+        self._model = AutoModelForCausalLM.from_pretrained(
+            str(self.model_path), local_files_only=True, torch_dtype=dtype
+        )
         self._model.to(self._device)
         self._model.eval()
 
@@ -158,6 +267,7 @@ class QwenTranslator(Translator):
             return ""
         self._load()
         import torch
+
         assert self._tokenizer is not None and self._model is not None
         source_label = "chino" if source_language == "zh" else "inglés"
         instruction = (
@@ -174,8 +284,9 @@ class QwenTranslator(Translator):
             )
         except (AttributeError, TypeError):
             prompt = instruction + "\n\n" + text
-        inputs = self._tokenizer(prompt, return_tensors="pt", truncation=True, max_length=1024).to(self._device)
+        inputs = self._tokenizer(prompt, return_tensors="pt", truncation=True, max_length=768).to(self._device)
+        max_new_tokens = min(160, max(48, int(inputs["input_ids"].shape[1] * 1.6)))
         with torch.inference_mode():
-            output = self._model.generate(**inputs, max_new_tokens=256, do_sample=False)
+            output = self._model.generate(**inputs, max_new_tokens=max_new_tokens, do_sample=False)
         new_tokens = output[0][inputs["input_ids"].shape[1] :]
         return self._tokenizer.decode(new_tokens, skip_special_tokens=True).strip()

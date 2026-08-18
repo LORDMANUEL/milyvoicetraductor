@@ -53,7 +53,7 @@
     installing = true;
     startPolling();
     try {
-      await desktopApi.installModel('business-qwen');
+      await desktopApi.installModel('realtime-m2m100');
       await refresh();
     } catch (error) {
       errorCode = modelErrorCode(error);
@@ -126,8 +126,8 @@
       <article class:done={state.modelState === 'ready'} class:active={step === 'model'}>
         <span class="step-index">3</span>
         <div>
-          <strong>Modelo Business Qwen</strong>
-          <small>{state.modelState === 'ready' ? 'Modelo verificado y activo' : installing ? `Descargando · ${bytesLabel(state.downloadedBytes)} guardados` : 'Pendiente de preparación'}</small>
+          <strong>Modelo Tiempo Real INT8</strong>
+          <small>{state.modelState === 'ready' ? 'Modelo verificado y optimizado para CPU/GPU' : installing ? `Descargando/optimizando · ${bytesLabel(state.downloadedBytes)} guardados` : 'Pendiente de preparación'}</small>
         </div>
         <b>{state.modelState === 'ready' ? '✓' : installing ? '↓' : '…'}</b>
       </article>
@@ -140,7 +140,7 @@
 
     {#if installing}
       <div class="download-progress" aria-label="Descargando modelos"><span></span></div>
-      <p class="onboarding-note">Puedes dejar esta ventana abierta. Si Internet se corta, Reintentar continuará usando los archivos válidos ya descargados.</p>
+      <p class="onboarding-note">La descarga se reanuda y la traducción se convierte una sola vez a INT8 para reducir latencia y memoria. Si Internet se corta, Reintentar conserva los archivos válidos.</p>
     {/if}
 
     {#if state.bootstrapState === 'failed' || !state.runtimeReady}

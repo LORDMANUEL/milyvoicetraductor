@@ -8,8 +8,6 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use thiserror::Error;
 use uuid::Uuid;
 
-pub const HOST_NAME: &str = "com.milyvoice.traductor";
-pub const EXTENSION_ID: &str = "edcpjonegaempcifgodcmgejbcpdpddm";
 pub const EXTENSION_ORIGIN: &str = "chrome-extension://edcpjonegaempcifgodcmgejbcpdpddm/";
 const CREDENTIAL_TTL_SECONDS: u64 = 300;
 
@@ -83,13 +81,13 @@ impl BridgeRuntime {
 
         // Una consulta de estado jamás debe crear credenciales. La credencial efímera
         // se emite únicamente para `hello`, que es la operación usada al iniciar captura.
-        let (credential, expires_at) = if should_issue_credential(ensure_started, &engine_status.state)
-        {
-            let credential = self.issue_ephemeral_credential()?;
-            (Some(credential.0), Some(credential.1))
-        } else {
-            (None, None)
-        };
+        let (credential, expires_at) =
+            if should_issue_credential(ensure_started, &engine_status.state) {
+                let credential = self.issue_ephemeral_credential()?;
+                (Some(credential.0), Some(credential.1))
+            } else {
+                (None, None)
+            };
 
         let engine = component_state_name(&engine_status.state);
         let message = match engine_status.state {
