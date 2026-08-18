@@ -16,16 +16,20 @@ const FALLBACK_MESSAGES: Record<string, string> = {
 
 /**
  * Convierte el rechazo serializado de Tauri en un mensaje recuperable.
- * El backend ya filtra rutas y secretos; aquí solo aceptamos mensajes cortos.
+ * Los códigos conocidos siempre conservan un texto de producto comprensible.
+ * Un mensaje del backend solo sustituye ese fallback cuando parece una frase
+ * pública deliberada, no una etiqueta/diagnóstico corto como "offline".
  */
 export function modelErrorMessage(error: unknown): string {
   const candidate = error && typeof error === 'object' ? error as PublicModelError : {};
   const code = typeof candidate.code === 'string' ? candidate.code : 'MODEL_PROVIDER_ERROR';
   const safeMessage = typeof candidate.message === 'string' ? candidate.message.trim() : '';
+  const safeForUi = safeMessage.length >= 12
+    && safeMessage.length <= 300
+    && /\s/.test(safeMessage)
+    && !/[\\/]Users[\\/]|\/home\/|token=|authorization:/i.test(safeMessage);
 
-  if (safeMessage && safeMessage.length <= 300 && !/[\\/]Users[\\/]|\/home\/|token=|authorization:/i.test(safeMessage)) {
-    return safeMessage;
-  }
+  if (safeForUi) return safeMessage;
   return FALLBACK_MESSAGES[code] ?? FALLBACK_MESSAGES.MODEL_PROVIDER_ERROR;
 }
 
