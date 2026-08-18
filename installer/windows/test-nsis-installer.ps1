@@ -26,6 +26,51 @@ function Run-ProcessChecked([string]$FilePath, [string[]]$Arguments, [int]$Timeo
     }
 }
 
+function Assert-BootstrapReady([string]$Path) {
+    if (-not (Test-Path $Path -PathType Leaf)) {
+        throw 'NSIS/post-install no generó bootstrap\status.json; el hook no completó el bootstrap controlado.'
+    }
+    $status = Get-Content $Path -Raw -Encoding UTF8 | ConvertFrom-Json
+    Write-Host "Bootstrap NSIS: state=$($status.state) code=$($status.code) message=$($status.message)" -ForegroundColor Cyan
+    if ($status.state -eq 'failed') {
+        throw "NSIS post-install falló: $($status.code) / $($status.message)"
+    }
+    if ($status.state -notin @('model-pending', 'ready')) {
+        throw "NSIS dejó bootstrap en estado inválido: $($status.state) / $($status.code) / $($status.message)"
+    }
+    if ($status.code -ne 'BOOTSTRAP_OK') {
+        throw "NSIS no terminó con BOOTSTRAP_OK: $($status.code) / $($status.message)"
+    }
+}
+
+function Assert-DesktopStartsWithWindow([string]$DesktopExe, [string]$Label) {
+    Write-Host "Arrancando Desktop instalado ($Label)..." -ForegroundColor Cyan
+    $process = Start-Process -FilePath $DesktopExe -PassThru
+    try {
+        $windowReady = $false
+        for ($attempt = 0; $attempt -lt 30; $attempt++) {
+            Start-Sleep -Milliseconds 500
+            if ($process.HasExited) {
+                throw "MilyVoiceTraductor.exe terminó durante $Label con código $($process.ExitCode)."
+            }
+            $process.Refresh()
+            if ($process.MainWindowHandle -ne 0) {
+                $windowReady = $true
+                break
+            }
+        }
+        if (-not $windowReady) {
+            throw "MilyVoiceTraductor.exe siguió vivo durante $Label, pero no creó una ventana Windows visible."
+        }
+        Write-Host "Desktop visible: PID=$($process.Id) HWND=$($process.MainWindowHandle) TITLE='$($process.MainWindowTitle)'" -ForegroundColor Green
+    } finally {
+        if (-not $process.HasExited) {
+            Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
+            $process.WaitForExit(10000) | Out-Null
+        }
+    }
+}
+
 Get-Process -Name 'MilyVoiceTraductor' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
 Remove-Item $InstallRoot -Recurse -Force -ErrorAction SilentlyContinue
 Remove-Item $AppRoot -Recurse -Force -ErrorAction SilentlyContinue
@@ -65,20 +110,8 @@ if (-not (Test-Path $StatusPath -PathType Leaf)) {
     } else {
         Write-Host '  <no existe>'
     }
-    throw 'NSIS/post-install no generó bootstrap\status.json; el hook no completó el bootstrap controlado.'
 }
-
-$status = Get-Content $StatusPath -Raw -Encoding UTF8 | ConvertFrom-Json
-Write-Host "Bootstrap NSIS: state=$($status.state) code=$($status.code) message=$($status.message)" -ForegroundColor Cyan
-if ($status.state -eq 'failed') {
-    throw "NSIS post-install falló: $($status.code) / $($status.message)"
-}
-if ($status.state -notin @('model-pending', 'ready')) {
-    throw "NSIS dejó bootstrap en estado inválido: $($status.state) / $($status.code) / $($status.message)"
-}
-if ($status.code -ne 'BOOTSTRAP_OK') {
-    throw "NSIS no terminó con BOOTSTRAP_OK: $($status.code) / $($status.message)"
-}
+Assert-BootstrapReady $StatusPath
 
 Assert-File $PrivatePython 'NSIS/post-install no dejó el runtime Python privado aunque reportó BOOTSTRAP_OK.'
 Assert-File $EngineMain 'NSIS/post-install no dejó main.py del motor aunque reportó BOOTSTRAP_OK.'
@@ -99,26 +132,25 @@ foreach ($key in @(
     }
 }
 
-# Gate crítico 2.0.1: el instalador no se considera válido solo porque dejó
-# archivos. Arrancamos exactamente el EXE instalado y exigimos que sobreviva el
-# bootstrap inicial. Esto habría detectado la regresión de 2.0.
-Write-Host 'Arrancando el Desktop instalado...' -ForegroundColor Cyan
-$DesktopProcess = Start-Process -FilePath $DesktopExe -PassThru
-try {
-    Start-Sleep -Seconds 8
-    if ($DesktopProcess.HasExited) {
-        throw "MilyVoiceTraductor.exe terminó durante el arranque con código $($DesktopProcess.ExitCode)."
-    }
-    $live = Get-Process -Id $DesktopProcess.Id -ErrorAction SilentlyContinue
-    if (-not $live) {
-        throw 'MilyVoiceTraductor.exe no permanece activo después del arranque.'
-    }
-    Write-Host "Desktop instalado activo: PID=$($DesktopProcess.Id)" -ForegroundColor Green
-} finally {
-    if (-not $DesktopProcess.HasExited) {
-        Stop-Process -Id $DesktopProcess.Id -Force -ErrorAction SilentlyContinue
-        $DesktopProcess.WaitForExit(10000) | Out-Null
-    }
-}
+# Gate crítico que faltaba en 2.0: abrir el EXE instalado y comprobar una ventana real.
+Assert-DesktopStartsWithWindow $DesktopExe 'instalación limpia'
 
-Write-Host 'NSIS INSTALLER FLOW OK: payload + bootstrap + Native Messaging + Desktop startup' -ForegroundColor Green
+# Gate de actualización: conserva configuración previa y reinstala encima. El CI 2.0
+# borraba LOCALAPPDATA antes de cada prueba y nunca cubría este escenario real.
+$ConfigPath = Join-Path $AppRoot 'config\config.json'
+New-Item -ItemType Directory -Force -Path (Split-Path $ConfigPath -Parent) | Out-Null
+@'
+{
+  "schemaVersion": 1,
+  "sourceLanguage": "zh",
+  "computeProfile": "auto",
+  "persistTranscripts": false
+}
+'@ | Set-Content -Path $ConfigPath -Encoding UTF8
+
+Write-Host 'Reinstalando 2.0.1 sobre estado local existente...' -ForegroundColor Cyan
+Run-ProcessChecked $Installer.FullName @('/S', "/D=$InstallRoot") 300000
+Assert-BootstrapReady $StatusPath
+Assert-DesktopStartsWithWindow $DesktopExe 'reinstalación sobre estado existente'
+
+Write-Host 'NSIS INSTALLER FLOW OK: payload + bootstrap + Native Messaging + visible Desktop + reinstall' -ForegroundColor Green
