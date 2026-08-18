@@ -1,5 +1,5 @@
 use crate::bootstrap::AppState;
-use mily_compute::{conservative_capability_report, BackendCapability, ComputeBackend};
+use mily_compute::{BackendCapability, ComputeBackend, conservative_capability_report};
 use mily_system::SystemSnapshot;
 use serde::Serialize;
 use tauri::State;
@@ -18,7 +18,12 @@ pub struct HardwareAdvisor {
 
 fn truthy_env(name: &str) -> bool {
     std::env::var(name)
-        .map(|value| matches!(value.trim().to_ascii_lowercase().as_str(), "1" | "true" | "yes" | "on"))
+        .map(|value| {
+            matches!(
+                value.trim().to_ascii_lowercase().as_str(),
+                "1" | "true" | "yes" | "on"
+            )
+        })
         .unwrap_or(false)
 }
 
