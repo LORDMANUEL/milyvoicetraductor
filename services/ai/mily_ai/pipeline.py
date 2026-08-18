@@ -39,6 +39,21 @@ class PipelineEvent:
     translation: str = ""
 
 
+@dataclass(frozen=True, slots=True)
+class TranslationRequest:
+    """Trabajo de traducción desacoplado del worker ASR."""
+
+    type: Literal["translation.partial", "translation.final"]
+    start: float
+    end: float
+    original: str
+    language: str
+
+    @property
+    def final(self) -> bool:
+        return self.type == "translation.final"
+
+
 class RealtimePipeline:
     def __init__(self, pack: InstalledPack, source_language: str, compute_profile: str, recorder: SessionRecorder):
         metadata = __import__("json").loads((pack.path / "pack.json").read_text(encoding="utf-8"))
@@ -89,17 +104,63 @@ class RealtimePipeline:
             return configured
         return "zh" if any("\u4e00" <= char <= "\u9fff" for char in text) else "en"
 
-    def push(self, samples) -> list[PipelineEvent]:
-        output: list[PipelineEvent] = []
+    def ingest(self, samples) -> tuple[list[PipelineEvent], list[TranslationRequest]]:
+        """Ejecuta únicamente segmentación + ASR; nunca llama al traductor."""
+
+        events: list[PipelineEvent] = []
+        requests: list[TranslationRequest] = []
         for window in self.segmenter.push(samples):
-            output.extend(self._process_window(window))
-        return output
+            window_events, window_requests = self._ingest_window(window)
+            events.extend(window_events)
+            requests.extend(window_requests)
+        return events, requests
+
+    def flush_ingest(self) -> tuple[list[PipelineEvent], list[TranslationRequest]]:
+        """Finaliza audio pendiente sin bloquearse esperando traducción."""
+
+        events: list[PipelineEvent] = []
+        requests: list[TranslationRequest] = []
+        for window in self.segmenter.flush():
+            window_events, window_requests = self._ingest_window(window)
+            events.extend(window_events)
+            requests.extend(window_requests)
+        return events, requests
+
+    def execute_translation(self, request: TranslationRequest) -> PipelineEvent:
+        """Ejecuta un trabajo M2M100 y persiste únicamente frases finales."""
+
+        translated = self.translator.translate(request.original, request.language)
+        if request.final:
+            self.recorder.add(
+                TranscriptSegment(
+                    start=request.start,
+                    end=request.end,
+                    original=request.original,
+                    translation=translated,
+                )
+            )
+        return PipelineEvent(
+            type=request.type,
+            start=request.start,
+            end=request.end,
+            original=request.original,
+            language=request.language,
+            translation=translated,
+        )
+
+    def push(self, samples) -> list[PipelineEvent]:
+        """Ruta síncrona de compatibilidad y pruebas."""
+
+        events, requests = self.ingest(samples)
+        events.extend(self.execute_translation(request) for request in requests)
+        return events
 
     def flush(self) -> list[PipelineEvent]:
-        output: list[PipelineEvent] = []
-        for window in self.segmenter.flush():
-            output.extend(self._process_window(window))
-        return output
+        """Ruta síncrona de compatibilidad y pruebas."""
+
+        events, requests = self.flush_ingest()
+        events.extend(self.execute_translation(request) for request in requests)
+        return events
 
     def _transcribe_window(self, window: StreamingEvent) -> tuple[str, str]:
         segments = self.asr.transcribe(window.samples, self.source_language)
@@ -110,16 +171,18 @@ class RealtimePipeline:
         )
         return original, self._detect_language(original, detected, self.source_language)
 
-    def _process_window(self, window: StreamingEvent) -> list[PipelineEvent]:
+    def _ingest_window(
+        self, window: StreamingEvent
+    ) -> tuple[list[PipelineEvent], list[TranslationRequest]]:
         original, detected = self._transcribe_window(window)
         start = window.start_sample / self.sample_rate
         end = window.end_sample / self.sample_rate
 
         if window.kind == "partial":
             if not original:
-                return []
+                return [], []
             state = self.stabilizer.update(original)
-            output = [
+            events = [
                 PipelineEvent(
                     type="transcription.partial",
                     start=start,
@@ -128,43 +191,31 @@ class RealtimePipeline:
                     language=detected,
                 )
             ]
-            # Traducimos únicamente cuando el prefijo estable realmente avanzó y
-            # contiene contexto suficiente. Evita mandar cada fluctuación a M2M100.
+            requests: list[TranslationRequest] = []
             if (
                 state.stable_advanced
                 and len(state.stable.split()) >= 2
                 and state.stable.casefold() != self._last_partial_translation.casefold()
             ):
-                translated = self.translator.translate(state.stable, detected)
                 self._last_partial_translation = state.stable
-                output.append(
-                    PipelineEvent(
+                requests.append(
+                    TranslationRequest(
                         type="translation.partial",
                         start=start,
                         end=end,
                         original=state.stable,
                         language=detected,
-                        translation=translated,
                     )
                 )
-            return output
+            return events, requests
 
         final_original = self.stabilizer.finalize(original)
         self._last_partial_translation = ""
         if not final_original:
-            return []
+            return [], []
         folded = final_original.casefold()
         if folded in self._recent_originals:
-            return []
-
-        translated = self.translator.translate(final_original, detected)
-        record = TranscriptSegment(
-            start=start,
-            end=end,
-            original=final_original,
-            translation=translated,
-        )
-        self.recorder.add(record)
+            return [], []
         self._recent_originals.append(folded)
         return [
             PipelineEvent(
@@ -173,13 +224,13 @@ class RealtimePipeline:
                 end=end,
                 original=final_original,
                 language=detected,
-            ),
-            PipelineEvent(
+            )
+        ], [
+            TranslationRequest(
                 type="translation.final",
                 start=start,
                 end=end,
                 original=final_original,
                 language=detected,
-                translation=translated,
-            ),
+            )
         ]
