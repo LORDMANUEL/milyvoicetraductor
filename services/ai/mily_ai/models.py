@@ -191,6 +191,32 @@ class ModelCatalog:
         self.catalog_path = catalog_path or Path(__file__).with_name("model-packs.json")
         self.packs_dir = self.models_dir / "packs"
         self.state_path = self.models_dir / "current.json"
+        self.operation_path = self.models_dir / "operation.json"
+
+    def write_operation(
+        self,
+        *,
+        state: str,
+        phase: str,
+        message: str,
+        pack_id: str,
+        component: str | None = None,
+        error_code: str | None = None,
+    ) -> None:
+        """Publica progreso seguro para la UI sin exponer rutas, tokens ni URLs firmadas."""
+        self.models_dir.mkdir(parents=True, exist_ok=True)
+        payload = {
+            "schemaVersion": 1,
+            "state": state,
+            "phase": phase,
+            "message": message,
+            "packId": pack_id,
+            "component": component,
+            "errorCode": error_code,
+        }
+        temp = self.operation_path.with_suffix(".tmp")
+        temp.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+        temp.replace(self.operation_path)
 
     def definitions(self) -> list[dict[str, Any]]:
         payload = json.loads(self.catalog_path.read_text(encoding="utf-8"))
@@ -248,24 +274,58 @@ class HuggingFacePackInstaller:
     def __init__(self, catalog: ModelCatalog):
         self.catalog = catalog
 
+    @staticmethod
+    def _download_message(component_name: str) -> str:
+        if component_name == "asr":
+            return "Descargando reconocimiento de voz Whisper Small desde Hugging Face."
+        if component_name == "translation":
+            return "Descargando traductor M2M100 desde Hugging Face."
+        return "Descargando componente del modelo desde Hugging Face."
+
     def install(self, pack_id: str) -> InstalledPack:
         try:
             from huggingface_hub import snapshot_download
         except ImportError as exc:
-            raise classify_model_exception(exc) from exc
+            error = classify_model_exception(exc)
+            self.catalog.write_operation(
+                state="failed",
+                phase="failed",
+                message=error.message,
+                pack_id=pack_id,
+                error_code=error.code,
+            )
+            raise error from exc
 
         try:
             definition = self.catalog.definition(pack_id)
             version = str(definition["version"])
             final_dir = self.catalog.packs_dir / pack_id / version
             staging = self.catalog.models_dir / ".staging" / f"{pack_id}-{version}"
+            self.catalog.write_operation(
+                state="installing",
+                phase="prepare",
+                message="Preparando la instalación del modelo local.",
+                pack_id=pack_id,
+            )
             if final_dir.exists():
+                self.catalog.write_operation(
+                    state="installing",
+                    phase="verify",
+                    message="Verificando el modelo ya descargado.",
+                    pack_id=pack_id,
+                )
                 if not self.verify(pack_id, version):
                     raise ModelOperationError(
                         "MODEL_HASH_MISMATCH",
                         "El modelo instalado no pasó la verificación de integridad.",
                     )
                 self.activate(pack_id, version)
+                self.catalog.write_operation(
+                    state="ready",
+                    phase="ready",
+                    message="Modelo de tiempo real listo.",
+                    pack_id=pack_id,
+                )
                 return next(
                     item
                     for item in self.catalog.installed()
@@ -282,14 +342,35 @@ class HuggingFacePackInstaller:
                 else:
                     ready = False
                 if not ready:
+                    self.catalog.write_operation(
+                        state="installing",
+                        phase="download",
+                        message=self._download_message(component_name),
+                        pack_id=pack_id,
+                        component=component_name,
+                    )
                     snapshot_download(
                         repo_id=component["repoId"],
                         revision=component.get("revision", "main"),
                         local_dir=target,
                         allow_patterns=component.get("allowPatterns"),
                     )
+                if component.get("provider") == "m2m100-ct2":
+                    self.catalog.write_operation(
+                        state="installing",
+                        phase="optimize",
+                        message="Convirtiendo M2M100 a INT8 dentro de MilyVoiceTraductor. Los bytes pueden no cambiar durante esta fase.",
+                        pack_id=pack_id,
+                        component=component_name,
+                    )
                 _prepare_component(component, target)
 
+            self.catalog.write_operation(
+                state="installing",
+                phase="verify",
+                message="Verificando integridad del modelo preparado.",
+                pack_id=pack_id,
+            )
             (staging / "pack.json").write_text(
                 json.dumps(
                     {
@@ -314,15 +395,36 @@ class HuggingFacePackInstaller:
                     "La descarga terminó, pero la verificación de integridad falló.",
                 )
             self.activate(pack_id, version)
+            self.catalog.write_operation(
+                state="ready",
+                phase="ready",
+                message="Modelo de tiempo real listo.",
+                pack_id=pack_id,
+            )
             return next(
                 item
                 for item in self.catalog.installed()
                 if item.id == pack_id and item.version == version
             )
-        except ModelOperationError:
+        except ModelOperationError as error:
+            self.catalog.write_operation(
+                state="failed",
+                phase="failed",
+                message=error.message,
+                pack_id=pack_id,
+                error_code=error.code,
+            )
             raise
         except BaseException as exc:
-            raise classify_model_exception(exc) from exc
+            error = classify_model_exception(exc)
+            self.catalog.write_operation(
+                state="failed",
+                phase="failed",
+                message=error.message,
+                pack_id=pack_id,
+                error_code=error.code,
+            )
+            raise error from exc
 
     def verify(self, pack_id: str, version: str) -> bool:
         pack_dir = self.catalog.packs_dir / pack_id / version
