@@ -81,7 +81,10 @@ impl BridgeRuntime {
             .find(|pack| pack.active)
             .map(|pack| format!("{}@{}", pack.id, pack.version));
 
-        let (credential, expires_at) = if matches!(engine_status.state, ComponentState::Ready) {
+        // Una consulta de estado jamás debe crear credenciales. La credencial efímera
+        // se emite únicamente para `hello`, que es la operación usada al iniciar captura.
+        let (credential, expires_at) = if should_issue_credential(ensure_started, &engine_status.state)
+        {
             let credential = self.issue_ephemeral_credential()?;
             (Some(credential.0), Some(credential.1))
         } else {
@@ -149,6 +152,10 @@ impl BridgeRuntime {
     }
 }
 
+fn should_issue_credential(ensure_started: bool, state: &ComponentState) -> bool {
+    ensure_started && matches!(state, ComponentState::Ready)
+}
+
 pub fn caller_origin_allowed(origin: &str) -> bool {
     origin == EXTENSION_ORIGIN
 }
@@ -187,5 +194,22 @@ mod tests {
             "chrome-extension://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/"
         ));
         assert!(!caller_origin_allowed("https://example.com"));
+    }
+
+    #[test]
+    fn status_never_issues_a_credential() {
+        assert!(!should_issue_credential(false, &ComponentState::Ready));
+        assert!(!should_issue_credential(false, &ComponentState::Stopped));
+    }
+
+    #[test]
+    fn hello_only_issues_a_credential_when_engine_is_ready() {
+        assert!(should_issue_credential(true, &ComponentState::Ready));
+        assert!(!should_issue_credential(true, &ComponentState::Stopped));
+        assert!(!should_issue_credential(
+            true,
+            &ComponentState::NotInstalled
+        ));
+        assert!(!should_issue_credential(true, &ComponentState::Error));
     }
 }
