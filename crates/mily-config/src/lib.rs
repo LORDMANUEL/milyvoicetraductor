@@ -276,7 +276,9 @@ mod tests {
             source_language: "en".into(),
             ..AppConfig::default()
         };
-        service.save(&desired).expect("guardar debe reemplazar config existente");
+        service
+            .save(&desired)
+            .expect("guardar debe reemplazar config existente");
         let loaded = service.load_or_default().unwrap();
         assert_eq!(loaded.source_language, "en");
     }
