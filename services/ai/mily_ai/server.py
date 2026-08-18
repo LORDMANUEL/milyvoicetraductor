@@ -22,7 +22,6 @@ PINNED_EXTENSION_ORIGIN = "chrome-extension://edcpjonegaempcifgodcmgejbcpdpddm"
 def websocket_origin_allowed(origin: str) -> bool:
     """Solo la extensión fijada o vistas loopback del propio producto pueden entrar."""
     if not origin:
-        # Clientes internos/diagnóstico no siempre envían Origin.
         return True
     normalized = origin.rstrip("/")
     if normalized == PINNED_EXTENSION_ORIGIN:
@@ -158,6 +157,18 @@ def create_app(paths: RuntimePaths, port: int = 8765, parent_pid: int | None = N
         recorder: SessionRecorder | None = None
         binary_pcm_enabled = False
 
+        async def send_pipeline_events(items) -> None:
+            for item in items:
+                fields = {
+                    "start": item.start,
+                    "end": item.end,
+                    "original": item.original,
+                    "language": item.language,
+                }
+                if item.translation:
+                    fields["translation"] = item.translation
+                await websocket.send_json(event(item.type, **fields))
+
         async def process_samples(samples) -> None:
             nonlocal pipeline
             if pipeline is None:
@@ -170,7 +181,7 @@ def create_app(paths: RuntimePaths, port: int = 8765, parent_pid: int | None = N
                 )
                 return
             try:
-                segments = await asyncio.get_running_loop().run_in_executor(
+                items = await asyncio.get_running_loop().run_in_executor(
                     None, pipeline.push, samples
                 )
             except Exception as exc:
@@ -186,16 +197,7 @@ def create_app(paths: RuntimePaths, port: int = 8765, parent_pid: int | None = N
             heartbeat_path.write_text(
                 json.dumps({"at": time.time()}), encoding="utf-8"
             )
-            for segment in segments:
-                await websocket.send_json(
-                    event(
-                        "translation.final",
-                        start=segment.start,
-                        end=segment.end,
-                        original=segment.original,
-                        translation=segment.translation,
-                    )
-                )
+            await send_pipeline_events(items)
 
         try:
             await websocket.send_json(
@@ -321,16 +323,7 @@ def create_app(paths: RuntimePaths, port: int = 8765, parent_pid: int | None = N
                             remaining = await asyncio.get_running_loop().run_in_executor(
                                 None, pipeline.flush
                             )
-                            for segment in remaining:
-                                await websocket.send_json(
-                                    event(
-                                        "translation.final",
-                                        start=segment.start,
-                                        end=segment.end,
-                                        original=segment.original,
-                                        translation=segment.translation,
-                                    )
-                                )
+                            await send_pipeline_events(remaining)
                         except Exception as exc:
                             logger.warning(
                                 "No se pudo vaciar buffer: %s", exc.__class__.__name__
