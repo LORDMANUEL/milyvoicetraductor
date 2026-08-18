@@ -12,6 +12,7 @@ manifest = json.loads((ext / "manifest.json").read_text(encoding="utf-8"))
 popup = (ext / "popup.html").read_text(encoding="utf-8")
 background = (ext / "background.js").read_text(encoding="utf-8")
 offscreen = (ext / "offscreen.js").read_text(encoding="utf-8")
+tts = (ext / "tts.js").read_text(encoding="utf-8")
 settings = (root / "apps" / "desktop" / "src" / "pages" / "Settings.svelte").read_text(encoding="utf-8")
 
 EXPECTED_EXTENSION_ID = "edcpjonegaempcifgodcmgejbcpdpddm"
@@ -21,9 +22,10 @@ assert manifest["manifest_version"] == 3
 assert "<all_urls>" not in json.dumps(manifest)
 assert "nativeMessaging" in manifest["permissions"], "Falta nativeMessaging para autoreconocimiento"
 assert set(manifest["permissions"]) <= {
-    "activeTab", "tabCapture", "offscreen", "storage", "notifications", "nativeMessaging", "scripting"
+    "activeTab", "tabCapture", "offscreen", "storage", "notifications", "nativeMessaging", "scripting", "tts"
 }
 assert "scripting" in manifest["permissions"], "La inyección bajo demanda requiere scripting"
+assert "tts" in manifest["permissions"], "La voz española del navegador requiere permiso tts local"
 assert manifest["host_permissions"] == ["http://127.0.0.1/*"]
 assert not manifest.get("content_scripts"), "El overlay no debe inyectarse permanentemente en todas las webs"
 public_key = manifest.get("key", "")
@@ -47,6 +49,9 @@ assert "Audio del sistema" in background, "El error de tabCapture debe ofrecer f
 assert "chrome.scripting.executeScript" in background, "El overlay debe inyectarse bajo demanda"
 assert "chrome.scripting.insertCSS" in background, "El CSS del overlay debe inyectarse bajo demanda"
 assert "ensureOverlay(tab.id)" in background, "START_CAPTURE debe preparar overlay solo en la pestaña elegida"
+assert "speakTranslation" in background, "La traducción final debe poder activar TTS local"
+assert "tts.started" in offscreen and "tts.finished" in offscreen, "TTS debe avisar al motor para anti-feedback"
+assert "chrome.tts.speak" in tts, "La extensión debe usar síntesis local de Chromium/Windows"
 
 # Consultar el popup debe ser pasivo. Solo START_CAPTURE puede usar `hello`, que
 # arranca el motor y solicita una credencial efímera al bridge.
