@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import time
 from collections import deque
 from dataclasses import dataclass
 from typing import Literal
@@ -20,6 +21,7 @@ from .providers import (
 )
 from .sessions import SessionRecorder, TranscriptSegment
 from .streaming import AdaptiveSpeechSegmenter, AudioLevel, StreamingEvent
+from .telemetry import RealtimeTelemetry
 
 
 @dataclass(frozen=True, slots=True)
@@ -62,6 +64,7 @@ class RealtimePipeline:
         self.sample_rate = 16000
         self.segmenter = AdaptiveSpeechSegmenter(sample_rate=self.sample_rate)
         self.stabilizer = HypothesisStabilizer()
+        self.telemetry = RealtimeTelemetry()
         self.recorder = recorder
         self._recent_originals: deque[str] = deque(maxlen=8)
         self._last_partial_translation = ""
@@ -140,7 +143,9 @@ class RealtimePipeline:
     def execute_translation(self, request: TranslationRequest) -> PipelineEvent:
         """Ejecuta un trabajo M2M100 y persiste únicamente frases finales."""
 
+        started = time.perf_counter()
         translated = self.translator.translate(request.original, request.language)
+        self.telemetry.record_translation((time.perf_counter() - started) * 1000.0)
         if request.final:
             self.recorder.add(
                 TranscriptSegment(
@@ -174,7 +179,13 @@ class RealtimePipeline:
         return events
 
     def _transcribe_window(self, window: StreamingEvent) -> tuple[str, str]:
+        started = time.perf_counter()
         segments = self.asr.transcribe(window.samples, self.source_language)
+        elapsed_ms = (time.perf_counter() - started) * 1000.0
+        self.telemetry.record_asr(
+            elapsed_ms,
+            audio_ms=len(window.samples) * 1000.0 / self.sample_rate,
+        )
         original = self._normalize(" ".join(segment.text for segment in segments if segment.text))
         detected = next(
             (segment.language for segment in segments if segment.language in {"en", "zh"}),
