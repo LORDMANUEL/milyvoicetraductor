@@ -41,8 +41,8 @@ pub fn calculate_memory_budget(input: MemoryBudgetInput) -> MemoryBudget {
     // DXGI SharedSystemMemory es capacidad, no consumo actual. Solo reservamos
     // una fracción pequeña en equipos con perfil de iGPU; nunca restamos toda la
     // memoria compartida anunciada.
-    let looks_integrated = input.dedicated_gpu_memory_mb < 512
-        && input.shared_gpu_memory_mb >= 1024;
+    let looks_integrated =
+        input.dedicated_gpu_memory_mb < 512 && input.shared_gpu_memory_mb >= 1024;
     let reserve_shared_gpu_mb = if looks_integrated {
         (input.shared_gpu_memory_mb / 8).clamp(256, 512)
     } else {
