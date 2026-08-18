@@ -75,6 +75,7 @@ class FasterWhisperAsr(AsrProvider):
         self.cpu_budget = cpu_budget or detect_cpu_budget()
         self._model = None
         self._locked_language: str | None = None
+        self._warmed = False
 
     def _load(self):
         if self._model is not None:
@@ -105,6 +106,30 @@ class FasterWhisperAsr(AsrProvider):
             local_files_only=True,
         )
         return self._model
+
+    def warm_up(self, source_language: str = "en") -> None:
+        """Carga pesos/kernels antes de recibir la primera frase del usuario."""
+
+        if self._warmed:
+            return
+        try:
+            import numpy as np
+        except ImportError as exc:
+            raise RuntimeError("numpy no está instalado") from exc
+        model = self._load()
+        language = source_language if source_language in {"en", "zh"} else "en"
+        segments, _info = model.transcribe(
+            np.zeros(16000, dtype=np.float32),
+            language=language,
+            beam_size=1,
+            vad_filter=False,
+            condition_on_previous_text=False,
+            word_timestamps=False,
+            temperature=0.0,
+        )
+        # faster-whisper ejecuta la inferencia al consumir el generator.
+        list(segments)
+        self._warmed = True
 
     def transcribe(self, samples: Sequence[float], source_language: str) -> list[AsrSegment]:
         try:
@@ -148,6 +173,7 @@ class M2M100CTranslate2Translator(Translator):
         self.cpu_budget = cpu_budget or detect_cpu_budget()
         self._translator = None
         self._tokenizer = None
+        self._warmed = False
 
     def _load(self):
         if self._translator is not None:
@@ -179,6 +205,20 @@ class M2M100CTranslate2Translator(Translator):
             str(tokenizer_path), local_files_only=True
         )
 
+    @staticmethod
+    def _decoding_limit(source_tokens: int) -> int:
+        """Acota la salida a una frase realtime sin reservar 192 pasos siempre."""
+
+        return min(128, max(24, source_tokens * 2 + 12))
+
+    def warm_up(self) -> None:
+        """Carga tokenizer, pesos y kernels con una traducción mínima."""
+
+        if self._warmed:
+            return
+        self.translate("Hello.", "en")
+        self._warmed = True
+
     def translate(self, text: str, source_language: str) -> str:
         if not text.strip():
             return ""
@@ -192,7 +232,8 @@ class M2M100CTranslate2Translator(Translator):
             [source],
             target_prefix=[target_prefix],
             beam_size=1,
-            max_decoding_length=192,
+            return_scores=False,
+            max_decoding_length=self._decoding_limit(len(source)),
         )
         target = results[0].hypotheses[0][1:]
         token_ids = self._tokenizer.convert_tokens_to_ids(target)
@@ -266,7 +307,7 @@ class QwenTranslator(Translator):
             import torch
             from transformers import AutoModelForCausalLM, AutoTokenizer
         except ImportError as exc:
-            raise RuntimeError("transformers/torch no están instalados") from exc
+            raise RuntimeError("transformers/torch no están instalado") from exc
         use_cuda = self.compute_profile in {"auto", "gpu"} and torch.cuda.is_available()
         if self.compute_profile == "gpu" and not use_cuda:
             raise RuntimeError("Se solicitó GPU pero Torch CUDA no está disponible")
