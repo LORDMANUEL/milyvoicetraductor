@@ -146,9 +146,14 @@ export class DesktopAudioCapture {
   private worklet: AudioWorkletNode | null = null;
   private stream: MediaStream | null = null;
   private elementSource: MediaElementAudioSourceNode | null = null;
+  private outputSuppressed = false;
 
   constructor(handler: RealtimeEventHandler) {
     this.client = new LocalRealtimeClient(handler);
+  }
+
+  setOutputSuppressed(suppressed: boolean): void {
+    this.outputSuppressed = suppressed;
   }
 
   private async createAudioGraph(): Promise<AudioContext> {
@@ -161,7 +166,7 @@ export class DesktopAudioCapture {
       channelCount: 1
     });
     this.worklet.port.onmessage = (message: MessageEvent<ArrayBuffer>) => {
-      this.client.sendPcm(message.data);
+      if (!this.outputSuppressed) this.client.sendPcm(message.data);
     };
     return context;
   }
@@ -241,6 +246,7 @@ export class DesktopAudioCapture {
   }
 
   async stop(): Promise<void> {
+    this.outputSuppressed = false;
     this.stream?.getTracks().forEach((track) => track.stop());
     this.stream = null;
     try { this.elementSource?.disconnect(); } catch (_) { /* noop */ }
