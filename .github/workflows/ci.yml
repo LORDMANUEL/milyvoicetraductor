@@ -215,7 +215,7 @@ jobs:
         if: success()
         uses: actions/upload-artifact@v6
         with:
-          name: MilyVoiceTraductor-Full-RC1-Windows-x64-${{ github.sha }}
+          name: MilyVoiceTraductor-Full-1.0.5-Windows-x64-${{ github.sha }}
           path: dist/release/*
           retention-days: 30
           compression-level: 0
