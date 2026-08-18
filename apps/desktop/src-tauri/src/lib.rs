@@ -27,6 +27,7 @@ pub fn run() {
         .manage(state)
         .invoke_handler(tauri::generate_handler![
             get_app_status,
+            get_onboarding_status,
             get_system_info,
             get_config,
             save_config,
@@ -35,7 +36,6 @@ pub fn run() {
             get_engine_status,
             start_engine,
             stop_engine,
-            get_pairing_token,
             get_model_catalog,
             install_model,
             verify_model,
