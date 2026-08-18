@@ -70,12 +70,32 @@ class PipelineStreamingTests(unittest.TestCase):
         pipeline.translator = fake_translator
         return pipeline, recorder, fake_translator
 
+    def test_ingest_never_calls_translation_worker(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            pipeline, _recorder, translator = self.build_pipeline(Path(tmp))
+            translation_requests = []
+            transcription_events = []
+
+            for _ in range(14):
+                events, requests = pipeline.ingest([0.2] * 1600)
+                transcription_events.extend(events)
+                translation_requests.extend(requests)
+
+            self.assertTrue(transcription_events)
+            self.assertTrue(translation_requests)
+            self.assertEqual(translator.calls, [])
+
+            translated = pipeline.execute_translation(translation_requests[0])
+            self.assertEqual(len(translator.calls), 1)
+            self.assertTrue(translated.type.startswith("translation."))
+
     def test_partial_then_stable_translation_then_final(self):
         with tempfile.TemporaryDirectory() as tmp:
             pipeline, recorder, translator = self.build_pipeline(Path(tmp))
             output = []
 
-            # 100 ms por chunk a 16 kHz; primera inferencia alrededor de 0.9 s.
+            # push() sigue siendo una ruta síncrona de compatibilidad/pruebas;
+            # el servidor de producción usa ingest/execute_translation por workers.
             for _ in range(14):
                 output.extend(pipeline.push([0.2] * 1600))
             for _ in range(3):
