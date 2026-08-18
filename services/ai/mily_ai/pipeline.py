@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import os
 from collections import deque
+from dataclasses import dataclass
+from typing import Literal
 
-from .audio import PcmChunkBuffer
 from .cpu_budget import detect_cpu_budget
+from .hypothesis import HypothesisStabilizer
 from .models import InstalledPack
 from .providers import (
     CachedTranslator,
@@ -17,6 +19,24 @@ from .providers import (
     Translator,
 )
 from .sessions import SessionRecorder, TranscriptSegment
+from .streaming import AdaptiveSpeechSegmenter, AudioLevel, StreamingEvent
+
+
+@dataclass(frozen=True, slots=True)
+class PipelineEvent:
+    """Evento semántico listo para salir por WebSocket."""
+
+    type: Literal[
+        "transcription.partial",
+        "transcription.final",
+        "translation.partial",
+        "translation.final",
+    ]
+    start: float
+    end: float
+    original: str
+    language: str
+    translation: str = ""
 
 
 class RealtimePipeline:
@@ -24,15 +44,12 @@ class RealtimePipeline:
         metadata = __import__("json").loads((pack.path / "pack.json").read_text(encoding="utf-8"))
         components = metadata["components"]
         self.source_language = source_language
-        # Dos segundos conservan suficiente contexto para Whisper y reducen ~17 %
-        # la espera frente al buffer anterior de 2.4 s. El VAD interno puede cortar
-        # silencios antes de decodificar contenido inútil. El plan de streaming
-        # adaptativo reemplazará este buffer en una tarea posterior, después de medir
-        # primero la mejora del reparto de CPU de forma aislada.
-        self.buffer = PcmChunkBuffer(window_seconds=2.0, overlap_seconds=0.25)
+        self.sample_rate = 16000
+        self.segmenter = AdaptiveSpeechSegmenter(sample_rate=self.sample_rate)
+        self.stabilizer = HypothesisStabilizer()
         self.recorder = recorder
-        self.elapsed = 0.0
-        self._recent_originals: deque[str] = deque(maxlen=6)
+        self._recent_originals: deque[str] = deque(maxlen=8)
+        self._last_partial_translation = ""
 
         cpu_profile = os.environ.get("MILY_CPU_PROFILE", "balanced")
         self.cpu_budget = detect_cpu_budget(cpu_profile)
@@ -56,41 +73,113 @@ class RealtimePipeline:
             translator = NllbTranslator(translation_path, compute_profile)
         self.translator = CachedTranslator(translator)
 
+    @property
+    def audio_level(self) -> AudioLevel:
+        return self.segmenter.level
+
     @staticmethod
     def _normalize(text: str) -> str:
         return " ".join(text.split())
 
-    def push(self, samples: list[float]) -> list[TranscriptSegment]:
-        window = self.buffer.push_samples(samples)
-        return self._process(window) if window else []
+    @staticmethod
+    def _detect_language(text: str, detected: str, configured: str) -> str:
+        if detected in {"en", "zh"}:
+            return detected
+        if configured in {"en", "zh"}:
+            return configured
+        return "zh" if any("\u4e00" <= char <= "\u9fff" for char in text) else "en"
 
-    def flush(self) -> list[TranscriptSegment]:
-        window = self.buffer.flush()
-        return self._process(window) if window else []
-
-    def _process(self, samples: list[float]) -> list[TranscriptSegment]:
-        segments = self.asr.transcribe(samples, self.source_language)
-        output: list[TranscriptSegment] = []
-        for segment in segments:
-            original = self._normalize(segment.text)
-            if not original:
-                continue
-            # Whisper vuelve a ver 250 ms de contexto. Evitamos reemitir segmentos
-            # idénticos recientes sin descartar frases nuevas que extienden la anterior.
-            if original.casefold() in self._recent_originals:
-                continue
-            detected = segment.language if segment.language in {"en", "zh"} else self.source_language
-            if detected == "auto":
-                detected = "zh" if any("\u4e00" <= char <= "\u9fff" for char in original) else "en"
-            translated = self.translator.translate(original, detected)
-            item = TranscriptSegment(
-                start=self.elapsed + segment.start,
-                end=self.elapsed + segment.end,
-                original=original,
-                translation=translated,
-            )
-            self.recorder.add(item)
-            output.append(item)
-            self._recent_originals.append(original.casefold())
-        self.elapsed += max((s.end for s in segments), default=len(samples) / 16000.0)
+    def push(self, samples) -> list[PipelineEvent]:
+        output: list[PipelineEvent] = []
+        for window in self.segmenter.push(samples):
+            output.extend(self._process_window(window))
         return output
+
+    def flush(self) -> list[PipelineEvent]:
+        output: list[PipelineEvent] = []
+        for window in self.segmenter.flush():
+            output.extend(self._process_window(window))
+        return output
+
+    def _transcribe_window(self, window: StreamingEvent) -> tuple[str, str]:
+        segments = self.asr.transcribe(window.samples, self.source_language)
+        original = self._normalize(" ".join(segment.text for segment in segments if segment.text))
+        detected = next(
+            (segment.language for segment in segments if segment.language in {"en", "zh"}),
+            self.source_language,
+        )
+        return original, self._detect_language(original, detected, self.source_language)
+
+    def _process_window(self, window: StreamingEvent) -> list[PipelineEvent]:
+        original, detected = self._transcribe_window(window)
+        start = window.start_sample / self.sample_rate
+        end = window.end_sample / self.sample_rate
+
+        if window.kind == "partial":
+            if not original:
+                return []
+            state = self.stabilizer.update(original)
+            output = [
+                PipelineEvent(
+                    type="transcription.partial",
+                    start=start,
+                    end=end,
+                    original=state.partial,
+                    language=detected,
+                )
+            ]
+            # Traducimos únicamente cuando el prefijo estable realmente avanzó y
+            # contiene contexto suficiente. Evita mandar cada fluctuación a M2M100.
+            if (
+                state.stable_advanced
+                and len(state.stable.split()) >= 2
+                and state.stable.casefold() != self._last_partial_translation.casefold()
+            ):
+                translated = self.translator.translate(state.stable, detected)
+                self._last_partial_translation = state.stable
+                output.append(
+                    PipelineEvent(
+                        type="translation.partial",
+                        start=start,
+                        end=end,
+                        original=state.stable,
+                        language=detected,
+                        translation=translated,
+                    )
+                )
+            return output
+
+        final_original = self.stabilizer.finalize(original)
+        self._last_partial_translation = ""
+        if not final_original:
+            return []
+        folded = final_original.casefold()
+        if folded in self._recent_originals:
+            return []
+
+        translated = self.translator.translate(final_original, detected)
+        record = TranscriptSegment(
+            start=start,
+            end=end,
+            original=final_original,
+            translation=translated,
+        )
+        self.recorder.add(record)
+        self._recent_originals.append(folded)
+        return [
+            PipelineEvent(
+                type="transcription.final",
+                start=start,
+                end=end,
+                original=final_original,
+                language=detected,
+            ),
+            PipelineEvent(
+                type="translation.final",
+                start=start,
+                end=end,
+                original=final_original,
+                language=detected,
+                translation=translated,
+            ),
+        ]
