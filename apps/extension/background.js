@@ -29,6 +29,15 @@ async function ensureOffscreenDocument() {
   }
 }
 
+async function ensureOverlay(tabId) {
+  try {
+    await chrome.scripting.insertCSS({ target: { tabId }, files: ['overlay.css'] });
+    await chrome.scripting.executeScript({ target: { tabId }, files: ['content.js'] });
+  } catch (_) {
+    throw new Error('El navegador no permitió mostrar subtítulos sobre esta página protegida.');
+  }
+}
+
 function publicBridgeState(message, connected = true) {
   return {
     connected,
@@ -143,8 +152,6 @@ async function startCapture(options) {
   if (!tab?.id) throw new Error('No hay una pestaña activa.');
   assertCapturableTab(tab);
 
-  // `hello` pide al bridge arrancar el motor si está detenido y emitir una
-  // credencial efímera. Esa credencial solo vive en memoria y en el offscreen.
   const bridge = await requestBridge('hello', 7000);
   if (bridge.engine !== 'ready') {
     throw new Error(bridge.message || 'El motor local todavía no está listo.');
@@ -156,6 +163,7 @@ async function startCapture(options) {
     throw new Error('No se pudo crear una sesión segura con el motor local.');
   }
 
+  await ensureOverlay(tab.id);
   await ensureOffscreenDocument();
   let streamId;
   try {
