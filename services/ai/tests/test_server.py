@@ -14,6 +14,16 @@ from mily_ai.runtime import RuntimePaths
 from mily_ai.security import PairingTokenService
 
 
+class OriginPolicyTests(unittest.TestCase):
+    def test_only_pinned_extension_and_loopback_web_origins_are_allowed(self):
+        from mily_ai.server import websocket_origin_allowed
+
+        self.assertTrue(websocket_origin_allowed("chrome-extension://edcpjonegaempcifgodcmgejbcpdpddm"))
+        self.assertTrue(websocket_origin_allowed("http://127.0.0.1:1420"))
+        self.assertFalse(websocket_origin_allowed("chrome-extension://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"))
+        self.assertFalse(websocket_origin_allowed("https://example.com"))
+
+
 @unittest.skipUnless(HAS_FASTAPI, "FastAPI/TestClient no disponibles")
 class LocalServerTests(unittest.TestCase):
     def make_paths(self, root: Path) -> RuntimePaths:

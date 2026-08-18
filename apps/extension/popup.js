@@ -1,68 +1,132 @@
-const token = document.querySelector('#token');
 const source = document.querySelector('#source');
-const port = document.querySelector('#port');
 const persist = document.querySelector('#persist');
 const showOriginal = document.querySelector('#showOriginal');
 const toggle = document.querySelector('#toggle');
 const status = document.querySelector('#status');
+const downloadApp = document.querySelector('#downloadApp');
+const appState = document.querySelector('#appState');
+const engineState = document.querySelector('#engineState');
+const modelState = document.querySelector('#modelState');
+const appDot = document.querySelector('#appDot');
+const engineDot = document.querySelector('#engineDot');
+const modelDot = document.querySelector('#modelDot');
 
-async function loadSettings() {
-  const saved = await chrome.storage.local.get(['pairingToken', 'sourceLanguage', 'persistTranscript', 'showOriginal', 'enginePort']);
-  token.value = saved.pairingToken || '';
-  source.value = saved.sourceLanguage || 'auto';
-  port.value = String(saved.enginePort || 8765);
-  persist.checked = Boolean(saved.persistTranscript);
-  showOriginal.checked = saved.showOriginal !== false;
-  const session = await chrome.storage.session.get(['captureState', 'engineEvent']);
-  renderCapture(Boolean(session.captureState?.active));
-  renderEngineEvent(session.engineEvent);
+let bridgeReady = false;
+
+function setDot(element, state) {
+  element.classList.toggle('ok', state === 'ok');
+  element.classList.toggle('warn', state === 'warn');
+  element.classList.toggle('error', state === 'error');
+}
+
+function renderBridge(state, connected = true) {
+  bridgeReady = Boolean(connected && state?.engine === 'ready' && state?.modelPack);
+  appState.textContent = connected ? 'Detectada' : 'No instalada';
+  engineState.textContent = state?.engine === 'ready' ? 'Activo' : state?.engine === 'stopped' ? 'Detenido' : 'No disponible';
+  modelState.textContent = state?.modelPack ? 'Listo' : connected ? 'Preparando…' : 'No disponible';
+  setDot(appDot, connected ? 'ok' : 'error');
+  setDot(engineDot, state?.engine === 'ready' ? 'ok' : connected ? 'warn' : 'error');
+  setDot(modelDot, state?.modelPack ? 'ok' : connected ? 'warn' : 'error');
+  downloadApp.hidden = connected;
+
+  const active = toggle.dataset.active === '1';
+  if (!active) {
+    toggle.disabled = !bridgeReady;
+    toggle.textContent = bridgeReady ? 'Iniciar traducción' : connected ? 'Preparando modelo…' : 'Aplicación no detectada';
+  }
+  status.classList.toggle('error', !connected);
+  status.textContent = state?.message || (connected ? 'MilyVoiceTraductor conectado.' : 'Instala MilyVoiceTraductor y vuelve a abrir la extensión.');
 }
 
 function renderCapture(active) {
   toggle.dataset.active = active ? '1' : '0';
-  toggle.textContent = active ? 'Detener traducción' : 'Iniciar traducción';
+  toggle.textContent = active ? 'Detener traducción' : bridgeReady ? 'Iniciar traducción' : 'Preparando…';
   toggle.classList.toggle('stop', active);
+  toggle.disabled = active ? false : !bridgeReady;
 }
 
 function renderEngineEvent(event) {
+  if (!event) return;
   status.classList.remove('error');
-  if (!event) { status.textContent = 'Motor: sin conexión todavía'; return; }
   if (event.type === 'engine.ready' || event.type === 'connected') status.textContent = 'Motor local conectado';
   else if (event.type === 'engine.loading') status.textContent = 'Cargando modelos locales…';
   else if (event.type === 'session.started') status.textContent = 'Traduciendo reunión';
-  else if (event.type === 'engine.error' || event.type === 'error') { status.textContent = event.message || 'Error del motor local'; status.classList.add('error'); }
-  else if (event.type === 'disconnected') status.textContent = 'Motor desconectado';
+  else if (event.type === 'engine.error' || event.type === 'error') {
+    status.textContent = event.message || 'Error del motor local';
+    status.classList.add('error');
+  } else if (event.type === 'disconnected') status.textContent = 'Motor desconectado';
 }
 
-async function saveSettings() {
+async function savePreferences() {
   await chrome.storage.local.set({
-    pairingToken: token.value.trim(),
     sourceLanguage: source.value,
     persistTranscript: persist.checked,
-    showOriginal: showOriginal.checked,
-    enginePort: Math.min(65535, Math.max(1024, Number(port.value) || 8765))
+    showOriginal: showOriginal.checked
   });
 }
 
-for (const element of [token, port, source, persist, showOriginal]) element.addEventListener('change', saveSettings);
+async function refreshBridge() {
+  status.textContent = 'Detectando MilyVoiceTraductor…';
+  const response = await chrome.runtime.sendMessage({ type: 'GET_BRIDGE_STATUS' });
+  renderBridge(response?.state, Boolean(response?.ok));
+}
+
+async function loadSettings() {
+  const saved = await chrome.storage.local.get(['sourceLanguage', 'persistTranscript', 'showOriginal']);
+  source.value = saved.sourceLanguage || 'auto';
+  persist.checked = Boolean(saved.persistTranscript);
+  showOriginal.checked = saved.showOriginal !== false;
+  const session = await chrome.storage.session.get(['captureState', 'engineEvent', 'bridgeState']);
+  if (session.bridgeState) renderBridge(session.bridgeState, session.bridgeState.connected !== false);
+  renderCapture(Boolean(session.captureState?.active));
+  renderEngineEvent(session.engineEvent);
+  await refreshBridge();
+}
+
+for (const element of [source, persist, showOriginal]) {
+  element.addEventListener('change', savePreferences);
+}
 
 toggle.addEventListener('click', async () => {
-  await saveSettings();
+  await savePreferences();
   const active = toggle.dataset.active === '1';
   toggle.disabled = true;
-  const response = await chrome.runtime.sendMessage(active
-    ? { type: 'STOP_CAPTURE' }
-    : { type: 'START_CAPTURE', options: { sourceLanguage: source.value, persistTranscript: persist.checked, enginePort: Number(port.value) || 8765 } });
-  toggle.disabled = false;
+  status.classList.remove('error');
+  status.textContent = active ? 'Deteniendo…' : 'Preparando sesión local…';
+
+  const response = await chrome.runtime.sendMessage(
+    active
+      ? { type: 'STOP_CAPTURE' }
+      : {
+          type: 'START_CAPTURE',
+          options: {
+            sourceLanguage: source.value,
+            persistTranscript: persist.checked
+          }
+        }
+  );
+
   if (!response?.ok) {
     status.textContent = response?.error || 'No se pudo ejecutar la acción.';
     status.classList.add('error');
+    toggle.disabled = !bridgeReady;
     return;
   }
   renderCapture(!active);
+  status.textContent = active ? 'Traducción detenida.' : 'Traduciendo esta pestaña.';
 });
 
 chrome.storage.onChanged.addListener((_changes, areaName) => {
-  if (areaName === 'session') loadSettings();
+  if (areaName === 'session') {
+    chrome.storage.session.get(['captureState', 'engineEvent', 'bridgeState']).then((session) => {
+      if (session.bridgeState) renderBridge(session.bridgeState, session.bridgeState.connected !== false);
+      renderCapture(Boolean(session.captureState?.active));
+      renderEngineEvent(session.engineEvent);
+    });
+  }
 });
-loadSettings();
+
+loadSettings().catch((error) => {
+  renderBridge(null, false);
+  status.textContent = error?.message || 'No se pudo detectar MilyVoiceTraductor.';
+});

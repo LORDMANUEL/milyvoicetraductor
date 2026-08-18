@@ -2,12 +2,16 @@ name: CI
 
 on:
   push:
-    branches: [main, "agent/**", "feat/**", "release/**"]
+    branches: [main, pruebas]
   pull_request:
     branches: [main]
 
 permissions:
   contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
   repository-guards:
@@ -103,20 +107,6 @@ jobs:
           escaped = tail.replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
           print(f'::error title=rustfmt diagnostics::{escaped}')
           PY
-      - name: Generate formatted Rust snapshot
-        if: failure() && steps.rustfmt.outcome == 'failure'
-        shell: bash
-        run: |
-          cargo fmt --all
-          tar -czf rustfmt-source.tar.gz crates apps/desktop/src-tauri/src
-      - name: Upload formatted Rust snapshot
-        if: failure() && steps.rustfmt.outcome == 'failure'
-        uses: actions/upload-artifact@v6
-        with:
-          name: rustfmt-source-${{ github.sha }}
-          path: rustfmt-source.tar.gz
-          retention-days: 1
-          if-no-files-found: error
       - name: Tests
         if: success()
         run: cargo test --workspace
@@ -162,30 +152,32 @@ jobs:
           } finally {
             Pop-Location
           }
-      - name: Annotate Windows AI diagnostics
-        if: failure() && steps.windows_ai.outcome == 'failure'
-        shell: pwsh
-        run: |
-          python -c "from pathlib import Path; import os; text=Path('ai-windows.log').read_text(encoding='utf-8', errors='replace'); tail='\n'.join(text.splitlines()[-100:])[-8000:]; ws=os.environ.get('GITHUB_WORKSPACE',''); tail=tail.replace(ws,'<WORKSPACE>') if ws else tail; esc=tail.replace('%','%25').replace('\r','%0D').replace('\n','%0A'); print(f'::error title=Windows AI diagnostics::{esc}')"
-      - name: Validate bootstrap PowerShell syntax
+      - name: Offline bootstrap policy
         if: success()
         shell: pwsh
-        run: |
-          $tokens = $null
-          $errors = $null
-          $path = (Resolve-Path "installer/windows/setup-installed.ps1").Path
-          [System.Management.Automation.Language.Parser]::ParseFile($path, [ref]$tokens, [ref]$errors) | Out-Null
-          if ($errors.Count -gt 0) {
-            $errors | ForEach-Object { Write-Error $_.Message }
-            exit 1
-          }
+        run: .\installer\windows\test-bootstrap.ps1
+      - name: Native Messaging bridge release build
+        if: success()
+        run: cargo build -p mily-bridge --release
+      - name: Build private Python 3.13 runtime
+        if: success()
+        shell: pwsh
+        run: .\installer\windows\build-python-runtime.ps1
+      - name: Validate embedded runtime and offline bootstrap
+        if: success()
+        shell: pwsh
+        run: .\installer\windows\test-bootstrap.ps1 -RequireRuntime
+      - name: Exercise installed runtime, bridge and registration
+        if: success()
+        shell: pwsh
+        run: .\installer\windows\test-installed-flow.ps1
       - name: Rust tests
         if: success()
         run: cargo test --workspace
       - name: Clippy
         if: success()
         run: cargo clippy --workspace --all-targets -- -D warnings
-      - name: Windows release build
+      - name: Windows desktop release build
         if: success()
         run: cargo build -p milyvoicetraductor-desktop --release
       - name: Tauri NSIS bundle
@@ -209,7 +201,7 @@ jobs:
             "$hash *$($file.Name)"
           }
           $lines | Set-Content -Encoding ascii "dist/release/SHA256SUMS.txt"
-      - name: Upload full Windows installer and Chromium extension
+      - name: Upload verified Windows installer and extension
         if: success()
         uses: actions/upload-artifact@v6
         with:

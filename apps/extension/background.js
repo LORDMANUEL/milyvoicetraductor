@@ -1,9 +1,14 @@
 /**
- * Orquestador Manifest V3. La captura solo empieza como consecuencia de una
- * acción explícita del usuario desde el popup.
+ * Orquestador Manifest V3. Desktop y extensión se descubren mediante Native
+ * Messaging; ninguna credencial se guarda en chrome.storage.local.
  */
 
 const OFFSCREEN_URL = chrome.runtime.getURL('offscreen.html');
+const NATIVE_HOST = 'com.milyvoice.traductor';
+const MEETING_URL = /^https:\/\/(meet\.google\.com|([^/]+\.)?teams\.microsoft\.com|([^/]+\.)?zoom\.us)\//;
+
+let nativePort = null;
+let pendingBridgeRequest = null;
 
 async function ensureOffscreenDocument() {
   const contexts = await chrome.runtime.getContexts({
@@ -19,6 +24,94 @@ async function ensureOffscreenDocument() {
   }
 }
 
+function publicBridgeState(message, connected = true) {
+  return {
+    connected,
+    desktop: message?.desktop || (connected ? 'unknown' : 'notInstalled'),
+    engine: message?.engine || 'notInstalled',
+    modelPack: message?.modelPack || null,
+    message: message?.message || (connected ? 'Consultando MilyVoiceTraductor…' : 'Aplicación no detectada.')
+  };
+}
+
+async function persistPublicBridgeState(message, connected = true) {
+  const bridgeState = publicBridgeState(message, connected);
+  await chrome.storage.session.set({ bridgeState, bridgeStateAt: Date.now() });
+  return bridgeState;
+}
+
+function disconnectNativePort() {
+  try { nativePort?.disconnect(); } catch (_) {}
+  nativePort = null;
+  if (pendingBridgeRequest) {
+    pendingBridgeRequest.reject(new Error('MilyVoiceTraductor no está disponible.'));
+    pendingBridgeRequest = null;
+  }
+}
+
+function connectNativeHost() {
+  if (nativePort) return nativePort;
+  try {
+    nativePort = chrome.runtime.connectNative(NATIVE_HOST);
+  } catch (_) {
+    nativePort = null;
+    return null;
+  }
+
+  nativePort.onMessage.addListener((message) => {
+    persistPublicBridgeState(message, message?.type !== 'bridge.error').catch(() => undefined);
+    if (pendingBridgeRequest) {
+      const pending = pendingBridgeRequest;
+      pendingBridgeRequest = null;
+      if (message?.type === 'bridge.error') pending.reject(new Error(message.message || 'Error del bridge local.'));
+      else pending.resolve(message);
+    }
+  });
+
+  nativePort.onDisconnect.addListener(() => {
+    const lastError = chrome.runtime.lastError?.message || '';
+    nativePort = null;
+    persistPublicBridgeState(null, false).catch(() => undefined);
+    if (pendingBridgeRequest) {
+      const pending = pendingBridgeRequest;
+      pendingBridgeRequest = null;
+      pending.reject(new Error(lastError || 'MilyVoiceTraductor no está instalado o el bridge no está registrado.'));
+    }
+  });
+  return nativePort;
+}
+
+function requestBridge(type = 'status', timeoutMs = 3500) {
+  return new Promise((resolve, reject) => {
+    if (pendingBridgeRequest) {
+      reject(new Error('El bridge local está atendiendo otra solicitud.'));
+      return;
+    }
+    const port = connectNativeHost();
+    if (!port) {
+      reject(new Error('MilyVoiceTraductor no está instalado o el bridge no está registrado.'));
+      return;
+    }
+    const timer = setTimeout(() => {
+      if (pendingBridgeRequest?.resolve === resolve) pendingBridgeRequest = null;
+      disconnectNativePort();
+      reject(new Error('MilyVoiceTraductor no respondió a tiempo.'));
+    }, timeoutMs);
+    pendingBridgeRequest = {
+      resolve: (message) => { clearTimeout(timer); resolve(message); },
+      reject: (error) => { clearTimeout(timer); reject(error); }
+    };
+    try {
+      port.postMessage({ protocol: 1, type });
+    } catch (error) {
+      clearTimeout(timer);
+      pendingBridgeRequest = null;
+      disconnectNativePort();
+      reject(error);
+    }
+  });
+}
+
 async function setCaptureState(state) {
   await chrome.storage.session.set({ captureState: state });
 }
@@ -26,27 +119,36 @@ async function setCaptureState(state) {
 async function startCapture(options) {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   if (!tab?.id) throw new Error('No hay una pestaña activa.');
-  if (!/^https:\/\/(meet\.google\.com|([^/]+\.)?teams\.microsoft\.com|([^/]+\.)?zoom\.us)\//.test(tab.url || '')) {
+  if (!MEETING_URL.test(tab.url || '')) {
     throw new Error('Abre Google Meet, Microsoft Teams Web o Zoom Web.');
   }
 
-  const { pairingToken = '' } = await chrome.storage.local.get('pairingToken');
-  if (!pairingToken || pairingToken.length < 40) {
-    throw new Error('Empareja la extensión con el token de la aplicación.');
+  // `hello` pide al bridge arrancar el motor si está detenido y emitir una
+  // credencial efímera. Esa credencial solo vive en memoria y en el offscreen.
+  const bridge = await requestBridge('hello', 7000);
+  if (bridge.engine !== 'ready') {
+    throw new Error(bridge.message || 'El motor local todavía no está listo.');
+  }
+  if (!bridge.modelPack) {
+    throw new Error('MilyVoiceTraductor está preparando el modelo local.');
+  }
+  if (!bridge.credential || !bridge.port) {
+    throw new Error('No se pudo crear una sesión segura con el motor local.');
   }
 
   await ensureOffscreenDocument();
   const streamId = await chrome.tabCapture.getMediaStreamId({ targetTabId: tab.id });
-  await chrome.runtime.sendMessage({
+  const response = await chrome.runtime.sendMessage({
     target: 'offscreen',
     type: 'START_CAPTURE',
     streamId,
     tabId: tab.id,
-    token: pairingToken,
+    credential: bridge.credential,
     sourceLanguage: options.sourceLanguage || 'auto',
     persistTranscript: Boolean(options.persistTranscript),
-    enginePort: Math.min(65535, Math.max(1024, Number(options.enginePort) || 8765))
+    enginePort: bridge.port
   });
+  if (!response?.ok) throw new Error(response?.error || 'No se pudo iniciar la captura.');
   await setCaptureState({ active: true, tabId: tab.id, startedAt: Date.now() });
   return { ok: true };
 }
@@ -60,6 +162,17 @@ async function stopCapture() {
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message?.target === 'offscreen') return false;
+
+  if (message?.type === 'GET_BRIDGE_STATUS') {
+    // Consultar estado es pasivo: no arranca el motor ni solicita una credencial.
+    requestBridge('status', 3500)
+      .then((bridge) => sendResponse({ ok: true, state: publicBridgeState(bridge, true) }))
+      .catch(async (error) => {
+        const state = await persistPublicBridgeState(null, false);
+        sendResponse({ ok: false, state, error: error.message || 'Aplicación no detectada.' });
+      });
+    return true;
+  }
 
   if (message?.type === 'START_CAPTURE') {
     startCapture(message.options || {})

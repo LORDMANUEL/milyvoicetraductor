@@ -1,0 +1,14 @@
+{
+  "bundle": {
+    "resources": {
+      "../../../services/ai/": "bootstrap/ai/",
+      "../../extension/": "bootstrap/extension/",
+      "../../../dist/runtime/milyvoice-python-runtime.zip": "bootstrap/runtime/milyvoice-python-runtime.zip",
+      "../../../dist/runtime/milyvoice-python-runtime.zip.sha256": "bootstrap/runtime/milyvoice-python-runtime.zip.sha256",
+      "../../../target/release/milyvoice-bridge.exe": "bootstrap/bridge/milyvoice-bridge.exe",
+      "../../../installer/windows/setup-installed.ps1": "bootstrap/setup-installed.ps1",
+      "../../../installer/windows/register-native-host.ps1": "bootstrap/register-native-host.ps1",
+      "../../../installer/windows/native-host-template.json": "bootstrap/native-host-template.json"
+    }
+  }
+}
