@@ -104,7 +104,7 @@ pub fn get_hardware_advisor(state: State<'_, AppState>) -> HardwareAdvisor {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use mily_system::CpuFeatures;
+    use mily_system::{CpuFeatures, GpuAdapterInfo, GpuVendor};
 
     fn snapshot(physical_cpus: usize, avx2: bool) -> SystemSnapshot {
         SystemSnapshot {
@@ -123,6 +123,18 @@ mod tests {
         }
     }
 
+    fn gpu(vendor: GpuVendor) -> GpuAdapterInfo {
+        GpuAdapterInfo {
+            name: "test gpu".into(),
+            vendor,
+            vendor_id: 0,
+            device_id: 1,
+            dedicated_video_memory_mb: 0,
+            shared_system_memory_mb: 2048,
+            software: false,
+        }
+    }
+
     #[test]
     fn dual_core_maps_to_legacy_profile() {
         assert_eq!(recommended_profile(&snapshot(2, true)), "legacy");
@@ -131,5 +143,21 @@ mod tests {
     #[test]
     fn six_core_maps_to_performance_profile() {
         assert_eq!(recommended_profile(&snapshot(6, true)), "performance");
+    }
+
+    #[test]
+    fn intel_gpu_never_becomes_cuda_candidate() {
+        assert!(!cuda_candidate_is_valid(true, &[gpu(GpuVendor::Intel)]));
+    }
+
+    #[test]
+    fn amd_gpu_never_becomes_cuda_candidate() {
+        assert!(!cuda_candidate_is_valid(true, &[gpu(GpuVendor::Amd)]));
+    }
+
+    #[test]
+    fn nvidia_requires_cuda_runtime_evidence() {
+        assert!(!cuda_candidate_is_valid(false, &[gpu(GpuVendor::Nvidia)]));
+        assert!(cuda_candidate_is_valid(true, &[gpu(GpuVendor::Nvidia)]));
     }
 }
