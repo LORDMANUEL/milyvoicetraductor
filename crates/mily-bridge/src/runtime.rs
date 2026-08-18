@@ -8,8 +8,6 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use thiserror::Error;
 use uuid::Uuid;
 
-pub const HOST_NAME: &str = "com.milyvoice.traductor";
-pub const EXTENSION_ID: &str = "edcpjonegaempcifgodcmgejbcpdpddm";
 pub const EXTENSION_ORIGIN: &str = "chrome-extension://edcpjonegaempcifgodcmgejbcpdpddm/";
 const CREDENTIAL_TTL_SECONDS: u64 = 300;
 
