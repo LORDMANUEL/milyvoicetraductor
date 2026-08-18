@@ -53,7 +53,7 @@ class EngineSettings:
     target_language: str = "es"
     compute_profile: str = "auto"
     persist_transcripts: bool = False
-    active_model_pack: str = "business-qwen"
+    active_model_pack: str = "realtime-m2m100"
     log_level: str = "info"
 
     @classmethod
@@ -70,7 +70,7 @@ class EngineSettings:
             target_language="es",
             compute_profile=data.get("computeProfile", "auto") if data.get("computeProfile") in {"auto", "cpu", "gpu"} else "auto",
             persist_transcripts=bool(data.get("persistTranscripts", False)),
-            active_model_pack=str(data.get("activeModelPack", "business-qwen")),
+            active_model_pack=str(data.get("activeModelPack", "realtime-m2m100")),
             log_level=data.get("logLevel", "info") if data.get("logLevel") in {"error", "warn", "info", "debug"} else "info",
         )
 
