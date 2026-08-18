@@ -174,13 +174,19 @@ def create_app(paths: RuntimePaths, port: int = 8765, parent_pid: int | None = N
         send_lock = asyncio.Lock()
         latency_controller = LatencyController()
         last_telemetry_emit = 0.0
+        last_speaker_event: str | None = None
 
         async def safe_send(payload: dict) -> None:
             async with send_lock:
                 await websocket.send_json(payload)
 
         async def send_pipeline_events(items) -> None:
+            nonlocal last_speaker_event
             for item in items:
+                speaker_id = getattr(item, "speaker_id", None)
+                if speaker_id and speaker_id != last_speaker_event:
+                    last_speaker_event = speaker_id
+                    await safe_send(event("speaker.changed", speakerId=speaker_id))
                 await safe_send(event(item.type, **pipeline_event_fields(item)))
 
         def telemetry_snapshot(current: RealtimePipeline):
@@ -458,6 +464,24 @@ def create_app(paths: RuntimePaths, port: int = 8765, parent_pid: int | None = N
                     await safe_send(event("pong"))
                     continue
 
+                if message.type == "speaker.focus":
+                    if pipeline is None:
+                        await safe_send(event("engine.error", code="SESSION_NOT_STARTED", message="Inicia una sesión antes de cambiar el hablante."))
+                    else:
+                        pipeline.set_speaker_focus(message.speaker_focus_mode, message.speaker_id)
+                        await safe_send(event("speaker.changed", speakerId=message.speaker_id, focusMode=message.speaker_focus_mode))
+                    continue
+
+                if message.type == "tts.started":
+                    if pipeline is not None and message.tts_text:
+                        pipeline.register_tts(message.tts_text)
+                    await safe_send(event("tts.started", speakerId=message.speaker_id))
+                    continue
+
+                if message.type == "tts.finished":
+                    await safe_send(event("tts.finished", speakerId=message.speaker_id))
+                    continue
+
                 if message.type == "client.hello":
                     if pipeline is not None:
                         await finish_workers(flush=True)
@@ -497,6 +521,9 @@ def create_app(paths: RuntimePaths, port: int = 8765, parent_pid: int | None = N
                             settings.compute_profile,
                             recorder,
                             session_mode=message.session_mode,
+                            speaker_detection=message.speaker_detection,
+                            speaker_focus_mode=message.speaker_focus_mode,
+                            fixed_speaker_id=message.speaker_id,
                         )
                     except Exception as exc:
                         logger.error(
@@ -531,12 +558,15 @@ def create_app(paths: RuntimePaths, port: int = 8765, parent_pid: int | None = N
                         )
                         continue
                     last_telemetry_emit = 0.0
+                    last_speaker_event = None
                     binary_pcm_enabled = message.binary_pcm
                     await safe_send(
                         event(
                             "session.started",
                             sessionId=session_id,
                             sessionMode=message.session_mode,
+                            sourceMode=message.source_mode,
+                            speakerDetection=message.speaker_detection,
                             binaryPcm=binary_pcm_enabled,
                             parallelStages=pipeline.cpu_budget.parallel_stages,
                         )
