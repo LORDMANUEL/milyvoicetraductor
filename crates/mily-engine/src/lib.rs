@@ -315,6 +315,9 @@ mod tests {
 
         let spec = LaunchSpec::discover(&paths).expect("embedded runtime must be discovered");
         assert_eq!(spec.program, python);
-        assert_eq!(spec.prefix_args, vec![script.to_string_lossy().into_owned()]);
+        assert_eq!(
+            spec.prefix_args,
+            vec![script.to_string_lossy().into_owned()]
+        );
     }
 }
