@@ -96,7 +96,7 @@ def create_app(paths: RuntimePaths, port: int = 8765, parent_pid: int | None = N
         active = catalog.active_pack()
         return {
             "ok": True,
-            "version": "1.0.0-rc.1",
+            "version": "1.0.5",
             "protocol": 1,
             "modelPack": f"{active.id}@{active.version}" if active else None,
             "extensionConnected": heartbeat_path.exists()
@@ -158,7 +158,7 @@ def create_app(paths: RuntimePaths, port: int = 8765, parent_pid: int | None = N
         recorder: SessionRecorder | None = None
         try:
             await websocket.send_json(
-                event("engine.ready", version="1.0.0-rc.1", protocolVersion=1)
+                event("engine.ready", version="1.0.5", protocolVersion=1)
             )
             while True:
                 raw = await websocket.receive_text()
