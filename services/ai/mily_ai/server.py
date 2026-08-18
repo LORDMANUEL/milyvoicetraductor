@@ -7,7 +7,7 @@ import secrets
 import time
 from contextlib import asynccontextmanager
 
-from .audio import decode_pcm16_base64
+from .audio import decode_pcm16_base64, decode_pcm16_bytes
 from .logging_safe import build_logger, close_logger
 from .models import HuggingFacePackInstaller, ModelCatalog, ModelOperationError
 from .pipeline import RealtimePipeline
@@ -156,12 +156,84 @@ def create_app(paths: RuntimePaths, port: int = 8765, parent_pid: int | None = N
         await websocket.accept()
         pipeline: RealtimePipeline | None = None
         recorder: SessionRecorder | None = None
+        binary_pcm_enabled = False
+
+        async def process_samples(samples) -> None:
+            nonlocal pipeline
+            if pipeline is None:
+                await websocket.send_json(
+                    event(
+                        "engine.error",
+                        code="SESSION_NOT_STARTED",
+                        message="Inicia una sesión antes de enviar audio.",
+                    )
+                )
+                return
+            try:
+                segments = await asyncio.get_running_loop().run_in_executor(
+                    None, pipeline.push, samples
+                )
+            except Exception as exc:
+                logger.warning("Error procesando audio: %s", exc.__class__.__name__)
+                await websocket.send_json(
+                    event(
+                        "engine.error",
+                        code="AUDIO_PROCESS",
+                        message="No se pudo procesar un fragmento de audio.",
+                    )
+                )
+                return
+            heartbeat_path.write_text(
+                json.dumps({"at": time.time()}), encoding="utf-8"
+            )
+            for segment in segments:
+                await websocket.send_json(
+                    event(
+                        "translation.final",
+                        start=segment.start,
+                        end=segment.end,
+                        original=segment.original,
+                        translation=segment.translation,
+                    )
+                )
+
         try:
             await websocket.send_json(
                 event("engine.ready", version="1.0.5", protocolVersion=1)
             )
             while True:
-                raw = await websocket.receive_text()
+                packet = await websocket.receive()
+                if packet.get("type") == "websocket.disconnect":
+                    raise WebSocketDisconnect(packet.get("code", 1000))
+
+                raw_bytes = packet.get("bytes")
+                if raw_bytes is not None:
+                    if not binary_pcm_enabled:
+                        await websocket.send_json(
+                            event(
+                                "engine.error",
+                                code="PROTOCOL",
+                                message="PCM binario no fue negociado para esta sesión.",
+                            )
+                        )
+                        continue
+                    try:
+                        samples = decode_pcm16_bytes(raw_bytes)
+                    except ValueError:
+                        await websocket.send_json(
+                            event(
+                                "engine.error",
+                                code="AUDIO_PROCESS",
+                                message="No se pudo procesar un fragmento de audio.",
+                            )
+                        )
+                        continue
+                    await process_samples(samples)
+                    continue
+
+                raw = packet.get("text")
+                if raw is None:
+                    continue
                 try:
                     message = ClientMessage.parse(raw)
                 except ProtocolError:
@@ -218,30 +290,20 @@ def create_app(paths: RuntimePaths, port: int = 8765, parent_pid: int | None = N
                         )
                         pipeline = None
                         continue
+                    binary_pcm_enabled = message.binary_pcm
                     await websocket.send_json(
-                        event("session.started", sessionId=session_id)
+                        event(
+                            "session.started",
+                            sessionId=session_id,
+                            binaryPcm=binary_pcm_enabled,
+                        )
                     )
                     continue
 
                 if message.type == "audio.chunk":
-                    if pipeline is None:
-                        await websocket.send_json(
-                            event(
-                                "engine.error",
-                                code="SESSION_NOT_STARTED",
-                                message="Inicia una sesión antes de enviar audio.",
-                            )
-                        )
-                        continue
                     try:
                         samples = decode_pcm16_base64(message.audio_base64 or "")
-                        segments = await asyncio.get_running_loop().run_in_executor(
-                            None, pipeline.push, samples
-                        )
-                    except Exception as exc:
-                        logger.warning(
-                            "Error procesando audio: %s", exc.__class__.__name__
-                        )
+                    except ValueError:
                         await websocket.send_json(
                             event(
                                 "engine.error",
@@ -250,19 +312,7 @@ def create_app(paths: RuntimePaths, port: int = 8765, parent_pid: int | None = N
                             )
                         )
                         continue
-                    heartbeat_path.write_text(
-                        json.dumps({"at": time.time()}), encoding="utf-8"
-                    )
-                    for segment in segments:
-                        await websocket.send_json(
-                            event(
-                                "translation.final",
-                                start=segment.start,
-                                end=segment.end,
-                                original=segment.original,
-                                translation=segment.translation,
-                            )
-                        )
+                    await process_samples(samples)
                     continue
 
                 if message.type == "audio.stop":
@@ -295,6 +345,7 @@ def create_app(paths: RuntimePaths, port: int = 8765, parent_pid: int | None = N
                     )
                     pipeline = None
                     recorder = None
+                    binary_pcm_enabled = False
         except WebSocketDisconnect:
             logger.info("Extensión desconectada.")
         except Exception as exc:
