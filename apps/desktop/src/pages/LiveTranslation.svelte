@@ -2,13 +2,13 @@
   import { onDestroy, onMount } from 'svelte';
   import { desktopApi } from '../lib/api';
   import { DesktopAudioCapture } from '../lib/realtime';
-  import type { AppStatus, RealtimeEvent, RealtimeWord } from '../types';
+  import type { AppStatus, RealtimeEvent, RealtimeWord, SpeakerFocusMode } from '../types';
 
   type SourceMode = 'browser' | 'microphone' | 'system' | 'media';
   type VisualMode = 'meeting' | 'education' | 'karaoke' | 'compact';
   type VisualTheme = 'mily' | 'cinema' | 'class' | 'contrast' | 'neon';
 
-  interface TranscriptRow { start: number; original: string; translation: string; }
+  interface TranscriptRow { start: number; original: string; translation: string; speakerId: string | null; }
 
   let appStatus: AppStatus | null = null;
   let source: SourceMode = 'microphone';
@@ -23,6 +23,13 @@
   let currentOriginal = '';
   let currentTranslation = '';
   let currentWords: RealtimeWord[] = [];
+  let currentSpeakerId: string | null = null;
+  let knownSpeakers: string[] = [];
+  let speakerDetection = false;
+  let speakerFocusMode: SpeakerFocusMode = 'all';
+  let fixedSpeakerId = '';
+  let speakerNames: Record<string, string> = {};
+  let speakerVoiceNames: Record<string, string> = {};
   let karaokeClock = 0;
   let sessionStartedAt = 0;
   let frameRequest = 0;
@@ -59,6 +66,28 @@
     return pressure === 'healthy' && karaokeClock >= word.start && karaokeClock < word.end;
   }
 
+  function speakerLabel(id: string | null): string {
+    if (!id) return '';
+    if (speakerNames[id]?.trim()) return speakerNames[id].trim();
+    const suffix = id.replace(/^speaker-/, '').toUpperCase();
+    return `Hablante ${suffix}`;
+  }
+
+  function speakerClass(id: string | null): string {
+    if (!id) return 'speaker-none';
+    const index = Math.max(0, knownSpeakers.indexOf(id));
+    return `speaker-${index % 6}`;
+  }
+
+  function rememberSpeaker(id: string | null | undefined) {
+    if (!id) return;
+    currentSpeakerId = id;
+    if (!knownSpeakers.includes(id)) {
+      knownSpeakers = [...knownSpeakers, id];
+      if (!fixedSpeakerId) fixedSpeakerId = id;
+    }
+  }
+
   function refreshVoices() {
     if (!('speechSynthesis' in window)) return;
     const voices = window.speechSynthesis.getVoices();
@@ -68,29 +97,35 @@
     if (!ttsVoiceName && ttsVoices.length) ttsVoiceName = ttsVoices[0].name;
   }
 
-  function releaseTtsGuard(generation: number) {
+  function selectedVoiceForSpeaker(speakerId: string | null): SpeechSynthesisVoice | undefined {
+    const configured = speakerId ? speakerVoiceNames[speakerId] : '';
+    const name = configured || ttsVoiceName;
+    return ttsVoices.find((voice) => voice.name === name);
+  }
+
+  function releaseTtsGuard(generation: number, speakerId: string | null) {
     if (generation !== ttsGeneration) return;
+    capture.notifyTtsFinished(speakerId);
     window.setTimeout(() => {
       if (generation !== ttsGeneration) return;
-      if (source !== 'media') capture.setOutputSuppressed(false);
       capture.setPlaybackGain(1);
     }, 220);
   }
 
-  function speakSpanish(text: string) {
+  function speakSpanish(text: string, speakerId: string | null) {
     if (!ttsEnabled || !text || !('speechSynthesis' in window)) return;
     ttsGeneration += 1;
     const generation = ttsGeneration;
     window.speechSynthesis.cancel();
-    if (source !== 'media') capture.setOutputSuppressed(true);
+    capture.notifyTtsStarted(text, speakerId);
     capture.setPlaybackGain(0.25);
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.lang = 'es-ES';
-    const selected = ttsVoices.find((voice) => voice.name === ttsVoiceName);
+    const selected = selectedVoiceForSpeaker(speakerId);
     if (selected) utterance.voice = selected;
     utterance.rate = 1.08;
-    utterance.onend = () => releaseTtsGuard(generation);
-    utterance.onerror = () => releaseTtsGuard(generation);
+    utterance.onend = () => releaseTtsGuard(generation, speakerId);
+    utterance.onerror = () => releaseTtsGuard(generation, speakerId);
     window.speechSynthesis.speak(utterance);
   }
 
@@ -98,12 +133,19 @@
     if (event.words?.length) currentWords = event.words;
   }
 
+  function updateSpeakerFocus() {
+    if (speakerFocusMode === 'fixed' && !fixedSpeakerId) return;
+    if (active) capture.setSpeakerFocus(speakerFocusMode, speakerFocusMode === 'fixed' ? fixedSpeakerId : null);
+  }
+
   function handleRealtimeEvent(event: RealtimeEvent) {
+    rememberSpeaker(event.speakerId);
+    if (event.type === 'speaker.changed') { rememberSpeaker(event.speakerId); return; }
     if (event.type === 'engine.loading') { message = 'Precalentando Whisper y M2M100…'; return; }
     if (event.type === 'session.started') {
       sessionStartedAt = performance.now() / 1000;
       karaokeClock = 0;
-      message = 'Sesión lista · esperando audio.';
+      message = event.sourceMode === 'system_loopback' ? 'WASAPI activo · esperando audio del sistema.' : 'Sesión lista · esperando audio.';
       return;
     }
     if (event.type === 'audio.level') {
@@ -135,8 +177,10 @@
     if (event.type === 'translation.final') {
       currentOriginal = event.original || currentOriginal; currentTranslation = event.translation || '';
       acceptWords(event);
-      transcript = [...transcript, { start: Number(event.start || 0), original: currentOriginal, translation: currentTranslation }].slice(-80);
-      message = 'Traducción al día.'; speakSpanish(currentTranslation); return;
+      const speakerId = event.speakerId || currentSpeakerId;
+      rememberSpeaker(speakerId);
+      transcript = [...transcript, { start: Number(event.start || 0), original: currentOriginal, translation: currentTranslation, speakerId }].slice(-80);
+      message = 'Traducción al día.'; speakSpanish(currentTranslation, speakerId); return;
     }
     if (event.type === 'engine.error') { error = event.message || 'El motor local reportó un error.'; message = 'Error del motor.'; }
   }
@@ -150,14 +194,16 @@
       return;
     }
     if (source === 'media' && !mediaUrl) { error = 'Seleccione primero un archivo de video o audio.'; return; }
+    if (speakerFocusMode === 'fixed' && !fixedSpeakerId) { error = 'Seleccione primero el hablante que desea fijar.'; return; }
     busy = true; message = 'Preparando motor y modelos locales…';
+    const selectedSpeaker = speakerFocusMode === 'fixed' ? fixedSpeakerId : null;
     try {
-      if (source === 'microphone') await capture.startMicrophone(sourceLanguage, persistTranscript, visualMode);
-      else if (source === 'system') await capture.startSystemAudio(sourceLanguage, persistTranscript, visualMode);
+      if (source === 'microphone') await capture.startMicrophone(sourceLanguage, persistTranscript, visualMode, speakerDetection, speakerFocusMode, selectedSpeaker);
+      else if (source === 'system') await capture.startSystemAudio(sourceLanguage, persistTranscript, visualMode, speakerDetection, speakerFocusMode, selectedSpeaker);
       else {
         const element = activeMediaElement();
         if (!element) throw new Error('El archivo multimedia todavía no está listo.');
-        await capture.startMediaElement(element, sourceLanguage, persistTranscript, visualMode);
+        await capture.startMediaElement(element, sourceLanguage, persistTranscript, visualMode, speakerDetection, speakerFocusMode, selectedSpeaker);
         message = 'Motor listo. Pulse Play en el reproductor para comenzar.';
       }
       active = true;
@@ -170,7 +216,8 @@
     try {
       ttsGeneration += 1;
       if ('speechSynthesis' in window) window.speechSynthesis.cancel();
-      capture.setOutputSuppressed(false); capture.setPlaybackGain(1);
+      capture.notifyTtsFinished(currentSpeakerId);
+      capture.setPlaybackGain(1);
       await capture.stop(); active = false; sessionStartedAt = 0; message = 'Traducción detenida.';
     } finally { busy = false; }
   }
@@ -225,7 +272,7 @@
   <div class="source-grid" aria-label="Fuentes de audio">
     <button class:active={source === 'browser'} on:click={() => chooseSource('browser')} disabled={active || busy}><span>WEB</span><strong>Navegador</strong><small>YouTube, Meet, cursos, radio web</small></button>
     <button class:active={source === 'microphone'} on:click={() => chooseSource('microphone')} disabled={active || busy}><span>MIC</span><strong>Micrófono</strong><small>Conversación, clase o práctica oral</small></button>
-    <button class:active={source === 'system'} on:click={() => chooseSource('system')} disabled={active || busy}><span>PC</span><strong>Audio del sistema</strong><small>Compartir una app o pantalla con audio</small></button>
+    <button class:active={source === 'system'} on:click={() => chooseSource('system')} disabled={active || busy}><span>PC</span><strong>Audio del sistema</strong><small>WASAPI nativo con fallback protegido</small></button>
     <button class:active={source === 'media'} on:click={() => chooseSource('media')} disabled={active || busy}><span>AV</span><strong>Video / Audio</strong><small>MP4, WebM, MP3, WAV, M4A compatibles</small></button>
   </div>
 
@@ -238,15 +285,35 @@
         <label>Tema<select bind:value={visualTheme}><option value="mily">Mily azul</option><option value="cinema">Oscuro cine</option><option value="class">Clase clara</option><option value="contrast">Alto contraste</option><option value="neon">Karaoke neón</option></select></label>
       </div>
       <label class="switch-line"><input type="checkbox" bind:checked={persistTranscript} disabled={active} /> Guardar transcripción local</label>
+      <label class="switch-line"><input type="checkbox" bind:checked={speakerDetection} disabled={active} /> Identificar Hablante A/B/C localmente</label>
+      {#if speakerDetection}
+        <div class="speaker-focus-grid">
+          <label>Escuchar<select bind:value={speakerFocusMode} on:change={updateSpeakerFocus}><option value="all">Todos</option><option value="dominant">Voz dominante</option><option value="fixed">Fijar hablante</option></select></label>
+          {#if speakerFocusMode === 'fixed'}<label>Hablante<select bind:value={fixedSpeakerId} on:change={updateSpeakerFocus}><option value="">Seleccione…</option>{#each knownSpeakers as id}<option value={id}>{speakerLabel(id)}</option>{/each}</select></label>{/if}
+        </div>
+      {/if}
       <label class="switch-line"><input type="checkbox" bind:checked={ttsEnabled} /> Voz española en tiempo real</label>
-      {#if ttsEnabled}<label>Voz española local<select bind:value={ttsVoiceName}>{#if ttsVoices.length === 0}<option value="">Voz predeterminada del sistema</option>{/if}{#each ttsVoices as voice}<option value={voice.name}>{voice.name} · {voice.lang}</option>{/each}</select></label>{/if}
+      {#if ttsEnabled}<label>Voz española predeterminada<select bind:value={ttsVoiceName}>{#if ttsVoices.length === 0}<option value="">Voz predeterminada del sistema</option>{/if}{#each ttsVoices as voice}<option value={voice.name}>{voice.name} · {voice.lang}</option>{/each}</select></label>{/if}
+
+      {#if knownSpeakers.length}
+        <div class="speaker-list" aria-label="Hablantes detectados">
+          {#each knownSpeakers as id}
+            <div class="speaker-card {speakerClass(id)}">
+              <span class="speaker-dot"></span>
+              <input aria-label={`Nombre de ${speakerLabel(id)}`} value={speakerNames[id] || speakerLabel(id)} on:input={(event) => { speakerNames = { ...speakerNames, [id]: (event.currentTarget as HTMLInputElement).value }; }} />
+              {#if ttsEnabled}<select aria-label={`Voz para ${speakerLabel(id)}`} value={speakerVoiceNames[id] || ''} on:change={(event) => { speakerVoiceNames = { ...speakerVoiceNames, [id]: (event.currentTarget as HTMLSelectElement).value }; }}><option value="">Voz predeterminada</option>{#each ttsVoices as voice}<option value={voice.name}>{voice.name}</option>{/each}</select>{/if}
+              {#if currentSpeakerId === id}<strong>Activo</strong>{/if}
+            </div>
+          {/each}
+        </div>
+      {/if}
 
       {#if source === 'media'}
         <label class="file-picker">Archivo local<input type="file" accept="audio/*,video/*" on:change={chooseMedia} disabled={active} /><span>{mediaName || 'Seleccione un video o audio'}</span></label>
       {:else if source === 'browser'}
         <div class="browser-hint"><strong>{appStatus?.extensionConnected ? 'Extensión conectada' : 'Extensión no detectada todavía'}</strong><p>Abra cualquier pestaña web con audio, pulse la extensión MilyVoiceTraductor y después “Iniciar traducción”. El overlay se inyecta solo en esa pestaña.</p></div>
       {:else if source === 'system'}
-        <div class="browser-hint"><strong>Audio de Windows</strong><p>Actualmente se usa el selector protegido de Windows; el backend WASAPI loopback nativo se valida en el siguiente bloque del MASTER.</p></div>
+        <div class="browser-hint"><strong>WASAPI loopback nativo</strong><p>MilyVoice intenta capturar directamente lo que reproduce Windows. Si WASAPI no puede abrir el dispositivo, ofrece automáticamente el selector protegido de Windows como recuperación.</p></div>
       {/if}
 
       <button class:stop-button={active} class="primary main-action" on:click={toggle} disabled={busy || source === 'browser'}>{busy ? 'Preparando…' : active ? 'Detener traducción' : 'Iniciar traducción'}</button>
@@ -257,6 +324,7 @@
     <article class="panel-card health-panel">
       <div class="panel-title"><h3>Audio y CPU</h3><span class:danger={pressure === 'overloaded'} class:warning={pressure === 'pressure'} class:ok={pressure === 'healthy'} class="status-badge">{pressure}</span></div>
       <p class="live-message">{message}</p>
+      {#if currentSpeakerId}<p class="current-speaker {speakerClass(currentSpeakerId)}"><span class="speaker-dot"></span>{speakerLabel(currentSpeakerId)}</p>{/if}
       <div class="meter"><span style:width={`${Math.min(100, audioRms * 420)}%`}></span></div>
       <div class="metric-grid"><div><small>ASR P50</small><strong>{asrP50.toFixed(0)} ms</strong></div><div><small>Traducción P50</small><strong>{translationP50.toFixed(0)} ms</strong></div><div><small>RTF</small><strong>{realTimeFactor.toFixed(2)}</strong></div><div><small>Silencio</small><strong>{(silentMs / 1000).toFixed(1)} s</strong></div></div>
       <p class="path-hint">Cuando la CPU entra en presión, se reducen parciales; las frases finales no se descartan.</p>
@@ -267,6 +335,7 @@
     <article class="media-stage theme-{visualTheme}">
       {#if mediaIsVideo}<video bind:this={videoElement} src={mediaUrl} controls playsinline></video>{:else}<div class="audio-art">♪<span>{mediaName}</span></div><audio bind:this={audioElement} src={mediaUrl} controls></audio>{/if}
       <div class="caption-layer mode-{visualMode}">
+        {#if currentSpeakerId}<em class="caption-speaker {speakerClass(currentSpeakerId)}">{speakerLabel(currentSpeakerId)}</em>{/if}
         {#if visualMode === 'meeting'}<small>{currentOriginal || 'Original…'}</small><strong>{currentTranslation || 'La traducción aparecerá aquí.'}</strong>
         {:else if visualMode === 'education'}<strong>{currentTranslation || 'Español…'}</strong><small>{currentOriginal || 'English / 中文…'}</small>
         {:else if visualMode === 'karaoke'}
@@ -281,6 +350,7 @@
     </article>
   {:else}
     <article class="caption-preview theme-{visualTheme} mode-{visualMode}">
+      {#if currentSpeakerId}<em class="caption-speaker {speakerClass(currentSpeakerId)}">{speakerLabel(currentSpeakerId)}</em>{/if}
       {#if visualMode === 'meeting'}<small>{currentOriginal || 'Original en tiempo real…'}</small><strong>{currentTranslation || 'La traducción al español aparecerá aquí.'}</strong>
       {:else if visualMode === 'education'}<strong>{currentTranslation || 'Español…'}</strong><small>{currentOriginal || 'English / 中文…'}</small>
       {:else if visualMode === 'karaoke'}
@@ -293,7 +363,7 @@
 
   <article class="panel-card">
     <div class="panel-title"><h3>Transcripción de esta sesión</h3><span>{transcript.length} frases finales</span></div>
-    {#if transcript.length === 0}<p class="path-hint">Los parciales se muestran arriba; aquí solo se agregan frases finales para no duplicar texto.</p>{:else}<div class="transcript-list">{#each [...transcript].reverse() as row}<div class="transcript-row"><time>{formatTime(row.start)}</time><div><strong>{row.translation}</strong><small>{row.original}</small></div></div>{/each}</div>{/if}
+    {#if transcript.length === 0}<p class="path-hint">Los parciales se muestran arriba; aquí solo se agregan frases finales para no duplicar texto.</p>{:else}<div class="transcript-list">{#each [...transcript].reverse() as row}<div class="transcript-row"><time>{formatTime(row.start)}</time><div>{#if row.speakerId}<em class="row-speaker {speakerClass(row.speakerId)}">{speakerLabel(row.speakerId)}</em>{/if}<strong>{row.translation}</strong><small>{row.original}</small></div></div>{/each}</div>{/if}
   </article>
 </section>
 
@@ -306,9 +376,10 @@
   .source-grid small { color:var(--mily-muted); line-height:1.35; }
   .workspace-grid { display:grid; grid-template-columns:1.2fr .8fr; gap:16px; }
   .controls-panel { display:grid; gap:13px; }
-  .control-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px; }
+  .control-grid, .speaker-focus-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px; }
+  .speaker-focus-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
   label { display:grid; gap:6px; color:var(--mily-muted); font-size:12px; font-weight:700; }
-  select, input[type='file'] { border:1px solid var(--mily-border); background:#fff; color:var(--mily-navy); border-radius:10px; padding:9px; width:100%; }
+  select, input[type='file'], .speaker-card input { border:1px solid var(--mily-border); background:#fff; color:var(--mily-navy); border-radius:10px; padding:9px; width:100%; }
   .switch-line { grid-template-columns:auto 1fr; align-items:center; justify-content:start; }
   .switch-line input { margin:0; }
   .file-picker span { color:var(--mily-navy); font-weight:600; overflow-wrap:anywhere; }
@@ -324,6 +395,13 @@
   .metric-grid { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
   .metric-grid div { padding:12px; border:1px solid #e7edeb; border-radius:12px; }
   .metric-grid small { display:block; color:var(--mily-muted); margin-bottom:4px; }
+  .speaker-list { display:grid; gap:8px; }
+  .speaker-card { display:grid; grid-template-columns:auto minmax(130px,1fr) minmax(130px,1fr) auto; gap:8px; align-items:center; border:1px solid #e4ebe8; border-radius:12px; padding:9px; }
+  .speaker-card strong { font-size:11px; }
+  .speaker-dot { width:10px; height:10px; border-radius:999px; display:inline-block; background:currentColor; }
+  .current-speaker { display:flex; align-items:center; gap:7px; font-weight:800; margin:0 0 8px; }
+  .caption-speaker, .row-speaker { display:block; font-style:normal; font-size:11px; font-weight:900; letter-spacing:.04em; margin-bottom:4px; }
+  .speaker-0 { color:#1677c8; } .speaker-1 { color:#14845b; } .speaker-2 { color:#b85c19; } .speaker-3 { color:#7a4bc2; } .speaker-4 { color:#b92f69; } .speaker-5 { color:#5f6b76; }
   .media-stage { position:relative; min-height:420px; overflow:hidden; border-radius:22px; background:#07111e; display:grid; place-items:center; box-shadow:var(--mily-shadow); }
   .media-stage video { width:100%; max-height:650px; display:block; }
   .media-stage audio { width:min(720px,90%); margin:0 auto 70px; }
@@ -334,7 +412,7 @@
   .caption-preview { border-radius:20px; padding:22px; text-align:center; min-height:135px; display:grid; place-items:center; align-content:center; gap:7px; box-shadow:var(--mily-shadow); }
   .caption-layer strong, .caption-preview strong { font-size:clamp(22px,3vw,34px); line-height:1.2; }
   .caption-layer small, .caption-preview small { color:var(--caption-muted); font-size:15px; }
-  .caption-preview em { color:var(--caption-accent); font-size:10px; font-style:normal; letter-spacing:.14em; font-weight:900; }
+  .caption-preview > em:not(.caption-speaker) { color:var(--caption-accent); font-size:10px; font-style:normal; letter-spacing:.14em; font-weight:900; }
   .mode-compact small { display:none; }
   .mode-compact strong { font-size:20px; }
   .karaoke-line { border-bottom:3px solid var(--caption-accent); padding-bottom:4px; }
@@ -351,5 +429,6 @@
   .transcript-row strong, .transcript-row small { display:block; }
   .transcript-row small { margin-top:4px; color:var(--mily-muted); }
   @media (max-width:980px) { .source-grid { grid-template-columns:1fr 1fr; } .workspace-grid { grid-template-columns:1fr; } }
-  @media (max-width:620px) { .source-grid, .control-grid { grid-template-columns:1fr; } }
+  @media (max-width:720px) { .speaker-card { grid-template-columns:auto 1fr; } .speaker-card select, .speaker-card strong { grid-column:2; } }
+  @media (max-width:620px) { .source-grid, .control-grid, .speaker-focus-grid { grid-template-columns:1fr; } }
 </style>
