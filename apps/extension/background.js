@@ -12,6 +12,7 @@ const PROTECTED_HOSTS = new Set([
   'microsoftedge.microsoft.com'
 ]);
 const SESSION_MODES = new Set(['meeting', 'education', 'karaoke', 'compact']);
+const SPEAKER_FOCUS_MODES = new Set(['all', 'dominant', 'fixed']);
 
 let nativePort = null;
 let pendingBridgeRequest = null;
@@ -148,6 +149,14 @@ async function setCaptureState(state) {
   await chrome.storage.session.set({ captureState: state });
 }
 
+async function rememberSpeaker(speakerId) {
+  if (!/^speaker-[a-z]$/.test(String(speakerId || ''))) return;
+  const { knownSpeakers = [] } = await chrome.storage.session.get('knownSpeakers');
+  if (!knownSpeakers.includes(speakerId)) {
+    await chrome.storage.session.set({ knownSpeakers: [...knownSpeakers, speakerId] });
+  }
+}
+
 async function startCapture(options) {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   if (!tab?.id) throw new Error('No hay una pestaña activa.');
@@ -174,6 +183,13 @@ async function startCapture(options) {
   }
   const requestedMode = String(options.sessionMode || 'meeting');
   const sessionMode = SESSION_MODES.has(requestedMode) ? requestedMode : 'meeting';
+  const requestedFocus = String(options.speakerFocusMode || 'all');
+  const speakerFocusMode = SPEAKER_FOCUS_MODES.has(requestedFocus) ? requestedFocus : 'all';
+  const speakerId = /^speaker-[a-z]$/.test(String(options.speakerId || '')) ? String(options.speakerId) : null;
+  if (speakerFocusMode === 'fixed' && !speakerId) {
+    throw new Error('Selecciona un hablante antes de usar el modo Fijado.');
+  }
+  const speakerDetection = Boolean(options.speakerDetection);
   const response = await chrome.runtime.sendMessage({
     target: 'offscreen',
     type: 'START_CAPTURE',
@@ -182,18 +198,24 @@ async function startCapture(options) {
     credential: bridge.credential,
     sourceLanguage: options.sourceLanguage || 'auto',
     sessionMode,
+    speakerDetection,
+    speakerFocusMode,
+    speakerId,
     persistTranscript: Boolean(options.persistTranscript),
     enginePort: bridge.port
   });
   if (!response?.ok) throw new Error(response?.error || 'No se pudo iniciar la captura.');
-  await setCaptureState({ active: true, tabId: tab.id, startedAt: Date.now(), source: 'browser_tab', sessionMode });
+  const startedAt = Date.now();
+  await chrome.storage.session.set({ knownSpeakers: [] });
+  await setCaptureState({ active: true, tabId: tab.id, startedAt, source: 'browser_tab', sessionMode, speakerDetection, speakerFocusMode, speakerId });
   return { ok: true };
 }
 
 async function stopCapture() {
   await ensureOffscreenDocument();
   await chrome.runtime.sendMessage({ target: 'offscreen', type: 'STOP_CAPTURE' });
-  await setCaptureState({ active: false, tabId: null, startedAt: null, source: null, sessionMode: null });
+  await setCaptureState({ active: false, tabId: null, startedAt: null, source: null, sessionMode: null, speakerDetection: false, speakerFocusMode: 'all', speakerId: null });
+  await chrome.storage.session.set({ knownSpeakers: [] });
   return { ok: true };
 }
 
@@ -225,14 +247,20 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   }
 
   if (message?.type === 'TRANSLATION_EVENT' && Number.isInteger(message.tabId)) {
-    chrome.tabs.sendMessage(message.tabId, {
-      type: 'MILYVOICE_SUBTITLE',
-      payload: message.payload
-    }).catch(() => undefined);
+    if (message.payload?.speakerId) rememberSpeaker(message.payload.speakerId).catch(() => undefined);
+    chrome.storage.session.get('captureState').then(({ captureState }) => {
+      chrome.tabs.sendMessage(message.tabId, {
+        type: 'MILYVOICE_SUBTITLE',
+        payload: message.payload,
+        sessionMode: captureState?.sessionMode || 'meeting',
+        sessionStartedAt: captureState?.startedAt || Date.now()
+      }).catch(() => undefined);
+    });
     return false;
   }
 
   if (message?.type === 'ENGINE_EVENT') {
+    if (message.payload?.speakerId) rememberSpeaker(message.payload.speakerId).catch(() => undefined);
     chrome.storage.session.set({ engineEvent: message.payload, engineEventAt: Date.now() });
     return false;
   }
