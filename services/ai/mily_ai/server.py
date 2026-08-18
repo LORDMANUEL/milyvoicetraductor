@@ -16,12 +16,20 @@ from .runtime import EngineSettings, RuntimePaths, parent_process_alive
 from .security import EphemeralCredentialService, PairingTokenService
 from .sessions import SessionRecorder
 
-ALLOWED_ORIGIN_PREFIXES = (
-    "chrome-extension://",
-    "edge-extension://",
-    "http://localhost",
-    "http://127.0.0.1",
-)
+PINNED_EXTENSION_ORIGIN = "chrome-extension://edcpjonegaempcifgodcmgejbcpdpddm"
+
+
+def websocket_origin_allowed(origin: str) -> bool:
+    """Solo la extensión fijada o vistas loopback del propio producto pueden entrar."""
+    if not origin:
+        # Clientes internos/diagnóstico no siempre envían Origin.
+        return True
+    normalized = origin.rstrip("/")
+    if normalized == PINNED_EXTENSION_ORIGIN:
+        return True
+    return normalized.startswith("http://127.0.0.1:") or normalized.startswith(
+        "http://localhost:"
+    )
 
 
 def create_app(paths: RuntimePaths, port: int = 8765, parent_pid: int | None = None):
@@ -71,8 +79,6 @@ def create_app(paths: RuntimePaths, port: int = 8765, parent_pid: int | None = N
     def valid_token(candidate: str | None) -> bool:
         if not candidate:
             return False
-        # El token persistente queda reservado al desktop/diagnóstico; la extensión
-        # recibe únicamente credenciales efímeras emitidas por Native Messaging.
         if len(candidate) == len(internal_token) and secrets.compare_digest(
             candidate, internal_token
         ):
@@ -141,7 +147,7 @@ def create_app(paths: RuntimePaths, port: int = 8765, parent_pid: int | None = N
     @app.websocket("/ws")
     async def websocket_endpoint(websocket: WebSocket):
         origin = websocket.headers.get("origin", "")
-        if origin and not origin.startswith(ALLOWED_ORIGIN_PREFIXES):
+        if not websocket_origin_allowed(origin):
             await websocket.close(code=4403)
             return
         if not valid_token(websocket.query_params.get("token")):
