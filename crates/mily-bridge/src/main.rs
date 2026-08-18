@@ -23,7 +23,10 @@ struct ErrorReply<'a> {
 
 fn write_json<T: Serialize>(writer: &mut impl io::Write, value: &T) -> Result<(), ProtocolError> {
     let payload = serde_json::to_vec(value).map_err(|error| {
-        ProtocolError::Io(io::Error::new(io::ErrorKind::InvalidData, error.to_string()))
+        ProtocolError::Io(io::Error::new(
+            io::ErrorKind::InvalidData,
+            error.to_string(),
+        ))
     })?;
     write_frame(writer, &payload)
 }
