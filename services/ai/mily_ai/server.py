@@ -14,7 +14,7 @@ from .logging_safe import build_logger, close_logger
 from .models import HuggingFacePackInstaller, ModelCatalog, ModelOperationError
 from .pipeline import RealtimePipeline
 from .protocol import ClientMessage, ProtocolError, event
-from .queueing import enqueue_translation
+from .queueing import enqueue_translation, serial_translation_action
 from .runtime import EngineSettings, RuntimePaths, parent_process_alive
 from .security import EphemeralCredentialService, PairingTokenService
 from .sessions import SessionRecorder
@@ -26,6 +26,8 @@ AUDIO_QUEUE_MAX = 16
 TRANSLATION_QUEUE_MAX = 8
 AUDIO_CHUNK_MS = 100
 TELEMETRY_INTERVAL_SECONDS = 0.5
+SERIAL_FINAL_DEFER_SECONDS = 0.18
+SERIAL_DEFER_STEP_SECONDS = 0.02
 
 
 def websocket_origin_allowed(origin: str) -> bool:
@@ -299,6 +301,21 @@ def create_app(paths: RuntimePaths, port: int = 8765, parent_pid: int | None = N
                     executor = translation_executor
                     if current is None or executor is None:
                         continue
+
+                    if not current.cpu_budget.parallel_stages:
+                        action = serial_translation_action(
+                            request, audio_pending=not audio_queue.empty()
+                        )
+                        if action == "drop":
+                            logger.debug(
+                                "Parcial MT descartado para priorizar ASR en CPU serial."
+                            )
+                            continue
+                        if action == "defer":
+                            deadline = time.monotonic() + SERIAL_FINAL_DEFER_SECONDS
+                            while not audio_queue.empty() and time.monotonic() < deadline:
+                                await asyncio.sleep(SERIAL_DEFER_STEP_SECONDS)
+
                     try:
                         translated = await loop.run_in_executor(
                             executor, current.execute_translation, request
