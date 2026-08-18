@@ -181,7 +181,7 @@ jobs:
         shell: pwsh
         run: .\installer\windows\test-installed-flow.ps1
       - name: MegaBench real model EN/ZH to ES
-        if: success() && github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/pruebas')
+        if: success()
         shell: pwsh
         run: .\installer\windows\test-realtime-model.ps1
       - name: Rust tests
