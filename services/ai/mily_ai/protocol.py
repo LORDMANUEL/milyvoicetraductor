@@ -25,6 +25,7 @@ class ClientMessage:
     audio_base64: str | None = None
     sample_rate: int = 16000
     persist_transcript: bool = False
+    binary_pcm: bool = False
 
     @classmethod
     def parse(cls, raw: str) -> "ClientMessage":
@@ -66,6 +67,7 @@ class ClientMessage:
             audio_base64=audio_base64,
             sample_rate=sample_rate,
             persist_transcript=bool(payload.get("persistTranscript", False)),
+            binary_pcm=bool(payload.get("binaryPcm", False)),
         )
 
 
