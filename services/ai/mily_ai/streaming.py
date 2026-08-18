@@ -25,10 +25,12 @@ class AudioLevel:
 
 @dataclass(frozen=True, slots=True)
 class StreamingEvent:
-    """Ventana que debe revisar el ASR."""
+    """Ventana que debe revisar el ASR, con posición absoluta en la sesión."""
 
     kind: Literal["partial", "final"]
     samples: list[float]
+    start_sample: int
+    end_sample: int
 
 
 class AdaptiveSpeechSegmenter:
@@ -74,6 +76,8 @@ class AdaptiveSpeechSegmenter:
         self._last_partial_samples = 0
         self._silent_ms = 0
         self._speech_active = False
+        self._absolute_samples = 0
+        self._utterance_start_sample = 0
         self._level = AudioLevel(rms=0.0, peak=0.0, silent_ms=0, speech=False)
 
     def _ms_to_samples(self, milliseconds: int) -> int:
@@ -104,6 +108,8 @@ class AdaptiveSpeechSegmenter:
             return []
 
         normalized = [float(value) for value in samples]
+        chunk_start = self._absolute_samples
+        self._absolute_samples += len(normalized)
         rms, peak = self._energy(normalized)
         voiced = rms >= self.energy_threshold
         chunk_ms = round(len(normalized) * 1000 / self.sample_rate)
@@ -126,6 +132,7 @@ class AdaptiveSpeechSegmenter:
 
         if not self._speech_active:
             self._speech_active = True
+            self._utterance_start_sample = chunk_start
             self._buffer.clear()
             self._trailing_silence_samples = 0
             self._last_partial_samples = 0
@@ -145,7 +152,14 @@ class AdaptiveSpeechSegmenter:
                 or current - self._last_partial_samples >= self.partial_step_samples
             )
             if enough_since_last and current < self.max_utterance_samples:
-                events.append(StreamingEvent("partial", self._buffer.copy()))
+                events.append(
+                    StreamingEvent(
+                        "partial",
+                        self._buffer.copy(),
+                        self._utterance_start_sample,
+                        self._utterance_start_sample + current,
+                    )
+                )
                 self._last_partial_samples = current
 
         final_by_silence = (
@@ -155,7 +169,14 @@ class AdaptiveSpeechSegmenter:
         final_by_cap = current >= self.max_utterance_samples
         if final_by_silence or final_by_cap:
             final_samples = self._buffer[: self.max_utterance_samples]
-            events.append(StreamingEvent("final", final_samples))
+            events.append(
+                StreamingEvent(
+                    "final",
+                    final_samples,
+                    self._utterance_start_sample,
+                    self._utterance_start_sample + len(final_samples),
+                )
+            )
             self._reset_utterance()
 
         return events
@@ -166,8 +187,14 @@ class AdaptiveSpeechSegmenter:
         if not self._buffer:
             return []
         samples = self._buffer.copy()
+        event = StreamingEvent(
+            "final",
+            samples,
+            self._utterance_start_sample,
+            self._utterance_start_sample + len(samples),
+        )
         self._reset_utterance()
-        return [StreamingEvent("final", samples)]
+        return [event]
 
     def _reset_utterance(self) -> None:
         self._buffer.clear()
