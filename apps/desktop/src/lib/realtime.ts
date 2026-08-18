@@ -1,8 +1,7 @@
 import { desktopApi } from './api';
-import type { RealtimeEvent } from '../types';
+import type { AudioSourceMode, RealtimeEvent, SessionMode, SpeakerFocusMode } from '../types';
 
 export type RealtimeEventHandler = (event: RealtimeEvent) => void;
-export type SessionMode = 'meeting' | 'education' | 'karaoke' | 'compact';
 
 function arrayBufferToBase64(buffer: ArrayBuffer): string {
   const bytes = new Uint8Array(buffer);
@@ -24,10 +23,20 @@ export class LocalRealtimeClient {
     this.handler = handler;
   }
 
+  private sendControl(payload: Record<string, unknown>): void {
+    const socket = this.socket;
+    if (!socket || socket.readyState !== WebSocket.OPEN) return;
+    socket.send(JSON.stringify({ protocol: 1, targetLanguage: 'es', ...payload }));
+  }
+
   async connect(
     sourceLanguage: 'auto' | 'en' | 'zh',
     persistTranscript: boolean,
-    sessionMode: SessionMode = 'meeting'
+    sessionMode: SessionMode = 'meeting',
+    sourceMode: AudioSourceMode = 'microphone',
+    speakerDetection = false,
+    speakerFocusMode: SpeakerFocusMode = 'all',
+    speakerId: string | null = null
   ): Promise<void> {
     await this.close();
     const session = await desktopApi.getLocalEngineSession();
@@ -54,6 +63,10 @@ export class LocalRealtimeClient {
           targetLanguage: 'es',
           persistTranscript,
           sessionMode,
+          sourceMode,
+          speakerDetection,
+          speakerFocusMode,
+          speakerId,
           binaryPcm: true
         }));
       });
@@ -97,6 +110,18 @@ export class LocalRealtimeClient {
         }
       });
     });
+  }
+
+  setSpeakerFocus(mode: SpeakerFocusMode, speakerId: string | null = null): void {
+    this.sendControl({ type: 'speaker.focus', speakerFocusMode: mode, speakerId });
+  }
+
+  notifyTtsStarted(text: string, speakerId: string | null = null): void {
+    this.sendControl({ type: 'tts.started', text, speakerId });
+  }
+
+  notifyTtsFinished(speakerId: string | null = null): void {
+    this.sendControl({ type: 'tts.finished', speakerId });
   }
 
   sendPcm(buffer: ArrayBuffer): void {
@@ -150,14 +175,24 @@ export class DesktopAudioCapture {
   private stream: MediaStream | null = null;
   private elementSource: MediaElementAudioSourceNode | null = null;
   private playbackGain: GainNode | null = null;
-  private outputSuppressed = false;
 
   constructor(handler: RealtimeEventHandler) {
     this.client = new LocalRealtimeClient(handler);
   }
 
-  setOutputSuppressed(suppressed: boolean): void {
-    this.outputSuppressed = suppressed;
+  /** Compatibilidad: ya no se descarta PCM durante TTS. */
+  setOutputSuppressed(_suppressed: boolean): void {}
+
+  setSpeakerFocus(mode: SpeakerFocusMode, speakerId: string | null = null): void {
+    this.client.setSpeakerFocus(mode, speakerId);
+  }
+
+  notifyTtsStarted(text: string, speakerId: string | null = null): void {
+    this.client.notifyTtsStarted(text, speakerId);
+  }
+
+  notifyTtsFinished(speakerId: string | null = null): void {
+    this.client.notifyTtsFinished(speakerId);
   }
 
   setPlaybackGain(value: number): void {
@@ -176,7 +211,7 @@ export class DesktopAudioCapture {
       channelCount: 1
     });
     this.worklet.port.onmessage = (message: MessageEvent<ArrayBuffer>) => {
-      if (!this.outputSuppressed) this.client.sendPcm(message.data);
+      this.client.sendPcm(message.data);
     };
     return context;
   }
@@ -184,10 +219,13 @@ export class DesktopAudioCapture {
   async startMicrophone(
     sourceLanguage: 'auto' | 'en' | 'zh',
     persistTranscript: boolean,
-    sessionMode: SessionMode = 'meeting'
+    sessionMode: SessionMode = 'meeting',
+    speakerDetection = false,
+    speakerFocusMode: SpeakerFocusMode = 'all',
+    speakerId: string | null = null
   ): Promise<void> {
     await this.stop();
-    await this.client.connect(sourceLanguage, persistTranscript, sessionMode);
+    await this.client.connect(sourceLanguage, persistTranscript, sessionMode, 'microphone', speakerDetection, speakerFocusMode, speakerId);
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: {
@@ -211,10 +249,13 @@ export class DesktopAudioCapture {
   async startSystemAudio(
     sourceLanguage: 'auto' | 'en' | 'zh',
     persistTranscript: boolean,
-    sessionMode: SessionMode = 'meeting'
+    sessionMode: SessionMode = 'meeting',
+    speakerDetection = false,
+    speakerFocusMode: SpeakerFocusMode = 'all',
+    speakerId: string | null = null
   ): Promise<void> {
     await this.stop();
-    await this.client.connect(sourceLanguage, persistTranscript, sessionMode);
+    await this.client.connect(sourceLanguage, persistTranscript, sessionMode, 'system_loopback', speakerDetection, speakerFocusMode, speakerId);
     try {
       if (!navigator.mediaDevices.getDisplayMedia) {
         throw new Error('Este WebView no admite captura de audio del sistema.');
@@ -243,10 +284,13 @@ export class DesktopAudioCapture {
     element: HTMLMediaElement,
     sourceLanguage: 'auto' | 'en' | 'zh',
     persistTranscript: boolean,
-    sessionMode: SessionMode = 'meeting'
+    sessionMode: SessionMode = 'meeting',
+    speakerDetection = false,
+    speakerFocusMode: SpeakerFocusMode = 'all',
+    speakerId: string | null = null
   ): Promise<void> {
     await this.stop();
-    await this.client.connect(sourceLanguage, persistTranscript, sessionMode);
+    await this.client.connect(sourceLanguage, persistTranscript, sessionMode, 'media_file', speakerDetection, speakerFocusMode, speakerId);
     try {
       const context = await this.createAudioGraph();
       this.elementSource = context.createMediaElementSource(element);
@@ -261,7 +305,6 @@ export class DesktopAudioCapture {
   }
 
   async stop(): Promise<void> {
-    this.outputSuppressed = false;
     this.stream?.getTracks().forEach((track) => track.stop());
     this.stream = null;
     try { this.elementSource?.disconnect(); } catch (_) { /* noop */ }
