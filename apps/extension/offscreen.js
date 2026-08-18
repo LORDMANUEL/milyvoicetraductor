@@ -8,6 +8,7 @@ let workletNode = null;
 let websocket = null;
 let activeTabId = null;
 let stopping = false;
+let binaryPcmActive = false;
 
 function arrayBufferToBase64(buffer) {
   const bytes = new Uint8Array(buffer);
@@ -43,6 +44,7 @@ async function cleanup() {
   audioContext = null;
   mediaStream = null;
   activeTabId = null;
+  binaryPcmActive = false;
   stopping = false;
 }
 
@@ -87,23 +89,32 @@ async function startCapture(message) {
       type: 'client.hello',
       sourceLanguage: message.sourceLanguage || 'auto',
       targetLanguage: 'es',
-      persistTranscript: Boolean(message.persistTranscript)
+      persistTranscript: Boolean(message.persistTranscript),
+      binaryPcm: true
     }));
     publishEngineEvent({ type: 'connected' });
   });
   websocket.addEventListener('message', (event) => {
     let payload;
     try { payload = JSON.parse(event.data); } catch (_) { return; }
+    if (payload.type === 'session.started') {
+      binaryPcmActive = payload.binaryPcm === true;
+    }
     if (payload.type === 'translation.final') publishTranslation(payload);
     publishEngineEvent(payload);
   });
   websocket.addEventListener('close', () => {
+    binaryPcmActive = false;
     if (!stopping) publishEngineEvent({ type: 'disconnected' });
   });
   websocket.addEventListener('error', () => publishEngineEvent({ type: 'error', message: 'No se pudo conectar al motor local.' }));
 
   workletNode.port.onmessage = (event) => {
     if (websocket?.readyState !== WebSocket.OPEN) return;
+    if (binaryPcmActive) {
+      websocket.send(event.data);
+      return;
+    }
     websocket.send(JSON.stringify({
       protocol: 1,
       type: 'audio.chunk',
