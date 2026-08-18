@@ -50,6 +50,11 @@ export class DesktopApi {
     return invoke<OnboardingStatus>('get_onboarding_status');
   }
 
+  async repairInstallation(): Promise<void> {
+    if (!isTauriEnvironment()) return;
+    return invoke<void>('repair_installation');
+  }
+
   async getSystemInfo(): Promise<SystemSnapshot> {
     if (!isTauriEnvironment()) return {
       operatingSystem: 'Vista previa web', architecture: 'N/D',
