@@ -38,6 +38,14 @@ struct EphemeralCredential<'a> {
     expires_at: u64,
 }
 
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ExtensionHeartbeat {
+    schema_version: u8,
+    at: u64,
+    transport: &'static str,
+}
+
 pub struct BridgeRuntime {
     paths: AppPaths,
     config: ConfigService,
@@ -59,6 +67,7 @@ impl BridgeRuntime {
     }
 
     pub fn status(&self, ensure_started: bool) -> Result<BridgeReply, BridgeRuntimeError> {
+        self.write_extension_heartbeat()?;
         let config = self.config.load_or_default()?;
         let mut engine_status = self.engine.status(config.engine_port);
         if ensure_started && matches!(engine_status.state, ComponentState::Stopped) {
@@ -101,6 +110,23 @@ impl BridgeRuntime {
             model_pack,
             message,
         })
+    }
+
+    fn write_extension_heartbeat(&self) -> Result<(), BridgeRuntimeError> {
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map_err(|_| BridgeRuntimeError::Clock)?
+            .as_secs();
+        let payload = ExtensionHeartbeat {
+            schema_version: 1,
+            at: now,
+            transport: "nativeMessaging",
+        };
+        let path = self.paths.data_dir.join("extension-heartbeat.json");
+        let temp = self.paths.data_dir.join("extension-heartbeat.json.tmp");
+        fs::write(&temp, serde_json::to_vec(&payload)?)?;
+        fs::rename(temp, path)?;
+        Ok(())
     }
 
     fn issue_ephemeral_credential(&self) -> Result<(String, u64), BridgeRuntimeError> {
