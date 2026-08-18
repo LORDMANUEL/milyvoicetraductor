@@ -21,11 +21,11 @@ assert manifest["manifest_version"] == 3
 assert "<all_urls>" not in json.dumps(manifest)
 assert "nativeMessaging" in manifest["permissions"], "Falta nativeMessaging para autoreconocimiento"
 assert set(manifest["permissions"]) <= {
-    "activeTab", "tabCapture", "offscreen", "storage", "notifications", "nativeMessaging"
+    "activeTab", "tabCapture", "offscreen", "storage", "notifications", "nativeMessaging", "scripting"
 }
+assert "scripting" in manifest["permissions"], "La inyección bajo demanda requiere scripting"
 assert manifest["host_permissions"] == ["http://127.0.0.1/*"]
-content_matches = manifest["content_scripts"][0]["matches"]
-assert set(content_matches) == {"http://*/*", "https://*/*"}, "Overlay debe cubrir web genérica sin <all_urls>"
+assert not manifest.get("content_scripts"), "El overlay no debe inyectarse permanentemente en todas las webs"
 public_key = manifest.get("key", "")
 assert public_key, "La extensión debe fijar un ID estable para allowed_origins"
 
@@ -44,6 +44,9 @@ assert "connectNative(NATIVE_HOST)" in background, "Falta conexión al host nati
 assert "MEETING_URL" not in background, "La captura no debe limitarse a Meet/Teams/Zoom"
 assert "assertCapturableTab(tab)" in background, "Debe validar páginas protegidas antes de capturar"
 assert "Audio del sistema" in background, "El error de tabCapture debe ofrecer fallback del Desktop"
+assert "chrome.scripting.executeScript" in background, "El overlay debe inyectarse bajo demanda"
+assert "chrome.scripting.insertCSS" in background, "El CSS del overlay debe inyectarse bajo demanda"
+assert "ensureOverlay(tab.id)" in background, "START_CAPTURE debe preparar overlay solo en la pestaña elegida"
 
 # Consultar el popup debe ser pasivo. Solo START_CAPTURE puede usar `hello`, que
 # arranca el motor y solicita una credencial efímera al bridge.
