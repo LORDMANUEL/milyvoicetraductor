@@ -19,7 +19,26 @@ class ProtocolTests(unittest.TestCase):
         }))
         self.assertEqual(message.type, "client.hello")
         self.assertEqual(message.source_language, "auto")
+        self.assertEqual(message.session_mode, "meeting")
         self.assertTrue(message.binary_pcm)
+
+    def test_karaoke_session_mode_is_parsed(self):
+        message = ClientMessage.parse(json.dumps({
+            "protocol": 1,
+            "type": "client.hello",
+            "sourceLanguage": "en",
+            "targetLanguage": "es",
+            "sessionMode": "karaoke",
+        }))
+        self.assertEqual(message.session_mode, "karaoke")
+
+    def test_unknown_session_mode_is_rejected(self):
+        with self.assertRaises(ProtocolError):
+            ClientMessage.parse(json.dumps({
+                "protocol": 1,
+                "type": "client.hello",
+                "sessionMode": "vr",
+            }))
 
     def test_unknown_protocol_is_rejected(self):
         with self.assertRaises(ProtocolError):
