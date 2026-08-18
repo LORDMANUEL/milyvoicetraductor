@@ -183,6 +183,10 @@ jobs:
       - name: Tauri NSIS bundle
         if: success()
         run: npm run tauri -- build
+      - name: Exercise generated NSIS installer
+        if: success()
+        shell: pwsh
+        run: .\installer\windows\test-nsis-installer.ps1
       - name: Package Chromium extension
         if: success()
         run: python scripts/build_extension_zip.py
