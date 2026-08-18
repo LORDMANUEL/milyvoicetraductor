@@ -148,9 +148,31 @@ New-Item -ItemType Directory -Force -Path (Split-Path $ConfigPath -Parent) | Out
 }
 '@ | Set-Content -Path $ConfigPath -Encoding UTF8
 
-Write-Host 'Reinstalando 2.0.1 sobre estado local existente...' -ForegroundColor Cyan
-Run-ProcessChecked $Installer.FullName @('/S', "/D=$InstallRoot") 300000
+# Reproduce el fallo observado en Windows real: una versión anterior puede dejar
+# el Python privado vivo. Windows bloquea python.exe y la carpeta runtime\python,
+# por lo que una reinstalación debe cerrar SOLO procesos propiedad de MilyVoice.
+$lockedRuntime = Start-Process -FilePath $PrivatePython -ArgumentList @('-c', 'import time; time.sleep(120)') -PassThru
+Start-Sleep -Milliseconds 500
+if ($lockedRuntime.HasExited) {
+    throw 'El fixture no logró mantener abierto el runtime privado antes de reinstalar.'
+}
+
+try {
+    Write-Host 'Reinstalando 2.0.1 sobre estado local existente y runtime privado activo...' -ForegroundColor Cyan
+    Run-ProcessChecked $Installer.FullName @('/S', "/D=$InstallRoot") 300000
+} finally {
+    $lockedRuntime.Refresh()
+    if (-not $lockedRuntime.HasExited) {
+        Stop-Process -Id $lockedRuntime.Id -Force -ErrorAction SilentlyContinue
+        $lockedRuntime.WaitForExit(10000) | Out-Null
+    }
+}
+
+$lockedRuntime.Refresh()
+if (-not $lockedRuntime.HasExited) {
+    throw 'La reinstalación no cerró el runtime privado anterior.'
+}
 Assert-BootstrapReady $StatusPath
 Assert-DesktopStartsWithWindow $DesktopExe 'reinstalación sobre estado existente'
 
-Write-Host 'NSIS INSTALLER FLOW OK: payload + bootstrap + Native Messaging + visible Desktop + reinstall' -ForegroundColor Green
+Write-Host 'NSIS INSTALLER FLOW OK: payload + bootstrap + Native Messaging + visible Desktop + locked-runtime reinstall' -ForegroundColor Green
