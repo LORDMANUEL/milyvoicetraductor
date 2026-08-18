@@ -97,14 +97,14 @@ class AdaptiveSpeechSegmenter:
 
     @staticmethod
     def _energy(samples: Sequence[float]) -> tuple[float, float]:
-        if not samples:
+        if len(samples) == 0:
             return 0.0, 0.0
         peak = max(abs(float(value)) for value in samples)
         square_sum = sum(float(value) * float(value) for value in samples)
         return math.sqrt(square_sum / len(samples)), peak
 
     def push(self, samples: Sequence[float]) -> list[StreamingEvent]:
-        if not samples:
+        if len(samples) == 0:
             return []
 
         normalized = [float(value) for value in samples]
@@ -126,7 +126,6 @@ class AdaptiveSpeechSegmenter:
             speech=voiced,
         )
 
-        # Silencio fuera de una utterance activa no consume memoria ni ASR.
         if not self._speech_active and not voiced:
             return []
 
