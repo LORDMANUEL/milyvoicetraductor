@@ -10,6 +10,18 @@ export interface AppStatus {
   activeModelPack: string | null;
 }
 
+export interface OnboardingStatus {
+  runtimeReady: boolean;
+  bridgeReady: boolean;
+  extensionDetected: boolean;
+  modelState: ComponentState;
+  downloadedBytes: number;
+  totalBytes: number | null;
+  bootstrapState: 'ready' | 'model-pending' | 'installing' | 'failed' | 'unknown';
+  errorCode: string | null;
+  errorMessage: string | null;
+}
+
 export interface EngineRuntimeStatus {
   state: ComponentState;
   pid: number | null;
