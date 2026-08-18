@@ -4,11 +4,13 @@
 //! Mantiene el contrato liviano para detectar candidatos y escogerlos únicamente
 //! después de medir inferencia real. CPU siempre existe como fallback seguro.
 
+mod benchmark;
 mod cache;
 mod memory;
 mod registry;
 mod runtime;
 
+pub use benchmark::{BenchmarkSample, summarize_benchmark};
 pub use cache::{BenchmarkKey, CachedSelection, SelectionCache};
 pub use memory::{MemoryBudget, MemoryBudgetInput, MemoryTier, calculate_memory_budget};
 pub use registry::BackendRegistry;
