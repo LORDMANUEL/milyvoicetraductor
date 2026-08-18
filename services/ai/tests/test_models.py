@@ -1,4 +1,5 @@
 import errno
+import json
 import sys
 import tempfile
 import types
@@ -39,6 +40,37 @@ class ModelManagerTests(unittest.TestCase):
                 "corrupt", encoding="utf-8"
             )
             self.assertFalse(installer.verify(pack.id, pack.version))
+
+    def test_install_reports_download_optimize_verify_and_ready_phases(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            catalog = ModelCatalog(Path(tmp) / "models")
+            installer = HuggingFacePackInstaller(catalog)
+            observed: list[tuple[str, str | None]] = []
+
+            def read_phase() -> tuple[str, str | None]:
+                payload = json.loads(catalog.operation_path.read_text(encoding="utf-8"))
+                return str(payload.get("phase")), payload.get("component")
+
+            def snapshot(repo_id, revision, local_dir, allow_patterns=None):
+                observed.append(read_phase())
+                return self.fake_snapshot(repo_id, revision, local_dir, allow_patterns)
+
+            def prepare(component, target):
+                observed.append(read_phase())
+
+            fake_hub = types.SimpleNamespace(snapshot_download=snapshot)
+            with patch.dict(sys.modules, {"huggingface_hub": fake_hub}), patch(
+                "mily_ai.models._prepare_component", side_effect=prepare
+            ):
+                installer.install("realtime-m2m100")
+
+            final = json.loads(catalog.operation_path.read_text(encoding="utf-8"))
+            self.assertIn(("download", "asr"), observed)
+            self.assertIn(("download", "translation"), observed)
+            self.assertIn(("optimize", "translation"), observed)
+            self.assertEqual(final["state"], "ready")
+            self.assertEqual(final["phase"], "ready")
+            self.assertEqual(final["packId"], "realtime-m2m100")
 
     def test_rollback_returns_previous_pack(self):
         with tempfile.TemporaryDirectory() as tmp:
