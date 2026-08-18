@@ -88,6 +88,12 @@ export interface AppConfig {
   showOriginalSubtitle: boolean;
 }
 
+export interface RealtimeWord {
+  start: number;
+  end: number;
+  text: string;
+}
+
 export interface RealtimeEvent {
   protocol: number;
   type: string;
@@ -96,6 +102,8 @@ export interface RealtimeEvent {
   original?: string;
   translation?: string;
   language?: string;
+  words?: RealtimeWord[];
+  sessionMode?: 'meeting' | 'education' | 'karaoke' | 'compact';
   rms?: number;
   peak?: number;
   silentMs?: number;
