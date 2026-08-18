@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import os
 from collections import deque
 
 from .audio import PcmChunkBuffer
+from .cpu_budget import detect_cpu_budget
 from .models import InstalledPack
 from .providers import (
     CachedTranslator,
@@ -24,17 +26,30 @@ class RealtimePipeline:
         self.source_language = source_language
         # Dos segundos conservan suficiente contexto para Whisper y reducen ~17 %
         # la espera frente al buffer anterior de 2.4 s. El VAD interno puede cortar
-        # silencios antes de decodificar contenido inútil.
+        # silencios antes de decodificar contenido inútil. El plan de streaming
+        # adaptativo reemplazará este buffer en una tarea posterior, después de medir
+        # primero la mejora del reparto de CPU de forma aislada.
         self.buffer = PcmChunkBuffer(window_seconds=2.0, overlap_seconds=0.25)
         self.recorder = recorder
         self.elapsed = 0.0
         self._recent_originals: deque[str] = deque(maxlen=6)
-        self.asr = FasterWhisperAsr(pack.path / "components" / "asr", compute_profile)
+
+        cpu_profile = os.environ.get("MILY_CPU_PROFILE", "balanced")
+        self.cpu_budget = detect_cpu_budget(cpu_profile)
+        self.asr = FasterWhisperAsr(
+            pack.path / "components" / "asr",
+            compute_profile,
+            cpu_budget=self.cpu_budget,
+        )
         provider = components["translation"]["provider"]
         translation_path = pack.path / "components" / "translation"
         translator: Translator
         if provider == "m2m100-ct2":
-            translator = M2M100CTranslate2Translator(translation_path, compute_profile)
+            translator = M2M100CTranslate2Translator(
+                translation_path,
+                compute_profile,
+                cpu_budget=self.cpu_budget,
+            )
         elif provider == "qwen":
             translator = QwenTranslator(translation_path, compute_profile)
         else:
