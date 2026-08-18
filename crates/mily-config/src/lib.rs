@@ -111,7 +111,7 @@ impl Default for AppConfig {
             persist_transcripts: false,
             compute_profile: "auto".into(),
             engine_port: 8765,
-            active_model_pack: "business-qwen".into(),
+            active_model_pack: "realtime-m2m100".into(),
             show_original_subtitle: true,
         }
     }
@@ -134,9 +134,9 @@ impl AppConfig {
         }
         if !matches!(
             self.active_model_pack.as_str(),
-            "lite-nllb" | "business-qwen"
+            "realtime-m2m100" | "lite-nllb" | "business-qwen"
         ) {
-            self.active_model_pack = "business-qwen".into();
+            self.active_model_pack = "realtime-m2m100".into();
         }
         self.cache_limit_mb = self.cache_limit_mb.clamp(64, 4096);
         self.engine_port = self.engine_port.clamp(1024, 65_535);
@@ -210,7 +210,7 @@ pub enum ConfigError {
     #[error("No se pudo resolver el directorio de la aplicación.")]
     ProjectDirectoryUnavailable,
     #[error("Error de archivo de configuración: {0}")]
-    Io(#[from] std::io::Error),
+    Io(#[from] io::Error),
     #[error("Configuración JSON inválida: {0}")]
     Json(#[from] serde_json::Error),
 }
@@ -228,6 +228,7 @@ mod tests {
         let config = ConfigService::new(path).load_or_default().unwrap();
         assert_eq!(config.source_language, "zh");
         assert_eq!(config.compute_profile, "auto");
+        assert_eq!(config.active_model_pack, "realtime-m2m100");
         assert!(!config.persist_transcripts);
         assert_eq!(config.schema_version, 2);
     }
@@ -239,6 +240,7 @@ mod tests {
             source_language: "xx".into(),
             compute_profile: "quantum".into(),
             engine_port: 1,
+            active_model_pack: "unknown-pack".into(),
             ..AppConfig::default()
         }
         .normalized();
@@ -246,5 +248,6 @@ mod tests {
         assert_eq!(config.source_language, "auto");
         assert_eq!(config.compute_profile, "auto");
         assert_eq!(config.engine_port, 1024);
+        assert_eq!(config.active_model_pack, "realtime-m2m100");
     }
 }
