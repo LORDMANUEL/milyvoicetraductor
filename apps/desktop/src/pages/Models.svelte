@@ -2,18 +2,24 @@
   import { onMount } from 'svelte';
   import { desktopApi } from '../lib/api';
   import { modelErrorCode, modelErrorMessage } from '../lib/modelErrors';
-  import type { ModelPackInfo } from '../types';
+  import type { HardwareAdvisor, ModelPackInfo } from '../types';
 
   export let onChanged: () => Promise<void>;
 
   let packs: ModelPackInfo[] = [];
+  let advisor: HardwareAdvisor | null = null;
   let busy = '';
   let message = '';
   let lastErrorCode = '';
   let lastFailedPack = '';
 
   async function load() {
-    packs = await desktopApi.getModelCatalog();
+    const [catalog, hardware] = await Promise.all([
+      desktopApi.getModelCatalog(),
+      desktopApi.getHardwareAdvisor()
+    ]);
+    packs = catalog;
+    advisor = hardware;
   }
 
   async function install(pack: ModelPackInfo) {
@@ -83,6 +89,12 @@
     }
   }
 
+  function backendStatus(runtimeDetected: boolean, adapterReady: boolean): string {
+    if (adapterReady) return 'Listo';
+    if (runtimeDetected) return 'Detectado · falta benchmark/adaptador';
+    return 'No validado';
+  }
+
   onMount(load);
 </script>
 
@@ -95,6 +107,37 @@
     </div>
     <button class="secondary" onclick={rollback} disabled={Boolean(busy)}>Rollback</button>
   </header>
+
+  {#if advisor}
+    <article class="panel-card model-card">
+      <div class="panel-title">
+        <div>
+          <span class="card-title">Hardware Advisor</span>
+          <h3>Recomendado para este equipo: {advisor.recommendedProfile}</h3>
+        </div>
+        <span class="pill" class:ok={advisor.legacyHaswellCompatible}>
+          {advisor.legacyHaswellCompatible ? 'AVX2 listo' : 'Compatibilidad básica'}
+        </span>
+      </div>
+      <p>{advisor.message}</p>
+      <div class="model-meta">
+        <span>{advisor.system.cpuBrand}</span>
+        <span>{advisor.system.physicalCpus} cores físicos · {advisor.system.logicalCpus} hilos</span>
+        <span>{Math.round(advisor.system.availableMemoryMb / 1024)} / {Math.round(advisor.system.totalMemoryMb / 1024)} GB RAM disponible/total</span>
+        <span>AVX2: {advisor.system.cpuFeatures.avx2 ? 'sí' : 'no'} · FMA: {advisor.system.cpuFeatures.fma ? 'sí' : 'no'}</span>
+      </div>
+      <div class="model-meta">
+        {#each advisor.backends as backend}
+          <span>
+            {backend.backend}: {backendStatus(backend.runtimeDetected, backend.adapterReady)}
+          </span>
+        {/each}
+      </div>
+      {#if advisor.benchmarkRequired}
+        <small>La selección GPU definitiva se hará únicamente después de una inferencia de benchmark real.</small>
+      {/if}
+    </article>
+  {/if}
 
   <div class="model-grid">
     {#each packs as pack}
