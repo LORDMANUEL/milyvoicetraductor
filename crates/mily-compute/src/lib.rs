@@ -1,14 +1,16 @@
 //! Selección de cómputo de MilyVoice.
 //!
-//! Este crate no carga CUDA, DirectML, OpenVINO ni Vulkan. Mantiene el contrato
-//! liviano que permite detectar candidatos y escogerlos únicamente después de
-//! medir inferencia real. CPU siempre existe como fallback seguro.
+//! Este crate no ejecuta todavía CUDA, DirectML, Windows ML, OpenVINO ni Vulkan.
+//! Mantiene el contrato liviano para detectar candidatos y escogerlos únicamente
+//! después de medir inferencia real. CPU siempre existe como fallback seguro.
 
 mod cache;
 mod registry;
+mod runtime;
 
 pub use cache::{BenchmarkKey, CachedSelection, SelectionCache};
 pub use registry::BackendRegistry;
+pub use runtime::{RuntimeProbe, SystemRuntimeProbe, discover_runtime_backends};
 
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
@@ -19,6 +21,7 @@ pub enum ComputeBackend {
     Cpu,
     Cuda,
     DirectMl,
+    WindowsMl,
     OpenVino,
     Vulkan,
 }
