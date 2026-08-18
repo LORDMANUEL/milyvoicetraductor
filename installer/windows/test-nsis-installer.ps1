@@ -52,8 +52,6 @@ Assert-File (Join-Path $BootstrapRoot 'bridge\milyvoice-bridge.exe') 'NSIS no in
 Assert-File (Join-Path $BootstrapRoot 'ai\mily_ai\__init__.py') 'NSIS no incluyó el paquete mily_ai dentro del bootstrap.'
 Assert-File (Join-Path $BootstrapRoot 'extension\manifest.json') 'NSIS no incluyó la extensión dentro del bootstrap.'
 
-# El bootstrap siempre escribe status.json antes de preparar el runtime. Si no existe,
-# el hook no ejecutó el script o falló antes de entrar en su flujo controlado.
 if (-not (Test-Path $StatusPath -PathType Leaf)) {
     Write-Host 'Contenido instalado junto al EXE:' -ForegroundColor Yellow
     Get-ChildItem $InstallRoot -Recurse -Force -ErrorAction SilentlyContinue |
@@ -101,7 +99,26 @@ foreach ($key in @(
     }
 }
 
-Start-Sleep -Seconds 2
-Get-Process -Name 'MilyVoiceTraductor' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+# Gate crítico 2.0.1: el instalador no se considera válido solo porque dejó
+# archivos. Arrancamos exactamente el EXE instalado y exigimos que sobreviva el
+# bootstrap inicial. Esto habría detectado la regresión de 2.0.
+Write-Host 'Arrancando el Desktop instalado...' -ForegroundColor Cyan
+$DesktopProcess = Start-Process -FilePath $DesktopExe -PassThru
+try {
+    Start-Sleep -Seconds 8
+    if ($DesktopProcess.HasExited) {
+        throw "MilyVoiceTraductor.exe terminó durante el arranque con código $($DesktopProcess.ExitCode)."
+    }
+    $live = Get-Process -Id $DesktopProcess.Id -ErrorAction SilentlyContinue
+    if (-not $live) {
+        throw 'MilyVoiceTraductor.exe no permanece activo después del arranque.'
+    }
+    Write-Host "Desktop instalado activo: PID=$($DesktopProcess.Id)" -ForegroundColor Green
+} finally {
+    if (-not $DesktopProcess.HasExited) {
+        Stop-Process -Id $DesktopProcess.Id -Force -ErrorAction SilentlyContinue
+        $DesktopProcess.WaitForExit(10000) | Out-Null
+    }
+}
 
-Write-Host 'NSIS INSTALLER FLOW OK' -ForegroundColor Green
+Write-Host 'NSIS INSTALLER FLOW OK: payload + bootstrap + Native Messaging + Desktop startup' -ForegroundColor Green
