@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import os
 import unittest
+from unittest.mock import patch
 
-from mily_ai.streaming import AdaptiveSpeechSegmenter
+from mily_ai.streaming import AdaptiveSpeechSegmenter, default_partial_step_ms
 
 
 class StreamingSegmenterTests(unittest.TestCase):
@@ -69,6 +71,27 @@ class StreamingSegmenterTests(unittest.TestCase):
         active = segmenter.level
         self.assertGreater(active.rms, 0.49)
         self.assertEqual(active.silent_ms, 0)
+
+    def test_dual_core_default_keeps_fast_first_decode_but_spaces_partial_redecodes(self):
+        with patch.dict(os.environ, {"MILY_PHYSICAL_CPUS": "2"}, clear=False):
+            segmenter = AdaptiveSpeechSegmenter(
+                sample_rate=100,
+                first_decode_ms=900,
+                partial_step_ms=None,
+                finalize_silence_ms=250,
+                max_utterance_ms=2400,
+                energy_threshold=0.02,
+            )
+        self.assertEqual(segmenter.first_decode_samples, 90)
+        self.assertEqual(segmenter.partial_step_samples, 70)
+
+    def test_four_core_default_retains_aggressive_partial_refresh(self):
+        self.assertEqual(default_partial_step_ms(4), 450)
+        self.assertEqual(default_partial_step_ms(8), 450)
+
+    def test_one_or_two_core_default_uses_legacy_partial_refresh(self):
+        self.assertEqual(default_partial_step_ms(1), 700)
+        self.assertEqual(default_partial_step_ms(2), 700)
 
 
 if __name__ == "__main__":
