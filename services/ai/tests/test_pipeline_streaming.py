@@ -11,6 +11,7 @@ from mily_ai.models import InstalledPack
 from mily_ai.pipeline import RealtimePipeline
 from mily_ai.providers import AsrSegment, Translator
 from mily_ai.sessions import SessionRecorder
+from mily_ai.streaming import AdaptiveSpeechSegmenter
 
 
 class FakeAsr:
@@ -69,6 +70,33 @@ class PipelineStreamingTests(unittest.TestCase):
         pipeline.asr = fake_asr
         pipeline.translator = fake_translator
         return pipeline, recorder, fake_translator
+
+    def test_segment_cap_carries_over_audio_instead_of_dropping_it(self):
+        segmenter = AdaptiveSpeechSegmenter(
+            sample_rate=1000,
+            first_decode_ms=100,
+            partial_step_ms=50,
+            finalize_silence_ms=50,
+            max_utterance_ms=200,
+            energy_threshold=0.1,
+        )
+
+        segmenter.push([0.5] * 150)
+        events = segmenter.push([0.5] * 100)
+        finals = [event for event in events if event.kind == "final"]
+
+        self.assertEqual(len(finals), 1)
+        self.assertEqual(len(finals[0].samples), 200)
+        self.assertEqual(finals[0].start_sample, 0)
+        self.assertEqual(finals[0].end_sample, 200)
+        self.assertEqual(segmenter.buffered_samples, 50)
+        self.assertTrue(segmenter.speech_active)
+
+        flushed = segmenter.flush()
+        self.assertEqual(len(flushed), 1)
+        self.assertEqual(len(flushed[0].samples), 50)
+        self.assertEqual(flushed[0].start_sample, 200)
+        self.assertEqual(flushed[0].end_sample, 250)
 
     def test_ingest_never_calls_translation_worker(self):
         with tempfile.TemporaryDirectory() as tmp:
