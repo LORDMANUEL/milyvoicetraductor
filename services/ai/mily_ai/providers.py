@@ -8,6 +8,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Sequence
 
+from .cpu_budget import CpuBudget, detect_cpu_budget
+
 
 @dataclass(slots=True)
 class AsrSegment:
@@ -62,9 +64,15 @@ class CachedTranslator(Translator):
 class FasterWhisperAsr(AsrProvider):
     """Whisper vía CTranslate2; CPU INT8 y CUDA FP16 con lenguaje estabilizado."""
 
-    def __init__(self, model_path: Path, compute_profile: str = "auto"):
+    def __init__(
+        self,
+        model_path: Path,
+        compute_profile: str = "auto",
+        cpu_budget: CpuBudget | None = None,
+    ):
         self.model_path = Path(model_path)
         self.compute_profile = compute_profile
+        self.cpu_budget = cpu_budget or detect_cpu_budget()
         self._model = None
         self._locked_language: str | None = None
 
@@ -92,6 +100,8 @@ class FasterWhisperAsr(AsrProvider):
             str(self.model_path),
             device=device,
             compute_type=compute_type,
+            cpu_threads=self.cpu_budget.asr_threads if device == "cpu" else 0,
+            num_workers=1,
             local_files_only=True,
         )
         return self._model
@@ -127,9 +137,15 @@ class FasterWhisperAsr(AsrProvider):
 class M2M100CTranslate2Translator(Translator):
     """M2M100 convertido una vez a CTranslate2 INT8 para traducción rápida local."""
 
-    def __init__(self, model_path: Path, compute_profile: str = "auto"):
+    def __init__(
+        self,
+        model_path: Path,
+        compute_profile: str = "auto",
+        cpu_budget: CpuBudget | None = None,
+    ):
         self.model_path = Path(model_path)
         self.compute_profile = compute_profile
+        self.cpu_budget = cpu_budget or detect_cpu_budget()
         self._translator = None
         self._tokenizer = None
 
@@ -154,6 +170,7 @@ class M2M100CTranslate2Translator(Translator):
             device=device,
             compute_type=compute_type,
             inter_threads=1,
+            intra_threads=self.cpu_budget.translation_threads if device == "cpu" else 0,
         )
         tokenizer_path = self.model_path / "tokenizer"
         if not tokenizer_path.is_dir():
