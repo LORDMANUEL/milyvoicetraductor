@@ -31,7 +31,6 @@ struct CatalogPack {
     license_note: String,
 }
 
-/// Forma mínima que la CLI Python puede emitir cuando una operación falla.
 #[derive(Debug, Clone, Deserialize)]
 struct ModelCliErrorPayload {
     ok: bool,
@@ -39,15 +38,11 @@ struct ModelCliErrorPayload {
     message: String,
 }
 
-/// Parsea únicamente JSON estructurado; texto arbitrario de stderr nunca cruza a la UI.
 fn parse_model_cli_error(bytes: &[u8]) -> Option<ModelError> {
     let text = std::str::from_utf8(bytes).ok()?.trim();
     if text.is_empty() {
         return None;
     }
-
-    // Algunas librerías pueden escribir líneas informativas antes del JSON. Se revisan
-    // desde el final porque nuestra CLI escribe el resultado estructurado al terminar.
     for line in text.lines().rev() {
         let Ok(payload) = serde_json::from_str::<ModelCliErrorPayload>(line.trim()) else {
             continue;
@@ -74,6 +69,7 @@ fn valid_public_model_code(code: &str) -> bool {
             | "MODEL_HASH_MISMATCH"
             | "MODEL_RUNTIME_ERROR"
             | "MODEL_PERMISSION_ERROR"
+            | "MODEL_CONVERSION_ERROR"
             | "MODEL_LICENSE_BLOCKED"
     )
 }
@@ -83,7 +79,6 @@ fn sanitize_public_message(message: &str) -> String {
     if trimmed.is_empty() || trimmed.len() > 300 {
         return FALLBACK_MODEL_MESSAGE.to_string();
     }
-    // Evita convertir accidentalmente rutas/secretos del proveedor en contenido público.
     if trimmed.contains("\\Users\\")
         || trimmed.contains("/home/")
         || trimmed.to_ascii_lowercase().contains("token=")
@@ -222,8 +217,6 @@ impl ModelManagerService {
             .args(args)
             .stdin(Stdio::null());
 
-        // Capturamos salida para preservar códigos estructurados. Nunca se devuelve stderr
-        // crudo; si no contiene nuestro contrato JSON se usa un error genérico seguro.
         let output = command.output()?;
         if output.status.success() {
             return Ok(());
@@ -274,8 +267,9 @@ mod tests {
     use super::*;
 
     #[test]
-    fn embedded_catalog_contains_two_profiles() {
+    fn embedded_catalog_contains_supported_profiles() {
         let parsed: Catalog = serde_json::from_str(MODEL_CATALOG).unwrap();
+        assert!(parsed.packs.iter().any(|pack| pack.id == "realtime-m2m100"));
         assert!(parsed.packs.iter().any(|pack| pack.id == "lite-nllb"));
         assert!(parsed.packs.iter().any(|pack| pack.id == "business-qwen"));
     }
@@ -289,6 +283,16 @@ mod tests {
         .expect("structured error");
         assert_eq!(error.public_code(), "MODEL_NO_NETWORK");
         assert_eq!(error.public_message(), "No hay conexión a Internet.");
+    }
+
+    #[test]
+    fn conversion_error_is_safe_for_ui() {
+        let error = parse_model_cli_error(
+            r#"{"ok":false,"code":"MODEL_CONVERSION_ERROR","message":"No se pudo optimizar el modelo para este equipo."}"#
+                .as_bytes(),
+        )
+        .expect("structured error");
+        assert_eq!(error.public_code(), "MODEL_CONVERSION_ERROR");
     }
 
     #[test]
