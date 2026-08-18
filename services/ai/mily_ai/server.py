@@ -281,6 +281,18 @@ def create_app(paths: RuntimePaths, port: int = 8765, parent_pid: int | None = N
                 translation_worker(), name="mily-translation-worker"
             )
 
+        async def warm_up_workers() -> None:
+            current = pipeline
+            asr_pool = asr_executor
+            translation_pool = translation_executor
+            if current is None or asr_pool is None or translation_pool is None:
+                return
+            loop = asyncio.get_running_loop()
+            await asyncio.gather(
+                loop.run_in_executor(asr_pool, current.warm_up_asr),
+                loop.run_in_executor(translation_pool, current.warm_up_translation),
+            )
+
         def shutdown_executors(*, wait: bool) -> None:
             nonlocal asr_executor, translation_executor
             seen: set[int] = set()
@@ -346,7 +358,6 @@ def create_app(paths: RuntimePaths, port: int = 8765, parent_pid: int | None = N
                     )
                 )
                 return
-            # Cola limitada: aplica backpressure al socket en vez de crecer sin límite.
             await audio_queue.put(samples)
 
         try:
@@ -399,6 +410,8 @@ def create_app(paths: RuntimePaths, port: int = 8765, parent_pid: int | None = N
                 if message.type == "client.hello":
                     if pipeline is not None:
                         await finish_workers(flush=True)
+                        if recorder is not None:
+                            recorder.finish()
                     heartbeat_path.write_text(
                         json.dumps({"at": time.time()}), encoding="utf-8"
                     )
@@ -420,7 +433,11 @@ def create_app(paths: RuntimePaths, port: int = 8765, parent_pid: int | None = N
                         message.source_language, message.target_language
                     )
                     await safe_send(
-                        event("engine.loading", modelPack=f"{active.id}@{active.version}")
+                        event(
+                            "engine.loading",
+                            modelPack=f"{active.id}@{active.version}",
+                            phase="warming",
+                        )
                     )
                     try:
                         pipeline = RealtimePipeline(
@@ -444,6 +461,23 @@ def create_app(paths: RuntimePaths, port: int = 8765, parent_pid: int | None = N
                         recorder = None
                         continue
                     await start_workers()
+                    try:
+                        await warm_up_workers()
+                    except Exception as exc:
+                        logger.error(
+                            "No se pudo precalentar pipeline: %s", exc.__class__.__name__
+                        )
+                        await finish_workers(flush=False)
+                        pipeline = None
+                        recorder = None
+                        await safe_send(
+                            event(
+                                "engine.error",
+                                code="PIPELINE_WARMUP",
+                                message="No se pudieron preparar los modelos locales.",
+                            )
+                        )
+                        continue
                     binary_pcm_enabled = message.binary_pcm
                     await safe_send(
                         event(
