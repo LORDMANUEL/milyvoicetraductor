@@ -3,9 +3,13 @@
 use crate::bootstrap::AppState;
 use mily_cache::CacheStatus;
 use mily_config::AppConfig;
-use mily_core::{AppStatus, EngineRuntimeStatus, ModelPackInfo, PublicError, SessionSummary};
+use mily_core::{
+    AppStatus, ComponentState, EngineRuntimeStatus, ModelPackInfo, PublicError, SessionSummary,
+};
 use mily_system::SystemSnapshot;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
+use std::fs;
+use std::path::Path;
 use tauri::State;
 
 fn public_error(code: &str, message: &str) -> PublicError {
@@ -18,6 +22,63 @@ pub struct RuntimeLocations {
     pub models: String,
     pub sessions: String,
     pub extension: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OnboardingStatus {
+    pub runtime_ready: bool,
+    pub bridge_ready: bool,
+    pub extension_detected: bool,
+    pub model_state: ComponentState,
+    pub downloaded_bytes: u64,
+    pub total_bytes: Option<u64>,
+    pub bootstrap_state: String,
+    pub error_code: Option<String>,
+    pub error_message: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct BootstrapStatusFile {
+    state: String,
+    #[serde(default)]
+    code: String,
+    #[serde(default)]
+    message: String,
+}
+
+fn directory_size(path: &Path) -> u64 {
+    let Ok(entries) = fs::read_dir(path) else {
+        return 0;
+    };
+    entries
+        .filter_map(Result::ok)
+        .map(|entry| {
+            let path = entry.path();
+            match entry.metadata() {
+                Ok(metadata) if metadata.is_file() => metadata.len(),
+                Ok(metadata) if metadata.is_dir() => directory_size(&path),
+                _ => 0,
+            }
+        })
+        .sum()
+}
+
+fn bootstrap_status(state: &AppState) -> (String, Option<String>, Option<String>) {
+    let path = state.paths.data_dir.join("bootstrap").join("status.json");
+    let parsed = fs::read_to_string(path)
+        .ok()
+        .and_then(|text| serde_json::from_str::<BootstrapStatusFile>(&text).ok());
+    match parsed {
+        Some(status) if status.state == "failed" => (
+            status.state,
+            (!status.code.is_empty()).then_some(status.code),
+            (!status.message.is_empty()).then_some(status.message),
+        ),
+        Some(status) => (status.state, None, None),
+        None => ("unknown".into(), None, None),
+    }
 }
 
 #[tauri::command]
@@ -35,6 +96,32 @@ pub fn get_app_status(state: State<'_, AppState>) -> AppStatus {
         installed_models: state.models.installed_count(),
         extension_connected: state.engine.extension_connected(),
         active_model_pack,
+    }
+}
+
+#[tauri::command]
+pub fn get_onboarding_status(state: State<'_, AppState>) -> OnboardingStatus {
+    let (bootstrap_state, error_code, error_message) = bootstrap_status(&state);
+    let bridge_name = if cfg!(windows) {
+        "milyvoice-bridge.exe"
+    } else {
+        "milyvoice-bridge"
+    };
+    OnboardingStatus {
+        runtime_ready: state.engine.is_installed(),
+        bridge_ready: state
+            .paths
+            .data_dir
+            .join("bridge")
+            .join(bridge_name)
+            .is_file(),
+        extension_detected: state.engine.extension_connected(),
+        model_state: state.models.status(),
+        downloaded_bytes: directory_size(&state.paths.models_dir.join(".staging")),
+        total_bytes: None,
+        bootstrap_state,
+        error_code,
+        error_message,
     }
 }
 
@@ -139,16 +226,6 @@ pub fn stop_engine(state: State<'_, AppState>) -> Result<EngineRuntimeStatus, Pu
             .logger
             .write("warn", "No se pudo detener el motor local.");
         public_error("ENGINE_STOP", "No se pudo detener el motor local.")
-    })
-}
-
-#[tauri::command]
-pub fn get_pairing_token(state: State<'_, AppState>) -> Result<String, PublicError> {
-    state.engine.pairing_token().map_err(|_| {
-        public_error(
-            "PAIRING_TOKEN",
-            "No se pudo preparar el token local de emparejamiento.",
-        )
     })
 }
 
