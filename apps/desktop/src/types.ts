@@ -31,6 +31,11 @@ export interface EngineRuntimeStatus {
   message: string;
 }
 
+export interface LocalEngineSession {
+  port: number;
+  credential: string;
+}
+
 export interface ModelPackInfo {
   id: string;
   version: string;
@@ -81,6 +86,28 @@ export interface AppConfig {
   enginePort: number;
   activeModelPack: 'realtime-m2m100' | 'lite-nllb' | 'business-qwen';
   showOriginalSubtitle: boolean;
+}
+
+export interface RealtimeEvent {
+  protocol: number;
+  type: string;
+  start?: number;
+  end?: number;
+  original?: string;
+  translation?: string;
+  language?: string;
+  rms?: number;
+  peak?: number;
+  silentMs?: number;
+  speech?: boolean;
+  pressure?: 'healthy' | 'pressure' | 'overloaded';
+  audioQueueMs?: number;
+  realTimeFactor?: number;
+  asrP50Ms?: number;
+  translationP50Ms?: number;
+  message?: string;
+  code?: string;
+  binaryPcm?: boolean;
 }
 
 export interface CacheStatus {
