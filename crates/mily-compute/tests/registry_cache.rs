@@ -1,5 +1,6 @@
 use mily_compute::{
-    BackendObservation, BackendRegistry, BenchmarkKey, CachedSelection, ComputeBackend, SelectionCache,
+    BackendObservation, BackendRegistry, BenchmarkKey, CachedSelection, ComputeBackend,
+    SelectionCache,
 };
 use tempfile::tempdir;
 
