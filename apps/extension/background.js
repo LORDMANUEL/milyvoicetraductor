@@ -1,3 +1,5 @@
+import { speakTranslation } from './tts.js';
+
 /**
  * Orquestador Manifest V3. Desktop y extensión se descubren mediante Native
  * Messaging; ninguna credencial se guarda en chrome.storage.local.
@@ -213,9 +215,22 @@ async function startCapture(options) {
 
 async function stopCapture() {
   await ensureOffscreenDocument();
+  chrome.tts.stop();
+  await chrome.runtime.sendMessage({ target: 'offscreen', type: 'TTS_FINISHED', speakerId: null }).catch(() => undefined);
   await chrome.runtime.sendMessage({ target: 'offscreen', type: 'STOP_CAPTURE' });
   await setCaptureState({ active: false, tabId: null, startedAt: null, source: null, sessionMode: null, speakerDetection: false, speakerFocusMode: 'all', speakerId: null });
   await chrome.storage.session.set({ knownSpeakers: [] });
+  return { ok: true };
+}
+
+async function setSpeakerFocus(options) {
+  const mode = SPEAKER_FOCUS_MODES.has(String(options?.speakerFocusMode)) ? String(options.speakerFocusMode) : 'all';
+  const speakerId = /^speaker-[a-z]$/.test(String(options?.speakerId || '')) ? String(options.speakerId) : null;
+  if (mode === 'fixed' && !speakerId) throw new Error('Selecciona un hablante para fijarlo.');
+  const response = await chrome.runtime.sendMessage({ target: 'offscreen', type: 'SET_SPEAKER_FOCUS', speakerFocusMode: mode, speakerId });
+  if (!response?.ok) throw new Error('La sesión local todavía no está lista para cambiar el foco.');
+  const { captureState } = await chrome.storage.session.get('captureState');
+  if (captureState?.active) await setCaptureState({ ...captureState, speakerFocusMode: mode, speakerId });
   return { ok: true };
 }
 
@@ -246,8 +261,25 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     return true;
   }
 
+  if (message?.type === 'SET_SPEAKER_FOCUS') {
+    setSpeakerFocus(message.options || {})
+      .then(sendResponse)
+      .catch((error) => sendResponse({ ok: false, error: error.message || 'No se pudo cambiar el foco.' }));
+    return true;
+  }
+
   if (message?.type === 'TRANSLATION_EVENT' && Number.isInteger(message.tabId)) {
     if (message.payload?.speakerId) rememberSpeaker(message.payload.speakerId).catch(() => undefined);
+    if (message.payload?.type === 'translation.final') {
+      speakTranslation(message.payload, {
+        onStart({ text, speakerId }) {
+          chrome.runtime.sendMessage({ target: 'offscreen', type: 'TTS_STARTED', text, speakerId }).catch(() => undefined);
+        },
+        onEnd({ speakerId }) {
+          chrome.runtime.sendMessage({ target: 'offscreen', type: 'TTS_FINISHED', speakerId }).catch(() => undefined);
+        }
+      }).catch(() => undefined);
+    }
     chrome.storage.session.get('captureState').then(({ captureState }) => {
       chrome.tabs.sendMessage(message.tabId, {
         type: 'MILYVOICE_SUBTITLE',
