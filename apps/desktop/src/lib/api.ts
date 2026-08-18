@@ -1,6 +1,6 @@
 import { invoke } from '@tauri-apps/api/core';
 import type {
-  AppConfig, AppStatus, CacheStatus, EngineRuntimeStatus, ModelPackInfo,
+  AppConfig, AppStatus, CacheStatus, EngineRuntimeStatus, LocalEngineSession, ModelPackInfo,
   OnboardingStatus, RuntimeLocations, SessionSummary, SystemSnapshot
 } from '../types';
 
@@ -98,6 +98,11 @@ export class DesktopApi {
   async stopEngine(): Promise<EngineRuntimeStatus> {
     if (!isTauriEnvironment()) return this.getEngineStatus();
     return invoke<EngineRuntimeStatus>('stop_engine');
+  }
+
+  async getLocalEngineSession(): Promise<LocalEngineSession> {
+    if (!isTauriEnvironment()) throw new Error('La sesión local solo está disponible en la app instalada.');
+    return invoke<LocalEngineSession>('get_local_engine_session');
   }
 
   async getModelCatalog(): Promise<ModelPackInfo[]> {
