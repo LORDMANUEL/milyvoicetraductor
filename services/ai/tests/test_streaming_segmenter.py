@@ -93,6 +93,34 @@ class StreamingSegmenterTests(unittest.TestCase):
         self.assertEqual(default_partial_step_ms(1), 700)
         self.assertEqual(default_partial_step_ms(2), 700)
 
+    def test_partial_decoding_can_be_suspended_without_losing_final_utterance(self):
+        segmenter = self.make_segmenter()
+        segmenter.set_partial_decoding(False)
+        events = []
+        for _ in range(12):
+            events.extend(segmenter.push([0.2] * 10))
+        self.assertFalse(any(event.kind == "partial" for event in events))
+
+        for _ in range(3):
+            events.extend(segmenter.push([0.0] * 10))
+        finals = [event for event in events if event.kind == "final"]
+        self.assertEqual(len(finals), 1)
+        self.assertGreaterEqual(len(finals[0].samples), 120)
+
+    def test_partial_decoding_can_recover_after_pressure(self):
+        segmenter = self.make_segmenter()
+        segmenter.set_partial_decoding(False)
+        for _ in range(12):
+            segmenter.push([0.2] * 10)
+        for _ in range(3):
+            segmenter.push([0.0] * 10)
+
+        segmenter.set_partial_decoding(True)
+        events = []
+        for _ in range(10):
+            events.extend(segmenter.push([0.2] * 10))
+        self.assertTrue(any(event.kind == "partial" for event in events))
+
 
 if __name__ == "__main__":
     unittest.main()
