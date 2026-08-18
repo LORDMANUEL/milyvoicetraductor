@@ -25,6 +25,8 @@ jobs:
       - uses: actions/setup-node@v5
         with:
           node-version: "22"
+      - name: Release version consistency
+        run: python3 scripts/test_release_version.py
       - name: Source verification
         run: python3 scripts/verify_source.py
       - name: Privacy scan
