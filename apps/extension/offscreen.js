@@ -89,6 +89,7 @@ async function startCapture(message) {
       type: 'client.hello',
       sourceLanguage: message.sourceLanguage || 'auto',
       targetLanguage: 'es',
+      sessionMode: message.sessionMode || 'meeting',
       persistTranscript: Boolean(message.persistTranscript),
       binaryPcm: true
     }));
@@ -100,7 +101,12 @@ async function startCapture(message) {
     if (payload.type === 'session.started') {
       binaryPcmActive = payload.binaryPcm === true;
     }
-    if (payload.type === 'translation.final' || payload.type === 'translation.partial') {
+    if (
+      payload.type === 'translation.final' ||
+      payload.type === 'translation.partial' ||
+      payload.type === 'transcription.partial' ||
+      payload.type === 'transcription.final'
+    ) {
       publishTranslation(payload);
     }
     publishEngineEvent(payload);
