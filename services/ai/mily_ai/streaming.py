@@ -197,13 +197,35 @@ class AdaptiveSpeechSegmenter:
                 )
                 self._last_partial_samples = current
 
+        # Una lectura PCM puede cruzar el límite duro. Antes se emitían solo los
+        # primeros max_utterance_samples y se hacía reset, perdiendo el excedente.
+        # Ahora cada muestra sobrante se conserva como inicio del siguiente tramo.
+        while len(self._buffer) >= self.max_utterance_samples:
+            final_samples = self._buffer[: self.max_utterance_samples]
+            start_sample = self._utterance_start_sample
+            events.append(
+                StreamingEvent(
+                    "final",
+                    final_samples,
+                    start_sample,
+                    start_sample + len(final_samples),
+                )
+            )
+            del self._buffer[: self.max_utterance_samples]
+            self._utterance_start_sample = start_sample + self.max_utterance_samples
+            self._last_partial_samples = 0
+            self._trailing_silence_samples = min(
+                self._trailing_silence_samples, len(self._buffer)
+            )
+            self._speech_active = bool(self._buffer)
+
+        current = len(self._buffer)
         final_by_silence = (
             self._trailing_silence_samples >= self.finalize_silence_samples
             and current >= self.first_decode_samples
         )
-        final_by_cap = current >= self.max_utterance_samples
-        if final_by_silence or final_by_cap:
-            final_samples = self._buffer[: self.max_utterance_samples]
+        if final_by_silence:
+            final_samples = self._buffer.copy()
             events.append(
                 StreamingEvent(
                     "final",
@@ -212,6 +234,8 @@ class AdaptiveSpeechSegmenter:
                     self._utterance_start_sample + len(final_samples),
                 )
             )
+            self._reset_utterance()
+        elif not self._buffer:
             self._reset_utterance()
 
         return events
