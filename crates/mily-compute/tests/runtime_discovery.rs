@@ -18,14 +18,32 @@ impl RuntimeProbe for FakeProbe {
 
 #[test]
 fn detects_runtimes_without_marking_adapters_ready() {
+    #[cfg(windows)]
+    let (libraries, expected) = (
+        HashSet::from(["DirectML.dll", "vulkan-1.dll"]),
+        vec![ComputeBackend::DirectMl, ComputeBackend::Vulkan],
+    );
+
+    #[cfg(target_os = "linux")]
+    let (libraries, expected) = (
+        HashSet::from(["libvulkan.so.1"]),
+        vec![ComputeBackend::Vulkan],
+    );
+
+    #[cfg(not(any(windows, target_os = "linux")))]
+    let (libraries, expected): (HashSet<&'static str>, Vec<ComputeBackend>) =
+        (HashSet::new(), Vec::new());
+
     let probe = FakeProbe {
-        libraries: HashSet::from(["DirectML.dll", "vulkan-1.dll"]),
+        libraries,
         windows_ml_catalog: false,
     };
     let registry = discover_runtime_backends(&probe);
 
-    for backend in [ComputeBackend::DirectMl, ComputeBackend::Vulkan] {
-        let capability = registry.capability(backend).unwrap();
+    for backend in expected {
+        let capability = registry
+            .capability(backend)
+            .expect("el runtime simulado debe detectarse en esta plataforma");
         assert!(capability.runtime_detected);
         assert!(!capability.adapter_ready);
     }
