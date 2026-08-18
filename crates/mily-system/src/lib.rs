@@ -1,6 +1,8 @@
 //! Snapshot ligero del equipo. La GPU es opcional y nunca bloquea la app.
 
+mod fingerprint;
 mod gpu;
+pub use fingerprint::hardware_fingerprint;
 pub use gpu::{GpuAdapterInfo, GpuVendor, classify_gpu_vendor, gpu_inventory};
 
 use serde::{Deserialize, Serialize};
