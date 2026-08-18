@@ -5,8 +5,14 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+from mily_ai.cpu_budget import CpuBudget
 from mily_ai.models import ModelCatalog, _convert_m2m100_to_ctranslate2
-from mily_ai.providers import CachedTranslator, Translator
+from mily_ai.providers import (
+    CachedTranslator,
+    FasterWhisperAsr,
+    M2M100CTranslate2Translator,
+    Translator,
+)
 
 
 class FakeTranslator(Translator):
@@ -32,6 +38,30 @@ class FakeTransformersConverter:
         )
 
 
+class RecordingWhisperModel:
+    last_args = None
+    last_kwargs = None
+
+    def __init__(self, *args, **kwargs):
+        type(self).last_args = args
+        type(self).last_kwargs = kwargs
+
+
+class RecordingCt2Translator:
+    last_args = None
+    last_kwargs = None
+
+    def __init__(self, *args, **kwargs):
+        type(self).last_args = args
+        type(self).last_kwargs = kwargs
+
+
+class FakeAutoTokenizer:
+    @classmethod
+    def from_pretrained(cls, *_args, **_kwargs):
+        return cls()
+
+
 class RealtimeOptimizationTests(unittest.TestCase):
     def test_translation_cache_avoids_recomputing_overlap_text(self):
         inner = FakeTranslator()
@@ -51,6 +81,55 @@ class RealtimeOptimizationTests(unittest.TestCase):
         translator.translate("hola", "zh")
 
         self.assertEqual(inner.calls, 2)
+
+    def test_whisper_uses_budgeted_cpu_threads(self):
+        budget = CpuBudget(
+            profile="balanced",
+            physical_cores=8,
+            asr_threads=5,
+            translation_threads=2,
+            parallel_stages=True,
+        )
+        fake_whisper = types.SimpleNamespace(WhisperModel=RecordingWhisperModel)
+        fake_ct2 = types.SimpleNamespace(get_cuda_device_count=lambda: 0)
+        with patch.dict(
+            sys.modules,
+            {"faster_whisper": fake_whisper, "ctranslate2": fake_ct2},
+        ):
+            provider = FasterWhisperAsr(Path("asr"), "cpu", cpu_budget=budget)
+            provider._load()
+
+        self.assertEqual(RecordingWhisperModel.last_kwargs["device"], "cpu")
+        self.assertEqual(RecordingWhisperModel.last_kwargs["compute_type"], "int8")
+        self.assertEqual(RecordingWhisperModel.last_kwargs["cpu_threads"], 5)
+        self.assertEqual(RecordingWhisperModel.last_kwargs["num_workers"], 1)
+
+    def test_m2m100_uses_budgeted_cpu_threads(self):
+        budget = CpuBudget(
+            profile="balanced",
+            physical_cores=8,
+            asr_threads=5,
+            translation_threads=2,
+            parallel_stages=True,
+        )
+        fake_ct2 = types.SimpleNamespace(
+            get_cuda_device_count=lambda: 0,
+            Translator=RecordingCt2Translator,
+        )
+        fake_transformers = types.SimpleNamespace(AutoTokenizer=FakeAutoTokenizer)
+        with patch.dict(
+            sys.modules,
+            {"ctranslate2": fake_ct2, "transformers": fake_transformers},
+        ):
+            provider = M2M100CTranslate2Translator(
+                Path("translation"), "cpu", cpu_budget=budget
+            )
+            provider._load()
+
+        self.assertEqual(RecordingCt2Translator.last_kwargs["device"], "cpu")
+        self.assertEqual(RecordingCt2Translator.last_kwargs["compute_type"], "int8")
+        self.assertEqual(RecordingCt2Translator.last_kwargs["inter_threads"], 1)
+        self.assertEqual(RecordingCt2Translator.last_kwargs["intra_threads"], 2)
 
     def test_realtime_commercial_pack_uses_m2m100_ctranslate2_int8(self):
         with tempfile.TemporaryDirectory() as tmp:
