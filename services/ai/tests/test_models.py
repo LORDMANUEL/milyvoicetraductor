@@ -14,7 +14,7 @@ from mily_ai.models import (
 
 
 class ModelManagerTests(unittest.TestCase):
-    def fake_snapshot(self, repo_id, revision, local_dir):
+    def fake_snapshot(self, repo_id, revision, local_dir, allow_patterns=None):
         target = Path(local_dir)
         target.mkdir(parents=True, exist_ok=True)
         (target / "config.json").write_text(
