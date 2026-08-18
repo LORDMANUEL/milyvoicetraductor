@@ -31,14 +31,15 @@ pub fn summarize_benchmark(
     backend: ComputeBackend,
     samples: &[BenchmarkSample],
 ) -> BackendObservation {
-    let valid: Vec<_> = samples.iter().filter(|sample| sample_valid(sample)).collect();
+    let valid: Vec<_> = samples
+        .iter()
+        .filter(|sample| sample_valid(sample))
+        .collect();
     let latency_ms = p95(valid.iter().map(|sample| sample.latency_ms).collect());
-    let rtf = p95(
-        valid
-            .iter()
-            .map(|sample| sample.latency_ms / sample.workload_ms)
-            .collect(),
-    );
+    let rtf = p95(valid
+        .iter()
+        .map(|sample| sample.latency_ms / sample.workload_ms)
+        .collect());
     let memory_mb = valid
         .iter()
         .map(|sample| sample.memory_mb)
