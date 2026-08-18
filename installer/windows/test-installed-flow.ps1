@@ -8,12 +8,16 @@ $FixtureRoot = Join-Path $Root '.build\installed-flow'
 $InstallRoot = Join-Path $FixtureRoot 'install'
 $FakeLocalAppData = Join-Path $FixtureRoot 'localappdata'
 $Bootstrap = Join-Path $InstallRoot 'bootstrap'
+$AppRoot = Join-Path $FakeLocalAppData 'MilyVoiceTraductor'
+$StatusPath = Join-Path $AppRoot 'bootstrap\status.json'
 $OriginalLocalAppData = $env:LOCALAPPDATA
+$WindowsPowerShell = Join-Path $env:WINDIR 'System32\WindowsPowerShell\v1.0\powershell.exe'
 
 function Assert-File([string]$Path, [string]$Message) {
     if (-not (Test-Path $Path -PathType Leaf)) { throw $Message }
 }
 
+Assert-File $WindowsPowerShell 'El runner Windows no tiene Windows PowerShell 5.1.'
 Remove-Item $FixtureRoot -Recurse -Force -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Force -Path `
     $Bootstrap, `
@@ -32,17 +36,28 @@ Copy-Item (Join-Path $Root 'installer\windows\native-host-template.json') (Join-
 
 try {
     $env:LOCALAPPDATA = $FakeLocalAppData
-    & (Join-Path $Bootstrap 'setup-installed.ps1') -InstallRoot $InstallRoot
-    if ($LASTEXITCODE -ne 0) { throw 'setup-installed.ps1 devolvió error.' }
+    $SetupScript = Join-Path $Bootstrap 'setup-installed.ps1'
+    & $WindowsPowerShell `
+        -NoProfile `
+        -NonInteractive `
+        -ExecutionPolicy Bypass `
+        -File $SetupScript `
+        -InstallRoot $InstallRoot `
+        -AppRoot $AppRoot
+    if ($LASTEXITCODE -ne 0) {
+        if (Test-Path $StatusPath -PathType Leaf) {
+            $failed = Get-Content $StatusPath -Raw -Encoding UTF8 | ConvertFrom-Json
+            throw "setup-installed.ps1 (Windows PowerShell 5.1) falló: $($failed.code) / $($failed.message)"
+        }
+        throw 'setup-installed.ps1 falló en Windows PowerShell 5.1 sin status.json.'
+    }
 
-    $AppRoot = Join-Path $FakeLocalAppData 'MilyVoiceTraductor'
     $Python = Join-Path $AppRoot 'runtime\python\python.exe'
     $EngineMain = Join-Path $AppRoot 'engine\app\main.py'
     $EnginePackage = Join-Path $AppRoot 'engine\app\mily_ai\__init__.py'
     $ExtensionManifest = Join-Path $AppRoot 'extension\manifest.json'
     $Bridge = Join-Path $AppRoot 'bridge\milyvoice-bridge.exe'
     $NativeManifest = Join-Path $AppRoot 'bridge\com.milyvoice.traductor.json'
-    $StatusPath = Join-Path $AppRoot 'bootstrap\status.json'
     $NativeCredential = Join-Path $AppRoot 'config\native-credential.json'
 
     Assert-File (Join-Path $Bootstrap 'setup-installed.ps1') 'El fixture no replica el bootstrap al lado del ejecutable.'
@@ -57,6 +72,9 @@ try {
     $status = Get-Content $StatusPath -Raw -Encoding UTF8 | ConvertFrom-Json
     if ($status.state -notin @('model-pending', 'ready')) {
         throw "Estado bootstrap inesperado: $($status.state) / $($status.code)"
+    }
+    if ($status.code -ne 'BOOTSTRAP_OK') {
+        throw "El bootstrap no terminó con BOOTSTRAP_OK: $($status.code) / $($status.message)"
     }
 
     foreach ($key in @(
@@ -112,14 +130,14 @@ print("NATIVE_BRIDGE_PASSIVE_STATUS_OK")
         throw 'La consulta status escribió native-credential.json sin iniciar captura.'
     }
 
-    Write-Host 'INSTALLED FLOW OK' -ForegroundColor Green
+    Write-Host 'INSTALLED FLOW WINDOWS POWERSHELL 5.1 OK' -ForegroundColor Green
 }
 finally {
     try {
         & (Join-Path $Bootstrap 'register-native-host.ps1') `
-            -BridgePath (Join-Path $FakeLocalAppData 'MilyVoiceTraductor\bridge\milyvoice-bridge.exe') `
+            -BridgePath (Join-Path $AppRoot 'bridge\milyvoice-bridge.exe') `
             -ManifestTemplate (Join-Path $Bootstrap 'native-host-template.json') `
-            -ManifestOutput (Join-Path $FakeLocalAppData 'MilyVoiceTraductor\bridge\com.milyvoice.traductor.json') `
+            -ManifestOutput (Join-Path $AppRoot 'bridge\com.milyvoice.traductor.json') `
             -Unregister | Out-Null
     } catch {}
     $env:LOCALAPPDATA = $OriginalLocalAppData
