@@ -14,10 +14,12 @@ class ProtocolTests(unittest.TestCase):
             "protocol": 1,
             "type": "client.hello",
             "sourceLanguage": "auto",
-            "targetLanguage": "es"
+            "targetLanguage": "es",
+            "binaryPcm": True,
         }))
         self.assertEqual(message.type, "client.hello")
         self.assertEqual(message.source_language, "auto")
+        self.assertTrue(message.binary_pcm)
 
     def test_unknown_protocol_is_rejected(self):
         with self.assertRaises(ProtocolError):
