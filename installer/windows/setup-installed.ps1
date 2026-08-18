@@ -49,7 +49,20 @@ function Write-BootstrapStatus([string]$State, [string]$Code, [string]$Message) 
 }
 
 function Assert-File([string]$Path, [string]$Code) {
-    if (-not (Test-Path $Path)) { throw "$Code|Falta un componente incluido en el instalador." }
+    if (-not (Test-Path $Path -PathType Leaf)) {
+        throw "$Code|Falta un componente incluido en el instalador."
+    }
+}
+
+function Copy-DirectoryContents([string]$Source, [string]$Destination, [string]$Code) {
+    if (-not (Test-Path $Source -PathType Container)) {
+        throw "$Code|No se encontró una carpeta incluida en el instalador."
+    }
+    New-Item -ItemType Directory -Force -Path $Destination | Out-Null
+    foreach ($item in Get-ChildItem -LiteralPath $Source -Force) {
+        $target = Join-Path $Destination $item.Name
+        Copy-Item -LiteralPath $item.FullName -Destination $target -Recurse -Force
+    }
 }
 
 try {
@@ -58,6 +71,7 @@ try {
         @{ Path = $RuntimeZip; Code = 'RUNTIME_ARCHIVE_MISSING' },
         @{ Path = $RuntimeHash; Code = 'RUNTIME_HASH_MISSING' },
         @{ Path = (Join-Path $EngineSource 'main.py'); Code = 'ENGINE_MISSING' },
+        @{ Path = (Join-Path $EngineSource 'mily_ai\__init__.py'); Code = 'ENGINE_PACKAGE_MISSING' },
         @{ Path = (Join-Path $ExtensionSource 'manifest.json'); Code = 'EXTENSION_MISSING' },
         @{ Path = $BridgeSource; Code = 'BRIDGE_MISSING' },
         @{ Path = $RegisterScript; Code = 'BRIDGE_REGISTER_MISSING' },
@@ -95,16 +109,17 @@ try {
     if (Test-Path $RuntimeRoot) { Remove-Item $RuntimeRoot -Recurse -Force }
     Move-Item $RuntimeNext $RuntimeRoot
     if (Test-Path $EngineApp) { Remove-Item $EngineApp -Recurse -Force }
-    New-Item -ItemType Directory -Force -Path $EngineApp | Out-Null
-    Copy-Item (Join-Path $EngineSource '*') $EngineApp -Recurse -Force
+    Copy-DirectoryContents $EngineSource $EngineApp 'ENGINE_COPY_FAILED'
+    Assert-File (Join-Path $EngineApp 'main.py') 'ENGINE_MAIN_COPY_FAILED'
+    Assert-File (Join-Path $EngineApp 'mily_ai\__init__.py') 'ENGINE_PACKAGE_COPY_FAILED'
     Remove-Item (Join-Path $EngineApp 'mily_ai\__pycache__') -Recurse -Force -ErrorAction SilentlyContinue
     Remove-Item (Join-Path $EngineApp 'tests\__pycache__') -Recurse -Force -ErrorAction SilentlyContinue
 
     Write-Step 'Instalando extensión y puente local.'
     if (Test-Path $ExtensionRoot) { Remove-Item $ExtensionRoot -Recurse -Force }
-    New-Item -ItemType Directory -Force -Path $ExtensionRoot | Out-Null
-    Copy-Item (Join-Path $ExtensionSource '*') $ExtensionRoot -Recurse -Force
-    Copy-Item $BridgeSource $BridgeTarget -Force
+    Copy-DirectoryContents $ExtensionSource $ExtensionRoot 'EXTENSION_COPY_FAILED'
+    Assert-File (Join-Path $ExtensionRoot 'manifest.json') 'EXTENSION_MANIFEST_COPY_FAILED'
+    Copy-Item -LiteralPath $BridgeSource -Destination $BridgeTarget -Force
 
     & $RegisterScript -BridgePath $BridgeTarget -ManifestTemplate $NativeTemplate -ManifestOutput $NativeManifest
     if ($LASTEXITCODE -ne 0) {
