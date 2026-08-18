@@ -12,9 +12,7 @@ mod runtime;
 
 pub use benchmark::{BenchmarkSample, summarize_benchmark};
 pub use cache::{BenchmarkKey, CachedSelection, SelectionCache};
-pub use memory::{
-    MemoryBudget, MemoryBudgetInput, MemoryTier, calculate_memory_budget,
-};
+pub use memory::{MemoryBudget, MemoryBudgetInput, MemoryTier, calculate_memory_budget};
 pub use registry::BackendRegistry;
 pub use runtime::{RuntimeProbe, SystemRuntimeProbe, discover_runtime_backends};
 
