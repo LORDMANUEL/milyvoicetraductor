@@ -2,6 +2,7 @@
   import { onMount } from 'svelte';
   import { desktopApi } from '../lib/api';
   import type { SessionSummary } from '../types';
+  type ExportFormat = 'txt' | 'srt' | 'srt-bilingual' | 'vtt';
   let sessions: SessionSummary[] = [];
   let message = '';
 
@@ -11,10 +12,14 @@
     const anchor = document.createElement('a'); anchor.href = url; anchor.download = name; anchor.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
-  async function exportSession(session: SessionSummary, format: 'txt' | 'srt') {
+  async function exportSession(session: SessionSummary, format: ExportFormat) {
     try {
       const text = await desktopApi.getSessionExport(session.id, format);
-      downloadText(`milyvoice-${session.id}.${format}`, text, format === 'srt' ? 'application/x-subrip' : 'text/plain');
+      const extension = format === 'srt-bilingual' ? 'srt' : format;
+      const suffix = format === 'srt-bilingual' ? '-bilingue' : '';
+      const mime = extension === 'srt' ? 'application/x-subrip' : extension === 'vtt' ? 'text/vtt' : 'text/plain';
+      downloadText(`milyvoice-${session.id}${suffix}.${extension}`, text, mime);
+      message = '';
     } catch { message = 'No se pudo exportar la sesión.'; }
   }
   async function remove(session: SessionSummary) {
@@ -31,7 +36,7 @@
   {:else}
     <div class="session-list">
       {#each sessions as session}
-        <article class="panel-card session-row"><div><strong>{new Date(session.createdAt).toLocaleString()}</strong><p>{session.sourceLanguage.toUpperCase()} → ES · {session.segmentCount} segmentos · {session.durationSeconds.toFixed(1)} s</p></div><div class="button-row"><button class="secondary" onclick={() => exportSession(session,'txt')}>TXT</button><button class="secondary" onclick={() => exportSession(session,'srt')}>SRT</button><button class="danger-button" onclick={() => remove(session)}>Eliminar</button></div></article>
+        <article class="panel-card session-row"><div><strong>{new Date(session.createdAt).toLocaleString()}</strong><p>{session.sourceLanguage.toUpperCase()} → ES · {session.segmentCount} segmentos · {session.durationSeconds.toFixed(1)} s</p></div><div class="button-row"><button class="secondary" onclick={() => exportSession(session,'txt')}>TXT bilingüe</button><button class="secondary" onclick={() => exportSession(session,'srt')}>SRT ES</button><button class="secondary" onclick={() => exportSession(session,'srt-bilingual')}>SRT bilingüe</button><button class="secondary" onclick={() => exportSession(session,'vtt')}>VTT</button><button class="danger-button" onclick={() => remove(session)}>Eliminar</button></div></article>
       {/each}
     </div>
   {/if}
