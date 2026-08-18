@@ -33,11 +33,8 @@
   "content_scripts": [
     {
       "matches": [
-        "https://meet.google.com/*",
-        "https://teams.microsoft.com/*",
-        "https://*.teams.microsoft.com/*",
-        "https://zoom.us/*",
-        "https://*.zoom.us/*"
+        "http://*/*",
+        "https://*/*"
       ],
       "js": ["content.js"],
       "css": ["overlay.css"],
