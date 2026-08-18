@@ -2,6 +2,7 @@
 
 mod bootstrap;
 mod commands;
+mod repair;
 
 use bootstrap::AppState;
 use commands::*;
@@ -28,6 +29,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             get_app_status,
             get_onboarding_status,
+            repair_installation,
             get_system_info,
             get_config,
             save_config,
