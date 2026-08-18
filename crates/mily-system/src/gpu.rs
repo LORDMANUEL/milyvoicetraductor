@@ -44,8 +44,7 @@ fn platform_gpu_inventory() -> Vec<GpuAdapterInfo> {
 #[cfg(windows)]
 fn platform_gpu_inventory() -> Vec<GpuAdapterInfo> {
     use windows::Win32::Graphics::Dxgi::{
-        CreateDXGIFactory1, DXGI_ADAPTER_DESC1, DXGI_ADAPTER_FLAG_NONE, DXGI_ADAPTER_FLAG_SOFTWARE,
-        IDXGIFactory1,
+        CreateDXGIFactory1, DXGI_ADAPTER_FLAG_SOFTWARE, IDXGIFactory1,
     };
 
     let factory: IDXGIFactory1 = match unsafe { CreateDXGIFactory1() } {
@@ -60,10 +59,10 @@ fn platform_gpu_inventory() -> Vec<GpuAdapterInfo> {
             Err(_) => break,
         };
 
-        let mut desc = DXGI_ADAPTER_DESC1::default();
-        if unsafe { adapter.GetDesc1(&mut desc) }.ok().is_err() {
-            continue;
-        }
+        let desc = match unsafe { adapter.GetDesc1() } {
+            Ok(desc) => desc,
+            Err(_) => continue,
+        };
 
         let description_length = desc
             .Description
@@ -71,7 +70,7 @@ fn platform_gpu_inventory() -> Vec<GpuAdapterInfo> {
             .position(|value| *value == 0)
             .unwrap_or(desc.Description.len());
         let name = String::from_utf16_lossy(&desc.Description[..description_length]);
-        let software = (desc.Flags as i32 & DXGI_ADAPTER_FLAG_SOFTWARE) != DXGI_ADAPTER_FLAG_NONE;
+        let software = (desc.Flags as i32 & DXGI_ADAPTER_FLAG_SOFTWARE.0) != 0;
 
         adapters.push(GpuAdapterInfo {
             name: if name.trim().is_empty() {
