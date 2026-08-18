@@ -5,10 +5,12 @@
 //! después de medir inferencia real. CPU siempre existe como fallback seguro.
 
 mod cache;
+mod memory;
 mod registry;
 mod runtime;
 
 pub use cache::{BenchmarkKey, CachedSelection, SelectionCache};
+pub use memory::{MemoryBudget, MemoryBudgetInput, MemoryTier, calculate_memory_budget};
 pub use registry::BackendRegistry;
 pub use runtime::{RuntimeProbe, SystemRuntimeProbe, discover_runtime_backends};
 
