@@ -1,6 +1,5 @@
 use mily_compute::{
-    BackendObservation, BackendRegistry, BenchmarkKey, CachedSelection, ComputeBackend,
-    SelectionCache,
+    BackendObservation, BackendRegistry, BenchmarkKey, CachedSelection, ComputeBackend, SelectionCache,
 };
 use tempfile::tempdir;
 
@@ -21,7 +20,12 @@ fn detected_runtime_is_not_ready_until_adapter_is_validated() {
     assert!(!detected.adapter_ready);
 
     assert!(registry.mark_adapter_ready(ComputeBackend::DirectMl));
-    assert!(registry.capability(ComputeBackend::DirectMl).unwrap().adapter_ready);
+    assert!(
+        registry
+            .capability(ComputeBackend::DirectMl)
+            .unwrap()
+            .adapter_ready
+    );
 }
 
 #[test]
@@ -55,7 +59,10 @@ fn cache_is_scoped_to_exact_hardware_and_model_version() {
         })
         .unwrap();
 
-    assert_eq!(cache.load_for(&key).unwrap().unwrap().backend, ComputeBackend::Cpu);
+    assert_eq!(
+        cache.load_for(&key).unwrap().unwrap().backend,
+        ComputeBackend::Cpu
+    );
 
     let changed_model = BenchmarkKey {
         model_version: "1.0.1".into(),
