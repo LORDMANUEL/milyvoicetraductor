@@ -19,6 +19,7 @@
     errorMessage: null
   };
   let installing = false;
+  let repairing = false;
   let errorCode = '';
   let errorMessage = '';
   let pollTimer: ReturnType<typeof setInterval> | null = null;
@@ -64,6 +65,25 @@
     }
   }
 
+  async function repair() {
+    repairing = true;
+    errorCode = '';
+    errorMessage = '';
+    try {
+      await desktopApi.repairInstallation();
+      await refresh();
+      if (state.runtimeReady && state.bootstrapState !== 'failed' && state.modelState !== 'ready') {
+        await prepareModel();
+      }
+    } catch (error) {
+      errorCode = 'REPAIR_FAILED';
+      const candidate = error && typeof error === 'object' && 'message' in error ? String((error as { message?: unknown }).message || '') : '';
+      errorMessage = candidate || 'No se pudo reparar la instalación automáticamente. Ejecuta nuevamente el instalador si el problema continúa.';
+    } finally {
+      repairing = false;
+    }
+  }
+
   async function retry() {
     await prepareModel();
   }
@@ -95,7 +115,7 @@
     <div class="onboarding-steps">
       <article class:done={state.runtimeReady} class:error={!state.runtimeReady && state.bootstrapState === 'failed'}>
         <span class="step-index">1</span>
-        <div><strong>Runtime privado</strong><small>{state.runtimeReady ? 'Python y dependencias listos' : 'Verificando componentes incluidos…'}</small></div>
+        <div><strong>Runtime privado</strong><small>{state.runtimeReady ? 'Python y dependencias listos' : repairing ? 'Reparando componentes incluidos…' : 'Verificando componentes incluidos…'}</small></div>
         <b>{state.runtimeReady ? '✓' : step === 'runtime' && state.bootstrapState === 'failed' ? '!' : '…'}</b>
       </article>
       <article class:done={state.bridgeReady}>
@@ -119,28 +139,27 @@
     </div>
 
     {#if installing}
-      <div class="download-progress" aria-label="Descargando modelos">
-        <span></span>
-      </div>
+      <div class="download-progress" aria-label="Descargando modelos"><span></span></div>
       <p class="onboarding-note">Puedes dejar esta ventana abierta. Si Internet se corta, Reintentar continuará usando los archivos válidos ya descargados.</p>
     {/if}
 
-    {#if state.bootstrapState === 'failed'}
+    {#if state.bootstrapState === 'failed' || !state.runtimeReady}
       <div class="onboarding-error" role="alert">
-        <strong>{state.errorCode || 'BOOTSTRAP_FAILED'}</strong>
+        <strong>{state.errorCode || 'RUNTIME_NOT_READY'}</strong>
         <span>{state.errorMessage || 'El runtime local necesita reparación antes de descargar modelos.'}</span>
+        <button class="primary" onclick={repair} disabled={repairing || installing}>{repairing ? 'Reparando…' : 'Reparar instalación'}</button>
       </div>
     {:else if errorMessage}
       <div class="onboarding-error" role="alert">
         <strong>{errorCode}</strong>
         <span>{errorMessage}</span>
-        <button class="primary" onclick={retry} disabled={installing}>Reintentar</button>
+        <button class="primary" onclick={retry} disabled={installing || repairing}>Reintentar</button>
       </div>
     {/if}
 
     <footer class="onboarding-footer">
       <span>🔒 Audio y credenciales permanecen en este equipo.</span>
-      {#if !installing && state.runtimeReady && state.modelState !== 'ready' && !errorMessage}
+      {#if !installing && !repairing && state.runtimeReady && state.modelState !== 'ready' && !errorMessage}
         <button class="primary" onclick={retry}>Preparar ahora</button>
       {/if}
     </footer>
