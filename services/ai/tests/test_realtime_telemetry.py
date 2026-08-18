@@ -33,6 +33,12 @@ class RealtimeTelemetryTests(unittest.TestCase):
         self.assertFalse(controller.allow_partial_translation("pressure"))
         self.assertFalse(controller.allow_partial_translation("overloaded"))
 
+    def test_partial_asr_is_optional_under_pressure_but_final_asr_is_not_controlled_here(self):
+        controller = LatencyController()
+        self.assertTrue(controller.allow_partial_asr("healthy"))
+        self.assertFalse(controller.allow_partial_asr("pressure"))
+        self.assertFalse(controller.allow_partial_asr("overloaded"))
+
 
 if __name__ == "__main__":
     unittest.main()
