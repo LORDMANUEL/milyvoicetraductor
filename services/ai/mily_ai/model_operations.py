@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import os
 import shutil
 from pathlib import Path
 from typing import Any
@@ -17,6 +16,89 @@ from .models import (
 )
 
 _FAST_MOONSHINE_PACK = "fast-moonshine-en-es"
+_MOONSHINE_NON_STREAMING_REQUIRED = (
+    "encoder_model.ort",
+    "decoder_model_merged.ort",
+    "tokenizer.bin",
+)
+_MOONSHINE_STREAMING_REQUIRED = (
+    "frontend.ort",
+    "encoder.ort",
+    "adapter.ort",
+    "cross_kv.ort",
+    "decoder_kv.ort",
+    "streaming_config.json",
+    "tokenizer.bin",
+)
+_MOONSHINE_NON_STREAMING_ATTENTION = "decoder_model_merged_with_attention.ort"
+_MOONSHINE_STREAMING_ATTENTION = "decoder_kv_with_attention.ort"
+
+
+def _moonshine_arch_name(model_arch: object) -> str:
+    name = str(getattr(model_arch, "name", "") or "").strip().upper()
+    if name:
+        return name
+    return str(model_arch).strip().upper()
+
+
+def _moonshine_required_files(
+    model_arch: object,
+    *,
+    include_word_timestamps: bool = False,
+) -> tuple[str, ...]:
+    """Devuelve el layout oficial según la arquitectura Moonshine descargada."""
+
+    streaming = "STREAMING" in _moonshine_arch_name(model_arch)
+    required = list(
+        _MOONSHINE_STREAMING_REQUIRED
+        if streaming
+        else _MOONSHINE_NON_STREAMING_REQUIRED
+    )
+    if include_word_timestamps:
+        required.append(
+            _MOONSHINE_STREAMING_ATTENTION
+            if streaming
+            else _MOONSHINE_NON_STREAMING_ATTENTION
+        )
+    return tuple(required)
+
+
+def _copy_moonshine_model_assets(
+    source: Path,
+    target: Path,
+    model_arch: object,
+    *,
+    include_word_timestamps: bool = False,
+) -> tuple[str, ...]:
+    """Copia únicamente archivos de inferencia; excluye spelling/TTS opcionales."""
+
+    source = Path(source)
+    target = Path(target)
+    required = _moonshine_required_files(
+        model_arch,
+        include_word_timestamps=include_word_timestamps,
+    )
+    missing = sorted(name for name in required if not (source / name).is_file())
+    if missing:
+        raise ModelOperationError(
+            "MODEL_PROVIDER_ERROR",
+            "El modelo Moonshine descargado está incompleto; faltan: "
+            + ", ".join(missing)
+            + ".",
+        )
+
+    shutil.rmtree(target, ignore_errors=True)
+    target.mkdir(parents=True, exist_ok=True)
+    try:
+        for name in required:
+            shutil.copy2(source / name, target / name)
+    except OSError as exc:
+        shutil.rmtree(target, ignore_errors=True)
+        raise ModelOperationError(
+            "MODEL_PROVIDER_ERROR",
+            "Moonshine no pudo preparar los archivos locales de inferencia.",
+        ) from exc
+    return required
 
 
 def _restore_state(catalog: ModelCatalog, state: dict[str, Any]) -> None:
@@ -52,7 +134,11 @@ def _download_moonshine_fast_pack(
         return _installed_pack(catalog, _FAST_MOONSHINE_PACK, version)
 
     try:
-        from moonshine_voice import ModelArch, get_model_for_language
+        from moonshine_voice import ModelArch
+        from moonshine_voice.download import (
+            download_model_from_info,
+            find_model_info,
+        )
     except ImportError as exc:
         raise ModelOperationError(
             "MODEL_RUNTIME_ERROR",
@@ -72,22 +158,19 @@ def _download_moonshine_fast_pack(
 
     cache_root = catalog.models_dir / ".downloads" / "moonshine"
     cache_root.mkdir(parents=True, exist_ok=True)
-    prior_cache = os.environ.get("MOONSHINE_VOICE_CACHE")
-    os.environ["MOONSHINE_VOICE_CACHE"] = str(cache_root)
+    include_word_timestamps = True
     try:
-        model_path, model_arch = get_model_for_language(
-            "en", ModelArch.TINY_STREAMING
+        model_info = find_model_info("en", ModelArch.TINY_STREAMING)
+        model_path, model_arch = download_model_from_info(
+            model_info,
+            cache_root=cache_root,
+            include_word_timestamps=include_word_timestamps,
         )
     except BaseException as exc:
         raise ModelOperationError(
             "MODEL_PROVIDER_ERROR",
             "Moonshine no pudo descargar el modelo streaming fijado.",
         ) from exc
-    finally:
-        if prior_cache is None:
-            os.environ.pop("MOONSHINE_VOICE_CACHE", None)
-        else:
-            os.environ["MOONSHINE_VOICE_CACHE"] = prior_cache
 
     source = Path(model_path)
     if not source.is_dir():
@@ -96,19 +179,19 @@ def _download_moonshine_fast_pack(
             "Moonshine no entregó un directorio de modelo válido.",
         )
     asr_target = staging / "components" / "asr"
-    shutil.copytree(source, asr_target, dirs_exist_ok=True)
-    required = ("encoder_model.ort", "decoder_model_merged.ort", "tokenizer.bin")
-    if any(not (asr_target / name).is_file() for name in required):
-        raise ModelOperationError(
-            "MODEL_PROVIDER_ERROR",
-            "El modelo Moonshine descargado está incompleto.",
-        )
+    _copy_moonshine_model_assets(
+        source,
+        asr_target,
+        model_arch,
+        include_word_timestamps=include_word_timestamps,
+    )
     (asr_target / "moonshine-config.json").write_text(
         json.dumps(
             {
                 "modelArch": int(model_arch),
                 "language": "en",
                 "updateInterval": 0.45,
+                "wordTimestampsAvailable": include_word_timestamps,
             },
             ensure_ascii=False,
             indent=2,
