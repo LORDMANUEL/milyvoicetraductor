@@ -57,14 +57,26 @@ class EngineHubCiReleasePolicyTests(unittest.TestCase):
         self.assertNotIn("_process_tree_working_set_mb", text)
         self.assertNotIn("_process_tree_private_working_set_mb", text)
 
-    def test_zh_benchmark_rejects_repetition_and_semantic_loss(self):
+    def test_zh_benchmark_rejects_repetition_semantic_loss_and_expansion(self):
         text = (WINDOWS / "test-zh-es-lite.ps1").read_text(encoding="utf-8")
-        self.assertIn("analyze_translation_quality", text)
-        self.assertIn("ZH_ES_TRANSLATION_REPETITION", text)
-        self.assertIn("ZH_ES_SEMANTIC_INVARIANT", text)
-        self.assertIn("semanticInvariantsPassed", text)
-        self.assertIn("maxRepeatedNgramRatio", text)
-        self.assertIn("maxNgramOccurrences", text)
+        for marker in (
+            "analyze_translation_quality",
+            "ZH_ES_TRANSLATION_REPETITION",
+            "ZH_ES_SEMANTIC_INVARIANT",
+            "ZH_ES_SEMANTIC_CONTRADICTION",
+            "ZH_ES_OUTPUT_EXPANSION",
+            "semanticInvariantsPassed",
+            "forbiddenTermsPassed",
+            "expansionLimitsPassed",
+            "sampleTranslations",
+            "maxRepeatedNgramRatio",
+            "maxNgramOccurrences",
+            "maxOutputWords",
+            "maxOutputSentences",
+            "lite-zh-es 1.0.1",
+        ):
+            with self.subTest(marker=marker):
+                self.assertIn(marker, text)
 
     def test_release_bundle_requires_simulation_and_all_lite_reports(self):
         for filename in (
