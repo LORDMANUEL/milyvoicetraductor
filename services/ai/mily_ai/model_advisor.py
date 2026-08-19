@@ -87,7 +87,6 @@ class ModelAdvisor:
             shared_gpu_mb=_finite_non_negative(
                 definition.get("sharedGpuMb", 0), 0.0
             ),
-            total_product_mb=measured_total_product,
             dedicated_vram_mb=_finite_non_negative(
                 definition.get("vramMb", 0), 0.0
             ),
@@ -208,6 +207,18 @@ class ModelAdvisor:
             ),
             99999.0,
         )
+        supported_backends = tuple(
+            str(item).strip().lower()
+            for item in definition.get("supportedBackends", ("cpu",))
+        )
+        reported_backend = str(report.get("backend", "cpu")).strip().lower()
+        if reported_backend == "gpu":
+            reported_backend = "cuda"
+        measured_backend = (
+            reported_backend
+            if reported_backend in supported_backends
+            else "unverified"
+        )
         return EngineCandidate(
             id=pack.id,
             engine_id=str(definition.get("engine", "")),
@@ -226,12 +237,7 @@ class ModelAdvisor:
                 p95_ms=end_to_end_p95,
                 stable=bool(report.get("passed", False)),
             ),
-            backends=tuple(
-                str(item)
-                for item in definition.get(
-                    "supportedBackends", ("cpu",)
-                )
-            ),
+            backends=(measured_backend,),
         )
 
     def optimize(
