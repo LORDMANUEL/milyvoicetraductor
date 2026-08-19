@@ -11,6 +11,10 @@ class EngineHubRuntimeBundleTests(unittest.TestCase):
         self.builder = (
             self.root / "installer" / "windows" / "build-python-runtime.ps1"
         ).read_text(encoding="utf-8")
+        cargo_config = self.root / ".cargo" / "config.toml"
+        self.cargo_config = (
+            cargo_config.read_text(encoding="utf-8") if cargo_config.is_file() else ""
+        )
 
     def test_private_runtime_packages_every_approved_optional_engine(self):
         for distribution in (
@@ -47,6 +51,11 @@ class EngineHubRuntimeBundleTests(unittest.TestCase):
         ):
             with self.subTest(runtime=runtime):
                 self.assertIn(runtime, self.builder)
+
+    def test_windows_whisper_bindings_are_not_replaced_by_linux_snapshot(self):
+        """MSVC must generate native bindings instead of copying Linux layouts."""
+
+        self.assertNotIn("WHISPER_DONT_GENERATE_BINDINGS", self.cargo_config)
 
 
 if __name__ == "__main__":
