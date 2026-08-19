@@ -1,3 +1,4 @@
+# Final certification trigger: this file also guards the Lite runtime contract.
 import tempfile
 import unittest
 import zipfile
