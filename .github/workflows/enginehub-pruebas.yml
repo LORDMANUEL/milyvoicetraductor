@@ -46,6 +46,27 @@ jobs:
           python -m unittest discover -s services/ai/tests -p "test_resource_governor.py" -v
           python -m unittest discover -s services/ai/tests -p "test_realtime_telemetry.py" -v
           python -m unittest discover -s services/ai/tests -p "test_coalescing_queue.py" -v
+          python -m unittest discover -s services/ai/tests -p "test_model_advisor_total_product_memory.py" -v
+
+  windows-native-bridge:
+    name: whisper.cpp persistent bridge / Windows MSVC
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - name: Build native bridge with platform-generated bindings
+        shell: pwsh
+        run: |
+          if ($env:WHISPER_DONT_GENERATE_BINDINGS) {
+            throw 'WHISPER_DONT_GENERATE_BINDINGS must not be set on Windows MSVC.'
+          }
+          cargo build -p mily-bridge --release
+      - name: Test and lint native bridge
+        run: |
+          cargo test -p mily-bridge
+          cargo clippy -p mily-bridge --all-targets -- -D warnings
 
   rustfmt:
     name: Rust formatting gate
