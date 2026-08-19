@@ -70,6 +70,34 @@ class EngineRegistryTests(unittest.TestCase):
         self.assertEqual(selected.candidate.id, "cpu-lite")
         self.assertIn("quality-heavy", selected.rejected)
 
+    def test_product_reserve_is_applied_during_selection(self):
+        selected = self.registry.select(
+            route="en-es",
+            candidates=[
+                EngineCandidate(
+                    id="quality-heavy",
+                    engine_id="quality-heavy",
+                    ram_mb=1800,
+                    vram_mb=0,
+                    quality_score=0.99,
+                    benchmark=BenchmarkSample(rtf=0.2, p95_ms=400),
+                ),
+                EngineCandidate(
+                    id="cpu-lite",
+                    engine_id="cpu-lite",
+                    ram_mb=1200,
+                    vram_mb=0,
+                    quality_score=0.80,
+                    benchmark=BenchmarkSample(rtf=0.55, p95_ms=950),
+                ),
+            ],
+            installed_runtimes={"builtin"},
+        )
+        self.assertEqual(selected.candidate.id, "cpu-lite")
+        self.assertEqual(
+            selected.rejected["quality-heavy"], "PROCESS_MEMORY_LIMIT"
+        )
+
     def test_cloud_engine_requires_explicit_consent(self):
         candidate = EngineCandidate(
             id="chirp",
