@@ -1,0 +1,45 @@
+name: Patch whisper.cpp bridge visibility
+
+on:
+  push:
+    branches: [pruebas]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: patch-whisperbridge-visibility
+  cancel-in-progress: true
+
+jobs:
+  patch:
+    if: ${{ !contains(github.event.head_commit.message, '[bridge visibility applied]') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: pruebas
+          fetch-depth: 0
+      - name: Align error visibility with run_stdio
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('crates/mily-bridge/src/whispercpp.rs')
+          text = path.read_text(encoding='utf-8')
+          old = '#[derive(Debug, Error)]\nenum WhisperBridgeError {'
+          new = '#[derive(Debug, Error)]\npub(crate) enum WhisperBridgeError {'
+          if old not in text:
+              raise SystemExit(0)
+          path.write_text(text.replace(old, new, 1), encoding='utf-8')
+          PY
+          if git diff --quiet; then
+            echo "Visibility already correct."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add crates/mily-bridge/src/whispercpp.rs
+          git commit -m "fix: expose bridge error within crate [bridge visibility applied]"
+          git push origin HEAD:pruebas
