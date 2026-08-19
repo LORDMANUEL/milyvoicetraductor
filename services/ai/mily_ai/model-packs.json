@@ -22,13 +22,13 @@
         "asr": {
           "provider": "faster-whisper",
           "repoId": "Systran/faster-whisper-tiny.en",
-          "revision": "0d3d19a",
+          "revision": "0d3d19a32d3338f10357c0889762bd8d64bbdeba",
           "estimatedRamMb": 360
         },
         "translation": {
           "provider": "marian-ct2",
           "repoId": "Helsinki-NLP/opus-mt_tiny_eng-spa",
-          "revision": "691fd47",
+          "revision": "691fd47381a57d0de256a0e0b201bd83d1f48ba0",
           "quantization": "int8",
           "sourceLanguage": "en",
           "targetLanguage": "es",
