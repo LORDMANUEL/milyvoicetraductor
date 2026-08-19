@@ -1,7 +1,8 @@
 import { invoke } from '@tauri-apps/api/core';
 import type {
-  AppConfig, AppStatus, CacheStatus, EngineRuntimeStatus, HardwareAdvisor, LocalEngineSession,
-  ModelPackInfo, OnboardingStatus, RuntimeLocations, SessionSummary, SystemSnapshot
+  AppConfig, AppStatus, AutoSelectionResult, CacheStatus, EngineRuntimeStatus,
+  HardwareAdvisor, LocalEngineSession, ModelPackInfo, OnboardingStatus,
+  RuntimeLocations, SessionSummary, SystemSnapshot
 } from '../types';
 
 export const defaultConfig: AppConfig = {
@@ -17,7 +18,7 @@ export const defaultConfig: AppConfig = {
   persistTranscripts: false,
   computeProfile: 'auto',
   enginePort: 8765,
-  activeModelPack: 'realtime-m2m100',
+  activeModelPack: 'lite-en-es',
   showOriginalSubtitle: true
 };
 
@@ -59,13 +60,9 @@ export class DesktopApi {
 
   async getSystemInfo(): Promise<SystemSnapshot> {
     if (!isTauriEnvironment()) return {
-      operatingSystem: 'Vista previa web',
-      architecture: 'N/D',
-      cpuBrand: 'Disponible únicamente en Tauri',
-      logicalCpus: 0,
-      physicalCpus: 0,
-      totalMemoryMb: 0,
-      availableMemoryMb: 0,
+      operatingSystem: 'Vista previa web', architecture: 'N/D',
+      cpuBrand: 'Disponible únicamente en Tauri', logicalCpus: 0, physicalCpus: 0,
+      totalMemoryMb: 0, availableMemoryMb: 0,
       cpuFeatures: { sse42: false, avx: false, avx2: false, fma: false, avx512f: false, neon: false },
       gpu: null
     };
@@ -77,16 +74,9 @@ export class DesktopApi {
       const system = await this.getSystemInfo();
       return {
         system,
-        backends: [{
-          backend: 'cpu',
-          runtimeDetected: true,
-          adapterReady: true,
-          evidence: ['fallback de vista previa']
-        }],
-        recommendedBackend: 'cpu',
-        recommendedProfile: 'legacy',
-        legacyHaswellCompatible: false,
-        benchmarkRequired: true,
+        backends: [{ backend: 'cpu', runtimeDetected: true, adapterReady: true, evidence: ['fallback de vista previa'] }],
+        recommendedBackend: 'cpu', recommendedProfile: 'legacy',
+        legacyHaswellCompatible: false, benchmarkRequired: true,
         message: 'Instala MilyVoice para medir el hardware real.'
       };
     }
@@ -139,7 +129,23 @@ export class DesktopApi {
   }
 
   async installModel(packId: string): Promise<ModelPackInfo> {
+    if (!isTauriEnvironment()) throw new Error('La descarga requiere la aplicación instalada.');
     return invoke<ModelPackInfo>('install_model', { packId });
+  }
+
+  async activateModel(packId: string, version: string): Promise<ModelPackInfo> {
+    if (!isTauriEnvironment()) throw new Error('La activación requiere la aplicación instalada.');
+    return invoke<ModelPackInfo>('activate_model', { packId, version });
+  }
+
+  async optimizeModels(route = 'en-es', forceBenchmark = true): Promise<AutoSelectionResult> {
+    if (!isTauriEnvironment()) throw new Error('El benchmark requiere la aplicación instalada.');
+    return invoke<AutoSelectionResult>('optimize_models', { route, forceBenchmark });
+  }
+
+  async importModelPack(path: string): Promise<ModelPackInfo> {
+    if (!isTauriEnvironment()) throw new Error('La importación requiere la aplicación instalada.');
+    return invoke<ModelPackInfo>('import_model_pack', { path });
   }
 
   async verifyModel(packId: string, version: string): Promise<boolean> {
@@ -148,10 +154,12 @@ export class DesktopApi {
   }
 
   async removeModel(packId: string, version: string): Promise<void> {
+    if (!isTauriEnvironment()) return;
     return invoke<void>('remove_model', { packId, version });
   }
 
   async rollbackModel(): Promise<ModelPackInfo> {
+    if (!isTauriEnvironment()) throw new Error('Rollback requiere la aplicación instalada.');
     return invoke<ModelPackInfo>('rollback_model');
   }
 

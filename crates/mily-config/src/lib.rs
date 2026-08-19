@@ -9,6 +9,7 @@ use std::path::{Path, PathBuf};
 use thiserror::Error;
 
 const CONFIG_SCHEMA_VERSION: u32 = 2;
+const DEFAULT_MODEL_PACK: &str = "lite-en-es";
 
 #[derive(Debug, Clone)]
 pub struct AppPaths {
@@ -110,7 +111,7 @@ impl Default for AppConfig {
             persist_transcripts: false,
             compute_profile: "auto".into(),
             engine_port: 8765,
-            active_model_pack: "realtime-m2m100".into(),
+            active_model_pack: DEFAULT_MODEL_PACK.into(),
             show_original_subtitle: true,
         }
     }
@@ -133,9 +134,9 @@ impl AppConfig {
         }
         if !matches!(
             self.active_model_pack.as_str(),
-            "realtime-m2m100" | "lite-nllb" | "business-qwen"
+            "lite-en-es" | "realtime-m2m100" | "lite-nllb" | "business-qwen"
         ) {
-            self.active_model_pack = "realtime-m2m100".into();
+            self.active_model_pack = DEFAULT_MODEL_PACK.into();
         }
         self.cache_limit_mb = self.cache_limit_mb.clamp(64, 4096);
         self.engine_port = self.engine_port.clamp(1024, 65_535);
@@ -166,7 +167,6 @@ fn replace_file(source: &Path, destination: &Path) -> io::Result<()> {
         if !destination.exists() {
             return fs::rename(source, destination);
         }
-
         let backup = replacement_backup_path(destination);
         fs::rename(destination, &backup)?;
         match fs::rename(source, destination) {
@@ -254,6 +254,8 @@ impl ConfigService {
             "persistTranscripts": config.persist_transcripts,
             "activeModelPack": config.active_model_pack,
             "logLevel": config.log_level,
+            "resourceLimitMb": 2048,
+            "vramLimitMb": 384,
         });
         let path = parent.join("engine.json");
         let temp = parent.join("engine.json.tmp");
@@ -286,7 +288,7 @@ mod tests {
         let config = ConfigService::new(path).load_or_default().unwrap();
         assert_eq!(config.source_language, "zh");
         assert_eq!(config.compute_profile, "auto");
-        assert_eq!(config.active_model_pack, "realtime-m2m100");
+        assert_eq!(config.active_model_pack, "lite-en-es");
         assert!(!config.persist_transcripts);
         assert_eq!(config.schema_version, 2);
     }
@@ -297,11 +299,9 @@ mod tests {
         let path = dir.path().join("config.json");
         fs::write(&path, b"{ definitely-not-valid-json").unwrap();
         let service = ConfigService::new(&path);
-
         let config = service
             .load_or_default()
             .expect("una configuración corrupta anterior no debe impedir el arranque");
-
         assert_eq!(config, AppConfig::default());
         assert!(!path.exists());
         assert!(dir.path().join("config.json.invalid").exists());
@@ -322,7 +322,7 @@ mod tests {
         assert_eq!(config.source_language, "auto");
         assert_eq!(config.compute_profile, "auto");
         assert_eq!(config.engine_port, 1024);
-        assert_eq!(config.active_model_pack, "realtime-m2m100");
+        assert_eq!(config.active_model_pack, "lite-en-es");
     }
 
     #[cfg(windows)]
@@ -336,9 +336,7 @@ mod tests {
             source_language: "en".into(),
             ..AppConfig::default()
         };
-        service
-            .save(&desired)
-            .expect("guardar debe reemplazar config existente");
+        service.save(&desired).expect("guardar debe reemplazar config existente");
         let loaded = service.load_or_default().unwrap();
         assert_eq!(loaded.source_language, "en");
     }
@@ -356,6 +354,7 @@ mod tests {
             .expect("guardar engine.json debe reemplazar el archivo existente");
         let payload = fs::read_to_string(engine_path).unwrap();
         assert!(payload.contains(r#""sourceLanguage": "auto""#));
+        assert!(payload.contains(r#""resourceLimitMb": 2048"#));
     }
 
     #[cfg(windows)]
@@ -365,10 +364,8 @@ mod tests {
         let missing_source = dir.path().join("missing.tmp");
         let destination = dir.path().join("config.json");
         fs::write(&destination, b"important prior config").unwrap();
-
         let error = replace_file(&missing_source, &destination)
             .expect_err("reemplazar desde una fuente inexistente debe fallar");
-
         assert_eq!(error.kind(), io::ErrorKind::NotFound);
         assert!(destination.is_file());
         assert_eq!(fs::read(destination).unwrap(), b"important prior config");
