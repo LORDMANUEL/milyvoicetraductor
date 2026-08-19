@@ -34,10 +34,7 @@ jobs:
           set -euo pipefail
           rm -rf release
           mkdir -p release
-          gh run download "$RUN_ID" \
-            --repo "$REPOSITORY" \
-            --name "$ARTIFACT_NAME" \
-            --dir release
+          gh run download "$RUN_ID" --repo "$REPOSITORY" --name "$ARTIFACT_NAME" --dir release
 
       - name: Verify published file set and SHA-256 checksums
         shell: bash
@@ -48,6 +45,7 @@ jobs:
           test -f release/MilyVoiceTraductor-2.0.1-TargetMachineSimulation.json
           test -f release/MilyVoiceTraductor-2.0.1-MoonshineLiteBench.json
           test -f release/MilyVoiceTraductor-2.0.1-WhisperTinyLiteBench.json
+          test -f release/MilyVoiceTraductor-2.0.1-ZhEsLiteBench.json
           test -f release/SHA256SUMS.txt
           cd release
           sha256sum -c SHA256SUMS.txt
@@ -57,21 +55,10 @@ jobs:
         run: |
           set -euo pipefail
           if gh release view "$RELEASE_TAG" --repo "$REPOSITORY" >/dev/null 2>&1; then
-            gh release edit "$RELEASE_TAG" \
-              --repo "$REPOSITORY" \
-              --title "$RELEASE_TITLE" \
-              --notes-file docs/release/RELEASE_NOTES_2.0.1.md \
-              --latest
-            gh release upload "$RELEASE_TAG" release/* \
-              --repo "$REPOSITORY" \
-              --clobber
+            gh release edit "$RELEASE_TAG" --repo "$REPOSITORY" --title "$RELEASE_TITLE" --notes-file docs/release/RELEASE_NOTES_2.0.1.md --latest
+            gh release upload "$RELEASE_TAG" release/* --repo "$REPOSITORY" --clobber
           else
-            gh release create "$RELEASE_TAG" release/* \
-              --repo "$REPOSITORY" \
-              --target "$VERIFIED_SHA" \
-              --title "$RELEASE_TITLE" \
-              --notes-file docs/release/RELEASE_NOTES_2.0.1.md \
-              --latest
+            gh release create "$RELEASE_TAG" release/* --repo "$REPOSITORY" --target "$VERIFIED_SHA" --title "$RELEASE_TITLE" --notes-file docs/release/RELEASE_NOTES_2.0.1.md --latest
           fi
 
       - name: Confirm release assets
@@ -84,5 +71,6 @@ jobs:
           grep -Fxq 'MilyVoiceTraductor-2.0.1-TargetMachineSimulation.json' <<<"$assets"
           grep -Fxq 'MilyVoiceTraductor-2.0.1-MoonshineLiteBench.json' <<<"$assets"
           grep -Fxq 'MilyVoiceTraductor-2.0.1-WhisperTinyLiteBench.json' <<<"$assets"
+          grep -Fxq 'MilyVoiceTraductor-2.0.1-ZhEsLiteBench.json' <<<"$assets"
           grep -Fxq 'SHA256SUMS.txt' <<<"$assets"
           gh release view "$RELEASE_TAG" --repo "$REPOSITORY" --json url --jq '.url'
