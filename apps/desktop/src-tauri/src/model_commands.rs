@@ -52,10 +52,7 @@ pub async fn import_model_pack(
             )
         })?
         .inspect(|pack| {
-            let _ = logger.write(
-                "info",
-                &format!("Pack externo validado: {}", pack.id),
-            );
+            let _ = logger.write("info", &format!("Pack externo validado: {}", pack.id));
         })
         .map_err(|error| public_error(error.public_code(), error.public_message()))
 }
@@ -68,24 +65,22 @@ pub async fn optimize_models(
 ) -> Result<AutoSelectionResult, PublicError> {
     let models = state.models.clone();
     let logger = state.logger.clone();
-    tauri::async_runtime::spawn_blocking(move || {
-        models.auto_select(&route, force_benchmark)
-    })
-    .await
-    .map_err(|_| {
-        public_error(
-            "MODEL_RUNTIME_ERROR",
-            "El benchmark terminó inesperadamente.",
-        )
-    })?
-    .inspect(|selection| {
-        let _ = logger.write(
-            "info",
-            &format!(
-                "Engine Hub seleccionó {} sobre {}.",
-                selection.selected, selection.backend
-            ),
-        );
-    })
-    .map_err(|error| public_error(error.public_code(), error.public_message()))
+    tauri::async_runtime::spawn_blocking(move || models.auto_select(&route, force_benchmark))
+        .await
+        .map_err(|_| {
+            public_error(
+                "MODEL_RUNTIME_ERROR",
+                "El benchmark terminó inesperadamente.",
+            )
+        })?
+        .inspect(|selection| {
+            let _ = logger.write(
+                "info",
+                &format!(
+                    "Engine Hub seleccionó {} sobre {}.",
+                    selection.selected, selection.backend
+                ),
+            );
+        })
+        .map_err(|error| public_error(error.public_code(), error.public_message()))
 }
