@@ -1,39 +1,52 @@
-import json
+import tempfile
 import unittest
+import zipfile
 from pathlib import Path
+
+from mily_ai.betaalpha_native_marian import _safe_extract_zip
 
 
 ROOT = Path(__file__).resolve().parents[3]
-CATALOG = ROOT / "services" / "ai" / "mily_ai" / "model-packs.json"
-MODELS = ROOT / "services" / "ai" / "mily_ai" / "models.py"
+PATCH = ROOT / "services" / "ai" / "mily_ai" / "betaalpha_native_marian.py"
+MAIN = ROOT / "services" / "ai" / "main.py"
+LITE_REQ = ROOT / "services" / "ai" / "requirements.lite.txt"
 
 
 class BetaAlphaNativeMarianConversionTests(unittest.TestCase):
-    def test_lite_marian_packs_download_native_opus_assets(self):
-        payload = json.loads(CATALOG.read_text(encoding="utf-8"))
-        packs = {item["id"]: item for item in payload["packs"]}
-
-        native_names = {
-            "final.model.npz.best-perplexity.npz",
-            "final.model.npz.best-perplexity.npz.decoder.yml",
-            "vocab.spm",
-        }
-        for pack_id in ("lite-en-es", "fast-moonshine-en-es", "betaalpha-zipformer-en-es"):
-            translation = packs[pack_id]["components"]["translation"]
-            patterns = set(translation.get("allowPatterns", ()))
-            self.assertTrue(
-                native_names.issubset(patterns),
-                f"{pack_id} debe poder convertirse sin Torch/Transformers",
-            )
-
-    def test_marian_conversion_prefers_opus_native_converter(self):
-        text = MODELS.read_text(encoding="utf-8")
+    def test_native_converter_covers_tiny_en_es_and_zh_en_without_transformers(self):
+        text = PATCH.read_text(encoding="utf-8")
+        self.assertIn("Helsinki-NLP/opus-mt_tiny_eng-spa", text)
+        self.assertIn("Helsinki-NLP/opus-mt-zh-en", text)
         self.assertIn("OpusMTConverter", text)
-        start = text.index("def _convert_marian_to_ctranslate2")
-        end = text.index("\ndef _prepare_component", start)
-        marian_block = text[start:end]
-        self.assertIn("OpusMTConverter", marian_block)
-        self.assertNotIn("TransformersConverter", marian_block)
+        self.assertIn("final.model.npz.best-perplexity.npz", text)
+        self.assertIn("opus-2020-07-17.zip", text)
+        self.assertNotIn("TransformersConverter", text)
+        self.assertNotIn("import torch", text)
+        self.assertNotIn("import transformers", text)
+
+    def test_patch_is_installed_before_cli_import(self):
+        text = MAIN.read_text(encoding="utf-8")
+        install_at = text.index("install_betaalpha_native_marian_patch()")
+        cli_at = text.index("from mily_ai.cli import main")
+        self.assertLess(install_at, cli_at)
+
+    def test_lite_requirements_stay_free_of_training_frameworks(self):
+        active = [
+            line.strip().lower()
+            for line in LITE_REQ.read_text(encoding="utf-8").splitlines()
+            if line.strip() and not line.lstrip().startswith("#")
+        ]
+        self.assertFalse(any(line.startswith("torch") for line in active))
+        self.assertFalse(any(line.startswith("transformers") for line in active))
+
+    def test_native_zip_extractor_rejects_path_traversal(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            archive = root / "unsafe.zip"
+            with zipfile.ZipFile(archive, "w") as bundle:
+                bundle.writestr("../escape.txt", "no")
+            with self.assertRaises(RuntimeError):
+                _safe_extract_zip(archive, root / "out")
 
 
 if __name__ == "__main__":
