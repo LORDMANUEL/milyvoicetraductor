@@ -47,13 +47,24 @@ export interface ModelPackInfo {
   licenseNote: string;
   tier: 'lite' | 'balanced' | 'quality' | 'experimental' | string;
   routes: string[];
+  /** Huella declarada del motor/modelos, sin Desktop ni bridge. */
   ramMb: number;
   vramMb: number;
+  /** Memoria de sistema compartida por iGPU que cuenta contra los 2 GiB. */
+  sharedGpuMb: number;
+  /** Reserva fija para Desktop Tauri + Native Messaging bridge. */
+  productReserveMb: number;
+  /** Motor + iGPU compartida + reserva base del producto. */
+  estimatedTotalProductMb: number;
   engine: string;
   supportedBackends: string[];
   resourceAllowed: boolean;
   resourceReason: string;
   externalAllowed: boolean;
+  measuredEngineRamMb?: number;
+  measuredTotalProductMb?: number;
+  resourceMode?: string;
+  benchmark?: Record<string, unknown> | null;
 }
 
 export interface AutoSelectionResult {
@@ -132,7 +143,7 @@ export interface AppConfig {
   persistTranscripts: boolean;
   computeProfile: 'auto' | 'cpu' | 'gpu';
   enginePort: number;
-  activeModelPack: 'lite-en-es' | 'realtime-m2m100' | 'lite-nllb' | 'business-qwen';
+  activeModelPack: string;
   showOriginalSubtitle: boolean;
 }
 
@@ -164,9 +175,11 @@ export interface RealtimeEvent {
   peak?: number;
   silentMs?: number;
   speech?: boolean;
-  pressure?: 'healthy' | 'pressure' | 'overloaded' | 'catchUp' | 'rescue';
+  pressure?: 'healthy' | 'pressure' | 'catch_up' | 'catchUp' | 'rescue';
   audioQueueMs?: number;
   translationQueueAgeMs?: number;
+  processMemoryMb?: number;
+  memoryHeadroomMb?: number;
   realTimeFactor?: number;
   asrP50Ms?: number;
   asrP95Ms?: number;
