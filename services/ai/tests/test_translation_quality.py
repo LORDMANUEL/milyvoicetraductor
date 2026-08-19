@@ -23,6 +23,22 @@ class _TranslatorStub:
         return [SimpleNamespace(hypotheses=[["informe", "técnico", "mañana"]])]
 
 
+class _SequenceTranslatorStub:
+    def __init__(self):
+        self.calls = 0
+        self.options: list[dict] = []
+        self.outputs = [
+            ["Cancele", "el", "pedido"],
+            ["No", "cancele", "el", "pedido", "1038"],
+        ]
+
+    def translate_batch(self, _sources, **options):
+        self.options.append(options)
+        index = min(self.calls, len(self.outputs) - 1)
+        self.calls += 1
+        return [SimpleNamespace(hypotheses=[self.outputs[index]])]
+
+
 class TranslationQualityTests(unittest.TestCase):
     def test_pathological_repetition_is_rejected(self):
         result = analyze_translation_quality(
@@ -59,6 +75,25 @@ class TranslationQualityTests(unittest.TestCase):
         self.assertEqual(translator.options["beam_size"], 1)
         self.assertGreater(translator.options["repetition_penalty"], 1.0)
         self.assertGreaterEqual(translator.options["no_repeat_ngram_size"], 3)
+
+    def test_marian_retries_when_negation_or_number_is_lost(self):
+        provider = CTranslate2RealtimeMarianTranslator(
+            Path("unused"),
+            "cpu",
+            source_language="en",
+            target_language="es",
+        )
+        translator = _SequenceTranslatorStub()
+        provider._translator = translator
+        provider._source_sp = _SentencePieceStub()
+        provider._target_sp = _SentencePieceStub()
+
+        translated = provider.translate("Do not cancel order 1038.", "en")
+
+        self.assertEqual(translator.calls, 2)
+        self.assertEqual(translated, "No cancele el pedido 1038")
+        self.assertEqual(translator.options[0]["beam_size"], 1)
+        self.assertEqual(translator.options[1]["beam_size"], 2)
 
 
 if __name__ == "__main__":

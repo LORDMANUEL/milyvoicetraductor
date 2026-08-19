@@ -11,7 +11,7 @@ from mily_ai.models import InstalledPack
 from mily_ai.pipeline import RealtimePipeline
 from mily_ai.providers import AsrSegment, Translator
 from mily_ai.sessions import SessionRecorder
-from mily_ai.streaming import AdaptiveSpeechSegmenter
+from mily_ai.streaming import AdaptiveSpeechSegmenter, StreamingEvent
 
 
 class FakeAsr:
@@ -27,6 +27,20 @@ class FakeAsr:
         }
         text = texts.get(self.calls, "")
         return [AsrSegment(0.0, 1.0, text, "en")] if text else []
+
+
+class FakeIncompleteAsr:
+    def __init__(self):
+        self.calls = 0
+
+    def transcribe(self, _samples, _source_language):
+        self.calls += 1
+        text = (
+            "I don't think we should"
+            if self.calls <= 2
+            else "I don't think we should cancel the order"
+        )
+        return [AsrSegment(0.0, 1.0, text, "en")]
 
 
 class FakeTranslator(Translator):
@@ -116,6 +130,35 @@ class PipelineStreamingTests(unittest.TestCase):
             translated = pipeline.execute_translation(translation_requests[0])
             self.assertEqual(len(translator.calls), 1)
             self.assertTrue(translated.type.startswith("translation."))
+
+    def test_incomplete_english_prefix_waits_before_partial_translation(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            pipeline, _recorder, _translator = self.build_pipeline(Path(tmp))
+            pipeline.asr = FakeIncompleteAsr()
+            window = StreamingEvent(
+                kind="partial",
+                samples=[0.2] * 16000,
+                start_sample=0,
+                end_sample=16000,
+            )
+
+            _events, first = pipeline._ingest_window(window)
+            _events, second = pipeline._ingest_window(window)
+            self.assertEqual(first, [])
+            self.assertEqual(
+                second,
+                [],
+                "No debe traducir 'I don't think we should' antes de conocer el verbo principal.",
+            )
+
+            _events, third = pipeline._ingest_window(window)
+            _events, fourth = pipeline._ingest_window(window)
+            self.assertEqual(third, [])
+            self.assertEqual(len(fourth), 1)
+            self.assertEqual(
+                fourth[0].original,
+                "I don't think we should cancel the order",
+            )
 
     def test_partial_then_stable_translation_then_final(self):
         with tempfile.TemporaryDirectory() as tmp:
