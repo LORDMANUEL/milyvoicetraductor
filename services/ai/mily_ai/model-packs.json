@@ -62,6 +62,52 @@
     },
     {
       "schemaVersion": 2,
+      "id": "betaalpha-zipformer-en-es",
+      "version": "1.0.0",
+      "title": "BetaAlpha EN→ES (Zipformer 20M INT8 + Marian Tiny INT8)",
+      "tier": "lite",
+      "routes": ["en-es"],
+      "ramMb": 620,
+      "vramMb": 0,
+      "recommendedRamGb": 2,
+      "engine": "sherpa-onnx-local",
+      "format": "sherpa-onnx-online-int8+ctranslate2-int8",
+      "supportedBackends": ["cpu"],
+      "bundled": false,
+      "externalAllowed": false,
+      "commercialUse": true,
+      "licenseNote": "El modelo Zipformer EN de csukuangfj/sherpa-onnx declara Apache-2.0 y Marian Tiny EN→ES mantiene Apache-2.0. Ambos quedan fijados por revisión y se ejecutan localmente.",
+      "components": {
+        "asr": {
+          "provider": "sherpa-onnx",
+          "repoId": "csukuangfj/sherpa-onnx-streaming-zipformer-en-20M-2023-02-17",
+          "revision": "d42f2d9f7ca24806fb667456a18a9f1b60f70d16",
+          "language": "en",
+          "sherpaMode": "online-transducer",
+          "maxThreads": 2,
+          "sampleRate": 16000,
+          "featureDim": 80,
+          "encoder": "encoder-epoch-99-avg-1.int8.onnx",
+          "decoder": "decoder-epoch-99-avg-1.onnx",
+          "joiner": "joiner-epoch-99-avg-1.int8.onnx",
+          "tokens": "tokens.txt",
+          "estimatedRamMb": 150,
+          "allowPatterns": ["encoder-epoch-99-avg-1.int8.onnx", "decoder-epoch-99-avg-1.onnx", "joiner-epoch-99-avg-1.int8.onnx", "tokens.txt"]
+        },
+        "translation": {
+          "provider": "marian-ct2",
+          "repoId": "Helsinki-NLP/opus-mt_tiny_eng-spa",
+          "revision": "691fd47381a57d0de256a0e0b201bd83d1f48ba0",
+          "quantization": "int8",
+          "sourceLanguage": "en",
+          "targetLanguage": "es",
+          "estimatedRamMb": 190,
+          "allowPatterns": ["config.json", "generation_config.json", "model.safetensors", "source.spm", "target.spm", "special_tokens_map.json", "tokenizer_config.json", "vocab.json"]
+        }
+      }
+    },
+    {
+      "schemaVersion": 2,
       "id": "lite-zh-es",
       "version": "1.0.0",
       "title": "Rápido ZH→ES (Whisper Tiny + Marian ZH→EN→ES INT8)",
@@ -88,24 +134,95 @@
           "provider": "marian-cascade-ct2",
           "estimatedRamMb": 500,
           "stages": [
-            {
-              "provider": "marian-ct2",
-              "repoId": "Helsinki-NLP/opus-mt-zh-en",
-              "revision": "cf109095479db38d6df799875e34039d4938aaa6",
-              "quantization": "int8",
-              "sourceLanguage": "zh",
-              "targetLanguage": "en",
-              "allowPatterns": ["config.json", "generation_config.json", "pytorch_model.bin", "source.spm", "target.spm", "tokenizer_config.json", "vocab.json"]
-            },
-            {
-              "provider": "marian-ct2",
-              "repoId": "Helsinki-NLP/opus-mt_tiny_eng-spa",
-              "revision": "691fd47381a57d0de256a0e0b201bd83d1f48ba0",
-              "quantization": "int8",
-              "sourceLanguage": "en",
-              "targetLanguage": "es",
-              "allowPatterns": ["config.json", "generation_config.json", "model.safetensors", "source.spm", "target.spm", "special_tokens_map.json", "tokenizer_config.json", "vocab.json"]
-            }
+            {"provider": "marian-ct2", "repoId": "Helsinki-NLP/opus-mt-zh-en", "revision": "cf109095479db38d6df799875e34039d4938aaa6", "quantization": "int8", "sourceLanguage": "zh", "targetLanguage": "en", "allowPatterns": ["config.json", "generation_config.json", "pytorch_model.bin", "source.spm", "target.spm", "tokenizer_config.json", "vocab.json"]},
+            {"provider": "marian-ct2", "repoId": "Helsinki-NLP/opus-mt_tiny_eng-spa", "revision": "691fd47381a57d0de256a0e0b201bd83d1f48ba0", "quantization": "int8", "sourceLanguage": "en", "targetLanguage": "es", "allowPatterns": ["config.json", "generation_config.json", "model.safetensors", "source.spm", "target.spm", "special_tokens_map.json", "tokenizer_config.json", "vocab.json"]}
+          ]
+        }
+      }
+    },
+    {
+      "schemaVersion": 2,
+      "id": "betaalpha-zipformer-zh-es",
+      "version": "1.0.0",
+      "title": "BetaAlpha ZH→ES (Zipformer 14M INT8 + Marian ZH→EN→ES)",
+      "tier": "lite",
+      "routes": ["zh-es"],
+      "ramMb": 820,
+      "vramMb": 0,
+      "recommendedRamGb": 2,
+      "engine": "sherpa-onnx-local",
+      "format": "sherpa-onnx-online-int8+ctranslate2-int8-cascade",
+      "supportedBackends": ["cpu"],
+      "bundled": false,
+      "externalAllowed": false,
+      "commercialUse": true,
+      "licenseNote": "El modelo Zipformer ZH de csukuangfj/sherpa-onnx declara Apache-2.0; las dos etapas Marian conservan CC-BY-4.0 y Apache-2.0. Todo queda fijado por revisión y se ejecuta localmente.",
+      "components": {
+        "asr": {
+          "provider": "sherpa-onnx",
+          "repoId": "csukuangfj/sherpa-onnx-streaming-zipformer-zh-14M-2023-02-23",
+          "revision": "204ad334e2e683fd295359930cc16fc0432a23ac",
+          "language": "zh",
+          "sherpaMode": "online-transducer",
+          "maxThreads": 2,
+          "sampleRate": 16000,
+          "featureDim": 80,
+          "encoder": "encoder-epoch-99-avg-1.int8.onnx",
+          "decoder": "decoder-epoch-99-avg-1.onnx",
+          "joiner": "joiner-epoch-99-avg-1.int8.onnx",
+          "tokens": "tokens.txt",
+          "estimatedRamMb": 120,
+          "allowPatterns": ["encoder-epoch-99-avg-1.int8.onnx", "decoder-epoch-99-avg-1.onnx", "joiner-epoch-99-avg-1.int8.onnx", "tokens.txt"]
+        },
+        "translation": {
+          "provider": "marian-cascade-ct2",
+          "estimatedRamMb": 500,
+          "stages": [
+            {"provider": "marian-ct2", "repoId": "Helsinki-NLP/opus-mt-zh-en", "revision": "cf109095479db38d6df799875e34039d4938aaa6", "quantization": "int8", "sourceLanguage": "zh", "targetLanguage": "en", "allowPatterns": ["config.json", "generation_config.json", "pytorch_model.bin", "source.spm", "target.spm", "tokenizer_config.json", "vocab.json"]},
+            {"provider": "marian-ct2", "repoId": "Helsinki-NLP/opus-mt_tiny_eng-spa", "revision": "691fd47381a57d0de256a0e0b201bd83d1f48ba0", "quantization": "int8", "sourceLanguage": "en", "targetLanguage": "es", "allowPatterns": ["config.json", "generation_config.json", "model.safetensors", "source.spm", "target.spm", "special_tokens_map.json", "tokenizer_config.json", "vocab.json"]}
+          ]
+        }
+      }
+    },
+    {
+      "schemaVersion": 2,
+      "id": "betaalpha-paraformer-zh-es",
+      "version": "1.0.0",
+      "title": "BetaAlpha ZH→ES (Paraformer bilingüe INT8 + Marian ZH→EN→ES)",
+      "tier": "lite",
+      "routes": ["zh-es"],
+      "ramMb": 1050,
+      "vramMb": 0,
+      "recommendedRamGb": 2,
+      "engine": "sherpa-onnx-local",
+      "format": "sherpa-onnx-online-paraformer-int8+ctranslate2-int8-cascade",
+      "supportedBackends": ["cpu"],
+      "bundled": false,
+      "externalAllowed": false,
+      "commercialUse": true,
+      "licenseNote": "El modelo Paraformer bilingüe ZH/EN de csukuangfj/sherpa-onnx declara Apache-2.0; las etapas Marian conservan sus licencias originales. Los snapshots quedan fijados por revisión.",
+      "components": {
+        "asr": {
+          "provider": "sherpa-onnx",
+          "repoId": "csukuangfj/sherpa-onnx-streaming-paraformer-bilingual-zh-en",
+          "revision": "8e40c43232a1c5c66c82111efc5820d3accca11b",
+          "language": "zh",
+          "sherpaMode": "online-paraformer",
+          "maxThreads": 2,
+          "sampleRate": 16000,
+          "featureDim": 80,
+          "encoder": "encoder.int8.onnx",
+          "decoder": "decoder.int8.onnx",
+          "tokens": "tokens.txt",
+          "estimatedRamMb": 350,
+          "allowPatterns": ["encoder.int8.onnx", "decoder.int8.onnx", "tokens.txt"]
+        },
+        "translation": {
+          "provider": "marian-cascade-ct2",
+          "estimatedRamMb": 500,
+          "stages": [
+            {"provider": "marian-ct2", "repoId": "Helsinki-NLP/opus-mt-zh-en", "revision": "cf109095479db38d6df799875e34039d4938aaa6", "quantization": "int8", "sourceLanguage": "zh", "targetLanguage": "en", "allowPatterns": ["config.json", "generation_config.json", "pytorch_model.bin", "source.spm", "target.spm", "tokenizer_config.json", "vocab.json"]},
+            {"provider": "marian-ct2", "repoId": "Helsinki-NLP/opus-mt_tiny_eng-spa", "revision": "691fd47381a57d0de256a0e0b201bd83d1f48ba0", "quantization": "int8", "sourceLanguage": "en", "targetLanguage": "es", "allowPatterns": ["config.json", "generation_config.json", "model.safetensors", "source.spm", "target.spm", "special_tokens_map.json", "tokenizer_config.json", "vocab.json"]}
           ]
         }
       }
