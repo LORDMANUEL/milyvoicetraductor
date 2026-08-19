@@ -40,7 +40,7 @@ class ModelPackV2Tests(unittest.TestCase):
         )
         self.assertEqual(
             translation["stages"][1]["revision"],
-            "5bc4493",
+            "5bc4493d463cf000c1f0b50f8d56886a392ed4ab",
         )
         self.assertNotIn("tiny", translation["stages"][1]["repoId"].casefold())
         self.assertLessEqual(lite["ramMb"], 1200)
