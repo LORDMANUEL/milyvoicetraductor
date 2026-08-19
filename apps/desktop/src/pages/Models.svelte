@@ -13,6 +13,7 @@
   let lastErrorCode = '';
   let lastFailedPack = '';
   let externalPackPath = '';
+  let externalPackUrl = '';
   let lastSelection: AutoSelectionResult | null = null;
 
   async function load() {
@@ -87,11 +88,32 @@
       message = 'Escribe la ruta local de un archivo .mmpack.';
       return;
     }
-    begin('import', 'Aislando, verificando y midiendo el pack externo…');
+    begin('import', 'Aislando y verificando el pack externo…');
     try {
       const pack = await desktopApi.importModelPack(path);
-      message = `Pack externo ${pack.id} importado y verificado.`;
+      message = `Pack externo ${pack.id} importado y verificado. Actívalo manualmente o ejecuta el benchmark automático.`;
       externalPackPath = '';
+      await load();
+      await onChanged();
+    } catch (error) {
+      fail(error);
+    } finally {
+      busy = '';
+    }
+  }
+
+  async function importExternalUrl() {
+    const url = externalPackUrl.trim();
+    if (!url) {
+      lastErrorCode = 'MODEL_EXTERNAL_SOURCE';
+      message = 'Escribe una URL HTTPS de GitHub o Hugging Face que termine en .mmpack.';
+      return;
+    }
+    begin('import-url', 'Descargando a cuarentena y verificando el repositorio externo…');
+    try {
+      const pack = await desktopApi.importModelPackUrl(url);
+      message = `Repositorio ${pack.id} descargado y verificado. No se activó automáticamente.`;
+      externalPackUrl = '';
       await load();
       await onChanged();
     } catch (error) {
@@ -232,17 +254,24 @@
     <div class="panel-title">
       <div>
         <span class="card-title">Modelos externos</span>
-        <h3>Importar un pack verificado</h3>
+        <h3>Importar o descargar un pack verificado</h3>
       </div>
       <span class="pill">.mmpack</span>
     </div>
-    <p>Solo se aceptan manifiestos, modelos y tokenizadores. Scripts, EXE, DLL y proveedores desconocidos se bloquean antes de activar el pack.</p>
+    <p>Solo se aceptan manifiestos, modelos y tokenizadores. Scripts, EXE, DLL y proveedores desconocidos se bloquean. Importar o descargar nunca activa el modelo automáticamente.</p>
     <div class="button-row">
       <input bind:value={externalPackPath} placeholder="C:\Modelos\mi-modelo.mmpack" aria-label="Ruta del pack externo" />
       <button class="secondary" onclick={importExternal} disabled={Boolean(busy)}>
-        {busy === 'import' ? 'Verificando…' : 'Agregar externo'}
+        {busy === 'import' ? 'Verificando…' : 'Importar archivo'}
       </button>
     </div>
+    <div class="button-row">
+      <input bind:value={externalPackUrl} placeholder="https://github.com/.../modelo.mmpack" aria-label="URL del repositorio externo" />
+      <button class="secondary" onclick={importExternalUrl} disabled={Boolean(busy)}>
+        {busy === 'import-url' ? 'Descargando…' : 'Agregar repositorio'}
+      </button>
+    </div>
+    <small>Orígenes permitidos: GitHub y Hugging Face mediante HTTPS. La URL debe apuntar a un archivo .mmpack.</small>
   </article>
 
   <div class="model-grid">
