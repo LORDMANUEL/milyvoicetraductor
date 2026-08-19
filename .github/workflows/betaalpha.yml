@@ -3,6 +3,8 @@ name: BetaAlpha CPU Engine
 on:
   push:
     branches: [betaalpha]
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -11,7 +13,7 @@ permissions:
   pull-requests: write
 
 concurrency:
-  group: betaalpha-${{ github.ref }}
+  group: betaalpha-${{ github.event.pull_request.head.ref || github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -160,7 +162,7 @@ jobs:
         id: artifact
         uses: actions/upload-artifact@v6
         with:
-          name: MilyVoiceTraductor-BetaAlpha-Windows-x64-${{ github.sha }}
+          name: MilyVoiceTraductor-BetaAlpha-Windows-x64-${{ github.event.pull_request.head.sha || github.sha }}
           path: dist/betaalpha/*
           retention-days: 30
           compression-level: 0
@@ -173,7 +175,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
           RUN_ID: ${{ github.run_id }}
-          SHA: ${{ github.sha }}
+          SHA: ${{ github.event.pull_request.head.sha || github.sha }}
           FRONTEND: ${{ steps.frontend.outcome }}
           AI: ${{ steps.ai.outcome }}
           BOOTSTRAP: ${{ steps.bootstrap.outcome }}
