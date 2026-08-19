@@ -52,10 +52,10 @@
   }
 
   async function activate(pack: ModelPackInfo) {
-    begin(`activate:${pack.id}`, 'Comprobando el presupuesto y activando el modelo…');
+    begin(`activate:${pack.id}`, 'Comprobando el presupuesto total y activando el modelo…');
     try {
       await desktopApi.activateModel(pack.id, pack.version);
-      message = 'Modelo activado. Solo este ASR y traductor quedarán residentes.';
+      message = 'Modelo activado. Solo este ASR y este traductor quedarán residentes.';
       await load();
       await onChanged();
     } catch (error) {
@@ -66,7 +66,7 @@
   }
 
   async function optimize() {
-    begin('optimize', 'Midiendo velocidad, RTF y memoria de los modelos instalados…');
+    begin('optimize', 'Midiendo velocidad, RTF y memoria total de los modelos instalados…');
     lastSelection = null;
     try {
       lastSelection = await desktopApi.optimizeModels('en-es', true);
@@ -87,7 +87,7 @@
       message = 'Escribe la ruta local de un archivo .mmpack.';
       return;
     }
-    begin('import', 'Aislando y verificando el pack externo…');
+    begin('import', 'Aislando, verificando y midiendo el pack externo…');
     try {
       const pack = await desktopApi.importModelPack(path);
       message = `Pack externo ${pack.id} importado y verificado.`;
@@ -150,10 +150,20 @@
     return 'No validado';
   }
 
+  function totalProductMb(pack: ModelPackInfo): number {
+    return Math.round(
+      pack.measuredTotalProductMb
+        ?? pack.estimatedTotalProductMb
+        ?? (pack.ramMb + pack.sharedGpuMb + pack.productReserveMb)
+    );
+  }
+
   function memoryLabel(pack: ModelPackInfo): string {
-    const ram = `${pack.ramMb} MiB RAM`;
-    const vram = pack.vramMb > 0 ? ` · ${pack.vramMb} MiB VRAM` : ' · sin GPU obligatoria';
-    return ram + vram;
+    const total = `${totalProductMb(pack)} MiB producto`;
+    const engine = ` · motor/modelo ${pack.ramMb} MiB`;
+    const shared = pack.sharedGpuMb > 0 ? ` · iGPU compartida ${pack.sharedGpuMb} MiB` : '';
+    const vram = pack.vramMb > 0 ? ` · VRAM ${pack.vramMb} MiB` : ' · sin GPU obligatoria';
+    return total + engine + shared + vram;
   }
 
   onMount(load);
@@ -178,15 +188,16 @@
     <div class="panel-title">
       <div>
         <span class="card-title">Contrato de recursos</span>
-        <h3>Máximo 2 GB para MilyVoice</h3>
+        <h3>Máximo 2 GB para todo MilyVoice</h3>
       </div>
       <span class="pill ok">512 MB VRAM compatible</span>
     </div>
-    <p>El motor permite hasta 2,048 MiB de RAM y reserva como máximo 384 MiB de una GPU de 512 MiB. Si un modelo no cabe, puede almacenarse, pero no activarse.</p>
+    <p>El límite de 2,048 MiB suma motor, modelos, sidecars, memoria compartida de iGPU y una reserva de 320 MiB para Desktop y Native Messaging. La VRAM dedicada se limita a 384 MiB para dejar margen a Windows y Chrome.</p>
     <div class="model-meta">
+      <span>Reserva Desktop/bridge: 320 MiB</span>
       <span>Lite estable: ≤ 1,200 MiB</span>
       <span>Pico Lite: ≤ 1,536 MiB</span>
-      <span>Rescate: ≤ 700 MiB</span>
+      <span>Rescate antes de 2 GB</span>
       <span>CPU siempre disponible</span>
     </div>
   </article>
@@ -225,7 +236,7 @@
       </div>
       <span class="pill">.mmpack</span>
     </div>
-    <p>Solo se aceptan manifiestos, modelos y tokenizadores. Scripts, EXE y DLL externas se bloquean.</p>
+    <p>Solo se aceptan manifiestos, modelos y tokenizadores. Scripts, EXE, DLL y proveedores desconocidos se bloquean antes de activar el pack.</p>
     <div class="button-row">
       <input bind:value={externalPackPath} placeholder="C:\Modelos\mi-modelo.mmpack" aria-label="Ruta del pack externo" />
       <button class="secondary" onclick={importExternal} disabled={Boolean(busy)}>
@@ -249,6 +260,7 @@
         <p>{pack.licenseNote}</p>
         <div class="model-meta">
           <span>{memoryLabel(pack)}</span>
+          <span>Reserva base: {pack.productReserveMb} MiB</span>
           <span>Ruta: {pack.routes.join(', ')}</span>
           <span>Motor: {pack.engine}</span>
           <span>Backends: {pack.supportedBackends.join(', ')}</span>
@@ -256,8 +268,8 @@
         </div>
         {#if !pack.resourceAllowed}
           <div class="error-state">
-            <strong>No se activará en este perfil</strong>
-            <p>Motivo: {pack.resourceReason}. El límite es 2,048 MiB RAM / 384 MiB VRAM.</p>
+            <strong>No se activará en este equipo</strong>
+            <p>Motivo: {pack.resourceReason}. Estimación total: {totalProductMb(pack)} MiB; límite: 2,048 MiB RAM / 384 MiB VRAM.</p>
           </div>
         {/if}
         <div class="button-row">
