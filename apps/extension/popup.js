@@ -1,5 +1,8 @@
 const source = document.querySelector('#source');
 const sessionMode = document.querySelector('#sessionMode');
+const subtitleTheme = document.querySelector('#subtitleTheme');
+const tutorControls = document.querySelector('#tutorControls');
+const tutorVoice = document.querySelector('#tutorVoice');
 const persist = document.querySelector('#persist');
 const showOriginal = document.querySelector('#showOriginal');
 const speakerDetection = document.querySelector('#speakerDetection');
@@ -37,9 +40,6 @@ function speakerLabel(id) {
 }
 
 function renderBridge(state, connected = true) {
-  // El motor puede estar detenido cuando se abre el popup. START_CAPTURE usa
-  // Native Messaging `hello`, que lo arranca y entrega la credencial efímera.
-  // Estados notInstalled/error siguen bloqueados para no ofrecer un inicio falso.
   const engineStartable = state?.engine === 'ready' || state?.engine === 'stopped';
   bridgeReady = Boolean(connected && engineStartable && state?.modelPack);
   appState.textContent = connected ? 'Detectada' : 'No instalada';
@@ -74,6 +74,12 @@ function renderSpeakerControls() {
   fixedSpeakerWrap.hidden = !speakerDetection.checked || speakerFocus.value !== 'fixed';
 }
 
+function renderTutorControls() {
+  const enabled = sessionMode.value === 'tutor';
+  tutorControls.hidden = !enabled;
+  if (enabled) showOriginal.checked = true;
+}
+
 function populateSpeakerSelect() {
   const selected = fixedSpeaker.value;
   fixedSpeaker.replaceChildren(new Option('Seleccione…', ''));
@@ -81,10 +87,20 @@ function populateSpeakerSelect() {
   fixedSpeaker.value = knownSpeakers.includes(selected) ? selected : '';
 }
 
-function makeVoiceOptions(select, selected) {
-  select.replaceChildren(new Option('Voz predeterminada', ''));
-  for (const voice of availableVoices) {
-    const label = `${voice.voiceName || voice.name || 'Voz'} · ${voice.lang || 'es'}`;
+function voiceLanguagePrefix(voice) {
+  return String(voice.lang || '').toLowerCase().slice(0, 2);
+}
+
+function voicesFor(prefixes) {
+  const wanted = new Set(prefixes);
+  const filtered = availableVoices.filter((voice) => wanted.has(voiceLanguagePrefix(voice)));
+  return filtered.length ? filtered : availableVoices;
+}
+
+function makeVoiceOptions(select, selected, voices = availableVoices, emptyLabel = 'Voz predeterminada') {
+  select.replaceChildren(new Option(emptyLabel, ''));
+  for (const voice of voices) {
+    const label = `${voice.voiceName || voice.name || 'Voz'} · ${voice.lang || ''}`;
     select.appendChild(new Option(label, voice.voiceName || voice.name || ''));
   }
   select.value = selected || '';
@@ -94,11 +110,12 @@ function renderSpeakerVoices() {
   speakerVoiceList.hidden = !ttsEnabled.checked || knownSpeakers.length === 0;
   speakerVoiceList.replaceChildren();
   if (speakerVoiceList.hidden) return;
+  const spanishVoices = voicesFor(['es']);
   for (const id of knownSpeakers) {
     const label = document.createElement('label');
     label.textContent = `${speakerLabel(id)} · voz`;
     const select = document.createElement('select');
-    makeVoiceOptions(select, speakerVoiceNames[id] || '');
+    makeVoiceOptions(select, speakerVoiceNames[id] || '', spanishVoices);
     select.addEventListener('change', async () => {
       speakerVoiceNames = { ...speakerVoiceNames, [id]: select.value };
       await chrome.storage.local.set({ speakerVoiceNames });
@@ -113,12 +130,19 @@ function renderTtsControls() {
   renderSpeakerVoices();
 }
 
+function refreshVoiceOptions() {
+  makeVoiceOptions(ttsVoice, ttsVoice.value, voicesFor(['es']), 'Voz española automática');
+  const sourcePrefix = source.value === 'auto' ? ['en', 'zh', 'es'] : [source.value];
+  makeVoiceOptions(tutorVoice, tutorVoice.value, voicesFor(sourcePrefix), 'Voz automática');
+  renderSpeakerVoices();
+}
+
 function renderEngineEvent(event) {
   if (!event) return;
   status.classList.remove('error');
   if (event.type === 'engine.ready' || event.type === 'connected') status.textContent = 'Motor local conectado';
   else if (event.type === 'engine.loading') status.textContent = event.phase === 'warming' ? 'Precalentando modelos locales…' : 'Cargando modelos locales…';
-  else if (event.type === 'session.started') status.textContent = event.sessionMode === 'karaoke' ? 'Karaoke activo · escuchando audio…' : 'Escuchando audio…';
+  else if (event.type === 'session.started') status.textContent = sessionMode.value === 'tutor' ? 'Tutor activo · escuchando y preparando práctica…' : event.sessionMode === 'karaoke' ? 'Karaoke activo · escuchando audio…' : 'Escuchando audio…';
   else if (event.type === 'speaker.changed' && event.speakerId) status.textContent = `${speakerLabel(event.speakerId)} activo`;
   else if (event.type === 'transcription.partial') status.textContent = 'Transcribiendo en tiempo real…';
   else if (event.type === 'translation.partial') status.textContent = 'Traduciendo frase…';
@@ -146,6 +170,8 @@ async function savePreferences() {
   await chrome.storage.local.set({
     sourceLanguage: source.value,
     sessionMode: sessionMode.value,
+    subtitleTheme: subtitleTheme.value,
+    tutorVoiceName: tutorVoice.value,
     persistTranscript: persist.checked,
     showOriginal: showOriginal.checked,
     speakerDetection: speakerDetection.checked,
@@ -165,17 +191,17 @@ async function refreshBridge() {
 
 async function loadVoices() {
   availableVoices = await new Promise((resolve) => chrome.tts.getVoices((voices) => resolve(voices || [])));
-  makeVoiceOptions(ttsVoice, ttsVoice.value);
-  renderSpeakerVoices();
+  refreshVoiceOptions();
 }
 
 async function loadSettings() {
   const saved = await chrome.storage.local.get([
-    'sourceLanguage', 'sessionMode', 'persistTranscript', 'showOriginal',
+    'sourceLanguage', 'sessionMode', 'subtitleTheme', 'tutorVoiceName', 'persistTranscript', 'showOriginal',
     'speakerDetection', 'speakerFocusMode', 'speakerId', 'ttsEnabled', 'ttsVoiceName', 'speakerVoiceNames'
   ]);
   source.value = saved.sourceLanguage || 'auto';
   sessionMode.value = saved.sessionMode || 'meeting';
+  subtitleTheme.value = saved.subtitleTheme || 'auto';
   persist.checked = Boolean(saved.persistTranscript);
   showOriginal.checked = saved.showOriginal !== false;
   speakerDetection.checked = Boolean(saved.speakerDetection);
@@ -187,8 +213,11 @@ async function loadSettings() {
   populateSpeakerSelect();
   fixedSpeaker.value = saved.speakerId && knownSpeakers.includes(saved.speakerId) ? saved.speakerId : '';
   renderSpeakerControls();
+  renderTutorControls();
   await loadVoices();
   ttsVoice.value = saved.ttsVoiceName || '';
+  tutorVoice.value = saved.tutorVoiceName || '';
+  refreshVoiceOptions();
   renderTtsControls();
   if (session.bridgeState) renderBridge(session.bridgeState, session.bridgeState.connected !== false);
   renderCapture(Boolean(session.captureState?.active));
@@ -196,9 +225,19 @@ async function loadSettings() {
   await refreshBridge();
 }
 
-for (const element of [source, sessionMode, persist, showOriginal, ttsVoice]) {
+for (const element of [persist, showOriginal, ttsVoice, subtitleTheme, tutorVoice]) {
   element.addEventListener('change', savePreferences);
 }
+
+source.addEventListener('change', async () => {
+  refreshVoiceOptions();
+  await savePreferences();
+});
+
+sessionMode.addEventListener('change', async () => {
+  renderTutorControls();
+  await savePreferences();
+});
 
 speakerDetection.addEventListener('change', async () => {
   renderSpeakerControls();
@@ -247,7 +286,7 @@ toggle.addEventListener('click', async () => {
           type: 'START_CAPTURE',
           options: {
             sourceLanguage: source.value,
-            sessionMode: sessionMode.value,
+            sessionMode: sessionMode.value === 'tutor' ? 'education' : sessionMode.value,
             persistTranscript: persist.checked,
             speakerDetection: speakerDetection.checked,
             speakerFocusMode: speakerFocus.value,
@@ -263,7 +302,7 @@ toggle.addEventListener('click', async () => {
     return;
   }
   renderCapture(!active);
-  status.textContent = active ? 'Traducción detenida.' : 'Escuchando esta pestaña.';
+  status.textContent = active ? 'Traducción detenida.' : sessionMode.value === 'tutor' ? 'Tutor activo sobre esta pestaña.' : 'Escuchando esta pestaña.';
 });
 
 chrome.storage.onChanged.addListener((_changes, areaName) => {
