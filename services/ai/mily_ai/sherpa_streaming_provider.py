@@ -23,6 +23,7 @@ class SherpaStreamingAsr(LegacySherpaOnnxAsr):
     """Online Zipformer/Paraformer residente, optimizado para CPU débil."""
 
     _PREFIX_SAMPLES = 256
+    _FINAL_TAIL_SECONDS = 0.5
 
     def __init__(
         self,
@@ -71,8 +72,13 @@ class SherpaStreamingAsr(LegacySherpaOnnxAsr):
         return self._path(value)
 
     def _thread_count(self) -> int:
-        declared = int(self.component.get("maxThreads", self.cpu_budget.asr_threads) or 1)
+        declared = int(
+            self.component.get("maxThreads", self.cpu_budget.asr_threads) or 1
+        )
         return max(1, min(int(self.cpu_budget.asr_threads), declared))
+
+    def _sample_rate(self) -> int:
+        return int(self.component.get("sampleRate", 16000))
 
     def _load_online(self):
         if self._online_recognizer is not None:
@@ -88,7 +94,7 @@ class SherpaStreamingAsr(LegacySherpaOnnxAsr):
         common = {
             "tokens": self._component_path("tokens"),
             "num_threads": self._thread_count(),
-            "sample_rate": int(self.component.get("sampleRate", 16000)),
+            "sample_rate": self._sample_rate(),
             "feature_dim": int(self.component.get("featureDim", 80)),
             "decoding_method": "greedy_search",
             "enable_endpoint_detection": False,
@@ -177,37 +183,75 @@ class SherpaStreamingAsr(LegacySherpaOnnxAsr):
         result = getattr(stream, "result", None)
         return str(getattr(result, "text", result) or "").strip()
 
+    def _language(self, source_language: str, text: str) -> str:
+        configured = str(self.component.get("language", "auto")).strip().lower()
+        if configured in {"en", "zh"} and source_language not in {
+            "auto",
+            configured,
+        }:
+            raise OptionalProviderRuntimeError(
+                "SHERPA_LANGUAGE_UNSUPPORTED",
+                "El pack sherpa activo no admite el idioma solicitado.",
+            )
+        language = configured if configured in {"en", "zh"} else source_language
+        if language == "auto":
+            language = (
+                "zh"
+                if any("\u4e00" <= char <= "\u9fff" for char in text)
+                else "en"
+            )
+        return language
+
+    def _segments(
+        self,
+        text: str,
+        source_language: str,
+        audio_samples: int,
+    ) -> list[AsrSegment]:
+        normalized = str(text or "").strip()
+        if not normalized:
+            return []
+        return [
+            AsrSegment(
+                start=0.0,
+                end=audio_samples / 16000.0,
+                text=normalized,
+                language=self._language(source_language, normalized),
+            )
+        ]
+
+    def _accept_delta(self, stream: Any, normalized: list[float]) -> None:
+        delta = normalized[self._stream_samples :]
+        if not delta:
+            return
+        try:
+            stream.accept_waveform(self._sample_rate(), delta)
+            self._stream_samples = len(normalized)
+        except Exception as exc:
+            self._close_online_stream()
+            raise OptionalProviderRuntimeError(
+                "SHERPA_STREAM_AUDIO",
+                "sherpa-onnx no pudo recibir audio realtime.",
+            ) from exc
+
+    @staticmethod
+    def _decode_ready(recognizer: Any, stream: Any) -> None:
+        while recognizer.is_ready(stream):
+            recognizer.decode_stream(stream)
+
     def _online_transcribe(
         self, samples: Sequence[float], source_language: str
     ) -> list[AsrSegment]:
         normalized = [float(value) for value in samples]
         if not normalized:
             return []
-        configured = str(self.component.get("language", "auto")).strip().lower()
-        if configured in {"en", "zh"} and source_language not in {"auto", configured}:
-            raise OptionalProviderRuntimeError(
-                "SHERPA_LANGUAGE_UNSUPPORTED",
-                "El pack sherpa activo no admite el idioma solicitado.",
-            )
-
+        # Valida ruta antes de cargar/usar pesos.
+        self._language(source_language, "")
         stream = self._ensure_online_stream(normalized)
         recognizer = self._load_online()
-        delta = normalized[self._stream_samples :]
-        if delta:
-            try:
-                stream.accept_waveform(
-                    int(self.component.get("sampleRate", 16000)), delta
-                )
-                self._stream_samples = len(normalized)
-            except Exception as exc:
-                self._close_online_stream()
-                raise OptionalProviderRuntimeError(
-                    "SHERPA_STREAM_AUDIO",
-                    "sherpa-onnx no pudo recibir audio realtime.",
-                ) from exc
+        self._accept_delta(stream, normalized)
         try:
-            while recognizer.is_ready(stream):
-                recognizer.decode_stream(stream)
+            self._decode_ready(recognizer, stream)
             text = self._result_text(recognizer, stream)
         except Exception as exc:
             self._close_online_stream()
@@ -219,19 +263,7 @@ class SherpaStreamingAsr(LegacySherpaOnnxAsr):
             text = self._last_text
         else:
             self._last_text = text
-        if not text:
-            return []
-        language = configured if configured in {"en", "zh"} else source_language
-        if language == "auto":
-            language = "zh" if any("\u4e00" <= char <= "\u9fff" for char in text) else "en"
-        return [
-            AsrSegment(
-                start=0.0,
-                end=len(normalized) / 16000.0,
-                text=text,
-                language=language,
-            )
-        ]
+        return self._segments(text, source_language, len(normalized))
 
     def transcribe(
         self, samples: Sequence[float], source_language: str
@@ -240,18 +272,61 @@ class SherpaStreamingAsr(LegacySherpaOnnxAsr):
             return super().transcribe(samples, source_language)
         return self._online_transcribe(samples, source_language)
 
+    def transcribe_final(
+        self, samples: Sequence[float], source_language: str
+    ) -> list[AsrSegment]:
+        """Cierra una utterance online conservando las últimas sílabas.
+
+        sherpa-onnx recomienda alimentar una corta cola de silencio y marcar
+        ``input_finished`` para que el decoder procese frames pendientes. El
+        padding existe solo durante el cierre y no cuenta como audio de usuario.
+        """
+
+        if not self._is_online:
+            return super().transcribe(samples, source_language)
+        normalized = [float(value) for value in samples]
+        if not normalized:
+            self._close_online_stream()
+            return []
+        self._language(source_language, "")
+        stream = self._ensure_online_stream(normalized)
+        recognizer = self._load_online()
+        self._accept_delta(stream, normalized)
+        try:
+            tail_samples = max(1, round(self._sample_rate() * self._FINAL_TAIL_SECONDS))
+            stream.accept_waveform(self._sample_rate(), [0.0] * tail_samples)
+            input_finished = getattr(stream, "input_finished", None)
+            if callable(input_finished):
+                input_finished()
+            self._decode_ready(recognizer, stream)
+            text = self._result_text(recognizer, stream) or self._last_text
+        except Exception as exc:
+            self._close_online_stream()
+            raise OptionalProviderRuntimeError(
+                "SHERPA_STREAM_FINALIZE",
+                "sherpa-onnx no pudo finalizar la transcripción.",
+            ) from exc
+        finally:
+            self._close_online_stream()
+        return self._segments(text, source_language, len(normalized))
+
     def finish_utterance(self) -> None:
+        """Compatibilidad para consumidores que no requieren el texto final."""
+
         if not self._is_online:
             return
         stream = self._online_stream
         recognizer = self._online_recognizer
         if stream is not None and recognizer is not None:
             try:
+                tail_samples = max(
+                    1, round(self._sample_rate() * self._FINAL_TAIL_SECONDS)
+                )
+                stream.accept_waveform(self._sample_rate(), [0.0] * tail_samples)
                 input_finished = getattr(stream, "input_finished", None)
                 if callable(input_finished):
                     input_finished()
-                while recognizer.is_ready(stream):
-                    recognizer.decode_stream(stream)
+                self._decode_ready(recognizer, stream)
             except Exception:
                 pass
         self._close_online_stream()
