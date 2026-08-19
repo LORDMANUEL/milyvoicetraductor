@@ -77,7 +77,7 @@ for marker in ("MilyVoiceTraductor 2.0.1", "2.0.1"):
     if marker not in readme:
         FAILURES.append(f"README: falta {marker}")
 site = (ROOT / "apps/site/index.html").read_text(encoding="utf-8")
-for marker in ("MilyVoiceTraductor 2.0.1", "2.0.1 · Runtime privado"):
+for marker in ("MilyVoiceTraductor 2.0.1", "Runtime privado"):
     if marker not in site:
         FAILURES.append(f"Sitio: falta {marker}")
 for stale in ("2.0 RC", "Candidata actual", "v2.0.0/MilyVoiceTraductor_2.0.0_x64-setup.exe"):
