@@ -38,8 +38,19 @@ if catalog_a != catalog_b:
 commit_sha = re.compile(r"^[0-9a-f]{40}$")
 for pack in catalog_a.get("packs", []):
     for component_name, component in pack.get("components", {}).items():
-        if not commit_sha.fullmatch(str(component.get("revision", ""))):
-            fail(f"Modelo sin revisión SHA fijada: {pack.get('id')}/{component_name}")
+        repo_id = str(component.get("repoId", "")).strip()
+        provider = str(component.get("provider", "")).strip()
+        if repo_id:
+            if not commit_sha.fullmatch(str(component.get("revision", ""))):
+                fail(f"Modelo sin revisión SHA fijada: {pack.get('id')}/{component_name}")
+            continue
+        if provider == "moonshine":
+            if component.get("runtimeVersion") != "0.1.0":
+                fail(f"Moonshine sin runtime fijado: {pack.get('id')}/{component_name}")
+            if component.get("language") != "en" or component.get("modelArch") != 2:
+                fail(f"Moonshine sin arquitectura/lenguaje fijados: {pack.get('id')}/{component_name}")
+            continue
+        fail(f"Componente sin procedencia reproducible: {pack.get('id')}/{component_name}")
 
 version = (ROOT / "VERSION").read_text(encoding="utf-8").strip()
 package_version = json.loads((ROOT / "package.json").read_text(encoding="utf-8")).get("version")
@@ -49,8 +60,6 @@ tauri_version = tauri_config.get("version")
 if package_version != version or tauri_version != version:
     fail(f"Versiones divergentes: VERSION={version}, package={package_version}, tauri={tauri_version}")
 
-# Los recursos generados viven solo en la configuración Windows para que Linux
-# no dependa de un runtime/bridge que se fabrica durante el job Windows.
 resources = windows_config.get("bundle", {}).get("resources", {})
 expected_resources = {
     "../../../services/ai/": "bootstrap/ai/",
