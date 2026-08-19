@@ -1,8 +1,8 @@
-"""Guardas baratas contra repetición patológica en traducciones locales.
+"""Guardas baratas de calidad/fidelidad para traducciones locales realtime.
 
-No intenta evaluar semántica o sustituir métricas BLEU/COMET. Su función es
-rechazar bucles obvios del decodificador antes de mostrar una frase repetida al
-usuario o aprobar un modelo durante MegaBench.
+No sustituye BLEU/COMET. Su misión es impedir dos fallos de alto impacto antes de
+mostrar una frase: bucles patológicos del decoder y pérdida de información crítica
+que puede detectarse de forma determinista (números y negaciones EN→ES).
 """
 
 from __future__ import annotations
@@ -13,6 +13,13 @@ from dataclasses import asdict, dataclass
 
 _WORD_RE = re.compile(r"[^\W_]+(?:['’][^\W_]+)?", re.UNICODE)
 _SENTENCE_RE = re.compile(r"[^.!?。！？]+[.!?。！？]?", re.UNICODE)
+_NUMBER_RE = re.compile(r"(?<!\w)\d+(?:[.,]\d+)?(?!\w)")
+_EN_NEGATION_RE = re.compile(
+    r"\b(?:no|not|never|without|cannot|can't|won't|don't|doesn't|didn't|isn't|aren't|"
+    r"wasn't|weren't|shouldn't|wouldn't|couldn't|mustn't)\b",
+    re.IGNORECASE,
+)
+_ES_NEGATIONS = {"no", "nunca", "jamás", "sin", "tampoco", "ni"}
 
 
 @dataclass(frozen=True, slots=True)
@@ -26,6 +33,18 @@ class TranslationQuality:
     reason: str
 
     def as_dict(self) -> dict[str, int | float | bool | str]:
+        return asdict(self)
+
+
+@dataclass(frozen=True, slots=True)
+class SourceTargetFidelity:
+    missing_numbers: tuple[str, ...]
+    source_has_negation: bool
+    target_has_negation: bool
+    passed: bool
+    reason: str
+
+    def as_dict(self) -> dict[str, object]:
         return asdict(self)
 
 
@@ -43,6 +62,66 @@ def _sentences(value: str) -> list[str]:
         for part in _SENTENCE_RE.findall(str(value or ""))
         if _normalize(part.strip(" .!?。！？"))
     ]
+
+
+def _unique_in_order(values: list[str]) -> tuple[str, ...]:
+    seen: set[str] = set()
+    output: list[str] = []
+    for value in values:
+        if value in seen:
+            continue
+        seen.add(value)
+        output.append(value)
+    return tuple(output)
+
+
+def analyze_source_target_fidelity(
+    source: str,
+    target: str,
+    source_language: str,
+    target_language: str,
+) -> SourceTargetFidelity:
+    """Comprueba invariantes críticas baratos antes de exponer la traducción.
+
+    Los números se preservan para cualquier ruta basada en dígitos. La negación
+    se valida de forma conservadora para EN→ES, donde perder un ``not`` cambia
+    completamente el sentido de una orden o decisión.
+    """
+
+    source_numbers = _unique_in_order(_NUMBER_RE.findall(str(source or "")))
+    target_numbers = set(_NUMBER_RE.findall(str(target or "")))
+    missing_numbers = tuple(number for number in source_numbers if number not in target_numbers)
+    if missing_numbers:
+        return SourceTargetFidelity(
+            missing_numbers=missing_numbers,
+            source_has_negation=False,
+            target_has_negation=False,
+            passed=False,
+            reason="NUMBER_LOST",
+        )
+
+    source_language = str(source_language or "").strip().lower()
+    target_language = str(target_language or "").strip().lower()
+    source_normalized = _normalize(source)
+    target_tokens = set(_tokens(target))
+    source_has_negation = bool(_EN_NEGATION_RE.search(source_normalized)) if source_language == "en" else False
+    target_has_negation = bool(target_tokens & _ES_NEGATIONS) if target_language == "es" else False
+    if source_language == "en" and target_language == "es" and source_has_negation and not target_has_negation:
+        return SourceTargetFidelity(
+            missing_numbers=(),
+            source_has_negation=True,
+            target_has_negation=False,
+            passed=False,
+            reason="NEGATION_LOST",
+        )
+
+    return SourceTargetFidelity(
+        missing_numbers=(),
+        source_has_negation=source_has_negation,
+        target_has_negation=target_has_negation,
+        passed=True,
+        reason="OK",
+    )
 
 
 def analyze_translation_quality(
