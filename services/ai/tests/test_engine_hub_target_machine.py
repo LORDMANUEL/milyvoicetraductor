@@ -329,7 +329,9 @@ class TenMinuteBacklogSimulationTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(final_results, utterances)
         self.assertLessEqual(max_depth, 2)
         self.assertLessEqual(max_start_age, 0.70)
-        self.assertLessEqual(worker_free_at - last_event_at, 0.70)
+        # Queue start age remains <=700 ms; completion includes the final
+        # 450 ms inference and therefore uses the 1.5 s E2E product gate.
+        self.assertLessEqual(worker_free_at - last_event_at, 1.50)
         self.assertTrue(queue.empty())
 
 
