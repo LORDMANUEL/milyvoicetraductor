@@ -80,6 +80,10 @@ class LatencyController:
     - ``catch_up``: solo trabajo esencial/final para vaciar colas.
     - ``rescue``: subtítulos finales, sin TTS ni funciones costosas.
 
+    La escalada es inmediata. La recuperación requiere varias muestras totalmente
+    saludables y baja un nivel por vez, evitando que el motor oscile al cruzar un
+    umbral de RAM o cola durante unos pocos milisegundos.
+
     Si el servidor no proporciona memoria explícita, el controlador mide el
     árbol del motor (incluidos sidecars) y suma la reserva Desktop/bridge. La
     muestra se reutiliza durante 500 ms para no recorrer procesos por cada chunk.
@@ -88,6 +92,8 @@ class LatencyController:
     SOFT_MEMORY_MB = 1200.0
     CATCH_UP_MEMORY_MB = 1600.0
     RESCUE_MEMORY_MB = 1920.0
+    _SEVERITY = {"healthy": 0, "pressure": 1, "catch_up": 2, "rescue": 3}
+    _STEP_DOWN = {"rescue": "catch_up", "catch_up": "pressure", "pressure": "healthy"}
 
     def __init__(
         self,
@@ -95,10 +101,13 @@ class LatencyController:
         memory_provider: Callable[[], float] | None = None,
         product_reserve_mb: float | None = None,
         memory_sample_interval_seconds: float = 0.5,
+        recovery_samples: int = 4,
     ) -> None:
         interval = float(memory_sample_interval_seconds)
         if interval <= 0:
             raise ValueError("memory_sample_interval_seconds debe ser positivo")
+        if int(recovery_samples) <= 0:
+            raise ValueError("recovery_samples debe ser positivo")
         limits = ResourceLimits()
         reserve = (
             float(limits.product_reserve_mb)
@@ -114,6 +123,13 @@ class LatencyController:
         self._memory_sample_interval_seconds = interval
         self._last_memory_sample_at = float("-inf")
         self._last_process_memory_mb = 0.0
+        self._state = "healthy"
+        self._recovery_samples_required = int(recovery_samples)
+        self._healthy_recovery_samples = 0
+
+    @property
+    def state(self) -> str:
+        return self._state
 
     @property
     def last_process_memory_mb(self) -> float:
@@ -136,6 +152,62 @@ class LatencyController:
         self._last_process_memory_mb = engine_tree_mb + self._product_reserve_mb
         return self._last_process_memory_mb
 
+    @classmethod
+    def _raw_state(
+        cls,
+        *,
+        audio: int,
+        translation: int,
+        age: float,
+        rtf: float,
+        memory: float,
+    ) -> str:
+        if (
+            memory >= cls.RESCUE_MEMORY_MB
+            or audio >= 2400
+            or translation >= 8
+            or age >= 2400.0
+            or rtf >= 1.80
+        ):
+            return "rescue"
+        if (
+            memory >= cls.CATCH_UP_MEMORY_MB
+            or audio >= 1200
+            or translation >= 6
+            or age >= 1200.0
+            or rtf >= 1.25
+        ):
+            return "catch_up"
+        if (
+            memory >= cls.SOFT_MEMORY_MB
+            or audio >= 500
+            or translation >= 3
+            or age >= 700.0
+            or rtf >= 0.85
+        ):
+            return "pressure"
+        return "healthy"
+
+    def _apply_hysteresis(self, raw_state: str) -> str:
+        current_severity = self._SEVERITY[self._state]
+        raw_severity = self._SEVERITY[raw_state]
+        if raw_severity > current_severity:
+            self._state = raw_state
+            self._healthy_recovery_samples = 0
+            return self._state
+        if raw_state == self._state:
+            self._healthy_recovery_samples = 0
+            return self._state
+        if raw_state != "healthy":
+            self._healthy_recovery_samples = 0
+            return self._state
+        self._healthy_recovery_samples += 1
+        if self._healthy_recovery_samples < self._recovery_samples_required:
+            return self._state
+        self._state = self._STEP_DOWN.get(self._state, "healthy")
+        self._healthy_recovery_samples = 0
+        return self._state
+
     def classify(
         self,
         audio_queue_ms: int,
@@ -154,32 +226,14 @@ class LatencyController:
         else:
             memory = max(0.0, float(process_memory_mb))
             self._last_process_memory_mb = memory
-
-        if (
-            memory >= self.RESCUE_MEMORY_MB
-            or audio >= 2400
-            or translation >= 8
-            or age >= 2400.0
-            or rtf >= 1.80
-        ):
-            return "rescue"
-        if (
-            memory >= self.CATCH_UP_MEMORY_MB
-            or audio >= 1200
-            or translation >= 6
-            or age >= 1200.0
-            or rtf >= 1.25
-        ):
-            return "catch_up"
-        if (
-            memory >= self.SOFT_MEMORY_MB
-            or audio >= 500
-            or translation >= 3
-            or age >= 700.0
-            or rtf >= 0.85
-        ):
-            return "pressure"
-        return "healthy"
+        raw_state = self._raw_state(
+            audio=audio,
+            translation=translation,
+            age=age,
+            rtf=rtf,
+            memory=memory,
+        )
+        return self._apply_hysteresis(raw_state)
 
     @staticmethod
     def allow_partial_translation(state: str) -> bool:
