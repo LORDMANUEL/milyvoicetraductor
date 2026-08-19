@@ -29,24 +29,24 @@ class TranslationLatencyPolicyTests(unittest.TestCase):
         self.assertFalse(partial_translation_ready("I don't", "en"))
         self.assertTrue(partial_translation_ready("I don't agree", "en"))
 
-    def test_serial_cpu_runs_partial_when_only_one_audio_chunk_is_waiting(self):
+    def test_serial_cpu_defers_partial_instead_of_discarding_it_when_audio_waits(self):
         action = serial_translation_action(
             request("translation.partial", "I don't agree"),
-            audio_queue_ms=100,
+            audio_pending=True,
+        )
+        self.assertEqual(action, "defer")
+
+    def test_serial_cpu_runs_partial_immediately_when_audio_queue_is_clear(self):
+        action = serial_translation_action(
+            request("translation.partial", "I don't agree"),
+            audio_pending=False,
         )
         self.assertEqual(action, "run")
-
-    def test_serial_cpu_drops_partial_when_audio_backlog_is_material(self):
-        action = serial_translation_action(
-            request("translation.partial", "I don't agree"),
-            audio_queue_ms=200,
-        )
-        self.assertEqual(action, "drop")
 
     def test_serial_cpu_final_is_never_dropped(self):
         action = serial_translation_action(
             request("translation.final", "Do not cancel order 1038"),
-            audio_queue_ms=500,
+            audio_pending=True,
         )
         self.assertEqual(action, "defer")
 
