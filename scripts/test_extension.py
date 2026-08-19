@@ -58,20 +58,20 @@ assert "chrome.tts.speak" in tts, "La extensión debe usar síntesis local de Ch
 
 # Tutor, temas y voces son parte funcional de la extensión, no opciones solo Desktop.
 assert 'value="tutor"' in popup, "Falta el modo Tutor en la extensión"
-assert 'id="theme"' in popup, "Falta selector de tema en la extensión"
+assert 'id="subtitleTheme"' in popup, "Falta selector de tema en la extensión"
 for theme in ("auto", "mily", "cinema", "class", "contrast", "neon"):
     assert f'value="{theme}"' in popup, f"Falta el tema {theme}"
 assert 'id="tutorVoice"' in popup, "Tutor debe permitir elegir voz para pronunciación"
-assert 'id="tutorRepeat"' in popup, "Tutor debe poder repetir la frase original"
+assert 'class="tutor-repeat"' in content, "Tutor debe poder repetir la frase original sobre el video"
 assert "speakerVoiceNames" in popup_script, "Las voces por hablante deben persistir"
 assert "tutorVoiceName" in popup_script, "La voz de Tutor debe persistir"
-assert "overlayTheme" in popup_script, "El tema de overlay debe persistir"
+assert "subtitleTheme" in popup_script, "El tema de overlay debe persistir"
 assert "requestAnimationFrame" in content, "Karaoke necesita animación bajo demanda"
-assert "function startAnimation" in content and "function stopAnimation" in content, (
+assert "function startKaraokeLoop" in content and "function stopKaraokeLoop" in content, (
     "La animación del overlay debe encenderse/apagarse bajo demanda"
 )
-assert "frame = requestAnimationFrame(animate);" not in content.split("chrome.runtime.onMessage", 1)[-1], (
-    "El overlay no debe arrancar un RAF permanente al cargarse"
+assert "frame = requestAnimationFrame(animate);" not in content, (
+    "El overlay no debe arrancar el RAF permanente del diseño anterior"
 )
 
 # Un motor instalado pero detenido NO debe bloquear Teams Web. START_CAPTURE usa
