@@ -23,12 +23,7 @@ def _positive_int(value: object) -> int | None:
 
 
 def default_partial_step_ms(physical_cores: int | None = None) -> int:
-    """Cadencia de ASR parcial ajustada al presupuesto físico.
-
-    El primer decode sigue ocurriendo alrededor de 900 ms. En uno o dos cores
-    evitamos repetir Whisper cada 450 ms sobre casi el mismo buffer, reduciendo
-    carga sostenida sin retrasar el cierre final de la utterance.
-    """
+    """Cadencia de ASR parcial ajustada al presupuesto físico."""
 
     cores = _positive_int(physical_cores)
     if cores is None:
@@ -38,8 +33,6 @@ def default_partial_step_ms(physical_cores: int | None = None) -> int:
 
 @dataclass(frozen=True, slots=True)
 class AudioLevel:
-    """Estado local de señal usado por UI y diagnóstico."""
-
     rms: float
     peak: float
     silent_ms: int
@@ -48,8 +41,6 @@ class AudioLevel:
 
 @dataclass(frozen=True, slots=True)
 class StreamingEvent:
-    """Ventana que debe revisar el ASR, con posición absoluta en la sesión."""
-
     kind: Literal["partial", "final"]
     samples: list[float]
     start_sample: int
@@ -57,12 +48,7 @@ class StreamingEvent:
 
 
 class AdaptiveSpeechSegmenter:
-    """Energy gate + ventanas adaptativas para conversación.
-
-    No intenta reemplazar a un VAD neuronal. Su propósito es evitar llamadas
-    obvias a Whisper durante silencio y reducir la espera inicial del antiguo
-    buffer fijo de dos segundos.
-    """
+    """Energy gate + ventanas adaptativas para conversación."""
 
     def __init__(
         self,
@@ -127,9 +113,23 @@ class AdaptiveSpeechSegmenter:
         return self._partial_decoding_enabled
 
     def set_partial_decoding(self, enabled: bool) -> None:
-        """Activa/desactiva solo hipótesis parciales; las finales nunca se omiten."""
+        """Activa/desactiva parciales; las finales nunca se omiten."""
 
         self._partial_decoding_enabled = bool(enabled)
+
+    def set_partial_step_ms(self, milliseconds: int) -> None:
+        """Cambia la cadencia sin vaciar la utterance activa.
+
+        BetaAlpha usa esta operación después de medir RTF P95. No se toca el
+        buffer ni ``_last_partial_samples``: solo cambia cuándo corresponde el
+        próximo decode, por lo que no se pierde audio al reaccionar a presión.
+        """
+
+        value = int(milliseconds)
+        max_ms = round(self.max_utterance_samples * 1000 / self.sample_rate)
+        if not 0 < value < max_ms:
+            raise ValueError("partial_step_ms fuera de rango")
+        self.partial_step_samples = self._ms_to_samples(value)
 
     @staticmethod
     def _energy(samples: Sequence[float]) -> tuple[float, float]:
@@ -197,9 +197,6 @@ class AdaptiveSpeechSegmenter:
                 )
                 self._last_partial_samples = current
 
-        # Una lectura PCM puede cruzar el límite duro. Antes se emitían solo los
-        # primeros max_utterance_samples y se hacía reset, perdiendo el excedente.
-        # Ahora cada muestra sobrante se conserva como inicio del siguiente tramo.
         while len(self._buffer) >= self.max_utterance_samples:
             final_samples = self._buffer[: self.max_utterance_samples]
             start_sample = self._utterance_start_sample
@@ -241,8 +238,6 @@ class AdaptiveSpeechSegmenter:
         return events
 
     def flush(self) -> list[StreamingEvent]:
-        """Finaliza audio pendiente al detener la sesión."""
-
         if not self._buffer:
             return []
         samples = self._buffer.copy()
