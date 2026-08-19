@@ -95,7 +95,11 @@ impl CatalogPack {
         }
     }
 
-    fn from_external_manifest(path: &Path, expected_id: &str, expected_version: &str) -> Option<Self> {
+    fn from_external_manifest(
+        path: &Path,
+        expected_id: &str,
+        expected_version: &str,
+    ) -> Option<Self> {
         let text = fs::read_to_string(path).ok()?;
         let mut pack = serde_json::from_str::<Self>(&text).ok()?;
         if pack.id != expected_id || pack.version != expected_version {
@@ -459,7 +463,10 @@ mod tests {
             .find(|pack| pack.id == "lite-en-es")
             .expect("lite profile");
         assert!(lite.resource_allowed());
-        assert_eq!(lite.estimated_total_product_mb(), lite.ram_mb + PRODUCT_RESERVE_MB);
+        assert_eq!(
+            lite.estimated_total_product_mb(),
+            lite.ram_mb + PRODUCT_RESERVE_MB
+        );
         let quality = parsed
             .packs
             .iter()
