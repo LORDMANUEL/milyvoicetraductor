@@ -168,14 +168,22 @@ jobs:
         if: success()
         shell: pwsh
         run: .\installer\windows\test-installed-flow.ps1
-      - name: MegaBench real model EN/ZH to ES
+      - name: Engine Hub target-machine simulation
         if: success()
         shell: pwsh
-        run: .\installer\windows\test-realtime-model.ps1
+        run: .\installer\windows\test-engine-hub-target-machine.ps1
+      - name: Quality pack policy under 2 GiB
+        if: success()
+        shell: pwsh
+        run: .\installer\windows\test-quality-pack-policy.ps1
       - name: Moonshine Lite real EN to ES benchmark
         if: success()
         shell: pwsh
         run: .\installer\windows\test-moonshine-lite.ps1
+      - name: Whisper Tiny Lite real EN to ES benchmark
+        if: success()
+        shell: pwsh
+        run: .\installer\windows\test-whisper-tiny-lite.ps1
       - name: Rust tests
         if: success()
         run: cargo test --workspace
@@ -207,18 +215,20 @@ jobs:
           $installer = Get-ChildItem "target/release/bundle/nsis/*-setup.exe" | Select-Object -First 1
           if (-not $installer) { throw "No se encontró el instalador NSIS generado." }
           $extension = Get-Item "dist/MilyVoiceTraductor-Chromium-Extension.zip"
-          $megaBench = Get-Item "dist/performance/MilyVoiceTraductor-2.0.1-MegaBench.json"
+          $targetSimulation = Get-Item "dist/performance/MilyVoiceTraductor-2.0.1-TargetMachineSimulation.json"
           $moonshineBench = Get-Item "dist/performance/MilyVoiceTraductor-2.0.1-MoonshineLiteBench.json"
+          $whisperTinyBench = Get-Item "dist/performance/MilyVoiceTraductor-2.0.1-WhisperTinyLiteBench.json"
           Copy-Item $installer.FullName "dist/release/$($installer.Name)"
           Copy-Item $extension.FullName "dist/release/$($extension.Name)"
-          Copy-Item $megaBench.FullName "dist/release/$($megaBench.Name)"
+          Copy-Item $targetSimulation.FullName "dist/release/$($targetSimulation.Name)"
           Copy-Item $moonshineBench.FullName "dist/release/$($moonshineBench.Name)"
+          Copy-Item $whisperTinyBench.FullName "dist/release/$($whisperTinyBench.Name)"
           $lines = foreach ($file in Get-ChildItem "dist/release" -File) {
             $hash = (Get-FileHash $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
             "$hash *$($file.Name)"
           }
           $lines | Set-Content -Encoding ascii "dist/release/SHA256SUMS.txt"
-      - name: Upload verified Windows installer, extension and MegaBench
+      - name: Upload verified Windows installer, extension and Lite benchmark evidence
         if: success()
         uses: actions/upload-artifact@v6
         with:
