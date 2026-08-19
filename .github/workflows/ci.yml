@@ -118,6 +118,14 @@ jobs:
       - name: Core Clippy
         if: success()
         run: cargo clippy --workspace --all-targets --exclude milyvoicetraductor-desktop -- -D warnings
+      - name: Upload Rust diagnostics
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: MilyVoiceTraductor-Rust-Diagnostics-${{ github.sha }}
+          path: rustfmt.log
+          retention-days: 14
+          if-no-files-found: ignore
 
   windows-smoke:
     name: Windows release smoke
@@ -234,6 +242,41 @@ jobs:
             "$hash *$($file.Name)"
           }
           $lines | Set-Content -Encoding ascii "dist/release/SHA256SUMS.txt"
+      - name: Collect sanitized diagnostics
+        if: always()
+        shell: pwsh
+        run: |
+          $diagnostics = "dist/diagnostics"
+          New-Item -ItemType Directory -Force $diagnostics | Out-Null
+          if (Test-Path "ai-windows.log") { Copy-Item "ai-windows.log" "$diagnostics/ai-windows.log" -Force }
+          if (Test-Path "dist/performance") { Copy-Item "dist/performance" "$diagnostics/performance" -Recurse -Force }
+          if (Test-Path "dist/runtime/runtime-manifest.json") { Copy-Item "dist/runtime/runtime-manifest.json" "$diagnostics/runtime-manifest.json" -Force }
+          $appRoot = Join-Path $env:LOCALAPPDATA "MilyVoiceTraductor"
+          $status = Join-Path $appRoot "bootstrap/status.json"
+          if (Test-Path $status) { Copy-Item $status "$diagnostics/bootstrap-status.json" -Force }
+          $logs = Join-Path $appRoot "logs"
+          if (Test-Path $logs) {
+            Get-ChildItem $logs -File -ErrorAction SilentlyContinue |
+              Where-Object { $_.Name -match '^(milyvoice|ai-engine|repair-history)' } |
+              ForEach-Object { Copy-Item $_.FullName (Join-Path $diagnostics $_.Name) -Force }
+          }
+          [ordered]@{
+            schemaVersion = 1
+            sha = $env:GITHUB_SHA
+            runId = $env:GITHUB_RUN_ID
+            runAttempt = $env:GITHUB_RUN_ATTEMPT
+            workflow = $env:GITHUB_WORKFLOW
+            job = $env:GITHUB_JOB
+          } | ConvertTo-Json | Set-Content "$diagnostics/run-context.json" -Encoding UTF8
+      - name: Upload diagnostic evidence even on failure
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: MilyVoiceTraductor-Diagnostics-${{ github.sha }}
+          path: dist/diagnostics/*
+          retention-days: 14
+          compression-level: 6
+          if-no-files-found: warn
       - name: Upload verified Windows installer, extension and Lite benchmark evidence
         if: success()
         uses: actions/upload-artifact@v6
