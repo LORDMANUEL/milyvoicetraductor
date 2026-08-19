@@ -1,4 +1,3 @@
-import json
 import sys
 import tempfile
 import types
@@ -79,8 +78,8 @@ class _FakeOnlineRecognizer:
         self.streams.append(stream)
         return stream
 
-    def is_ready(self, _stream):
-        return self.decode_calls == 0
+    def is_ready(self, stream):
+        return self.decode_calls == 0 or (stream.finished and self.decode_calls == 1)
 
     def decode_stream(self, _stream):
         self.decode_calls += 1
@@ -124,11 +123,9 @@ class BetaAlphaSherpaRuntimeTests(unittest.TestCase):
     def tearDown(self):
         self.temp.cleanup()
 
-    def test_online_transducer_is_resident_and_receives_only_new_audio(self):
-        from mily_ai.sherpa_streaming_provider import SherpaStreamingAsr
-
-        fake_module = types.SimpleNamespace(OnlineRecognizer=_FakeOnlineRecognizerFactory)
-        component = {
+    @staticmethod
+    def _transducer_component():
+        return {
             "provider": "sherpa-onnx",
             "sherpaMode": "online-transducer",
             "language": "en",
@@ -137,12 +134,17 @@ class BetaAlphaSherpaRuntimeTests(unittest.TestCase):
             "joiner": "joiner.int8.onnx",
             "tokens": "tokens.txt",
         }
+
+    def test_online_transducer_is_resident_and_receives_only_new_audio(self):
+        from mily_ai.sherpa_streaming_provider import SherpaStreamingAsr
+
+        fake_module = types.SimpleNamespace(OnlineRecognizer=_FakeOnlineRecognizerFactory)
         with patch.dict(sys.modules, {"sherpa_onnx": fake_module}):
             provider = SherpaStreamingAsr(
                 self.root,
                 "cpu",
                 cpu_budget=detect_cpu_budget("light", physical_cores=2),
-                component=component,
+                component=self._transducer_component(),
             )
             first = provider.transcribe([0.01] * 3200, "en")
             second = provider.transcribe([0.01] * 4800, "en")
@@ -156,6 +158,28 @@ class BetaAlphaSherpaRuntimeTests(unittest.TestCase):
         self.assertEqual(len(stream.accepted[1][1]), 1600)
         self.assertEqual(first[0].text, "hello world")
         self.assertEqual(second[0].text, "hello world")
+
+    def test_final_flush_adds_tail_padding_marks_input_finished_and_resets_stream(self):
+        from mily_ai.sherpa_streaming_provider import SherpaStreamingAsr
+
+        fake_module = types.SimpleNamespace(OnlineRecognizer=_FakeOnlineRecognizerFactory)
+        with patch.dict(sys.modules, {"sherpa_onnx": fake_module}):
+            provider = SherpaStreamingAsr(
+                self.root,
+                "cpu",
+                cpu_budget=detect_cpu_budget("light", physical_cores=2),
+                component=self._transducer_component(),
+            )
+            provider.transcribe([0.01] * 3200, "en")
+            result = provider.transcribe_final([0.01] * 4800, "en")
+            recognizer = _FakeOnlineRecognizerFactory.created[0]
+            stream = recognizer.streams[0]
+            self.assertTrue(stream.finished)
+            self.assertEqual([len(chunk[1]) for chunk in stream.accepted], [3200, 1600, 8000])
+            self.assertEqual(result[0].text, "hello world")
+            provider.transcribe([0.01] * 3200, "en")
+
+        self.assertEqual(len(recognizer.streams), 2)
 
     def test_online_paraformer_uses_int8_encoder_and_decoder(self):
         from mily_ai.sherpa_streaming_provider import SherpaStreamingAsr
