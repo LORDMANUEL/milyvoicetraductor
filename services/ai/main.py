@@ -12,6 +12,15 @@ engine_root_text = str(ENGINE_ROOT)
 if engine_root_text not in sys.path:
     sys.path.insert(0, engine_root_text)
 
+# BetaAlpha Lite excluye Torch/Transformers. Antes de importar el CLI instalamos
+# el preparador Marian nativo para que OPUS-MT se convierta con CTranslate2
+# directamente desde sus pesos Marian originales.
+from mily_ai.betaalpha_native_marian import (  # noqa: E402
+    install_betaalpha_native_marian_patch,
+)
+
+install_betaalpha_native_marian_patch()
+
 from mily_ai.cli import main  # noqa: E402
 
 if __name__ == "__main__":
