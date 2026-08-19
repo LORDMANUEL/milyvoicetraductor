@@ -1,6 +1,8 @@
 name: Engine Hub target-machine validation
 
 on:
+  push:
+    branches: [pruebas]
   pull_request:
     branches: [pruebas]
   workflow_dispatch:
@@ -9,7 +11,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: enginehub-pruebas-${{ github.ref }}
+  group: enginehub-pruebas-${{ github.event.pull_request.head.ref || github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -39,6 +41,10 @@ jobs:
         env:
           PYTHONPATH: services/ai
         run: python -m unittest discover -s services/ai/tests -p "test_runtime_discovery.py" -v
+      - name: Verify Moonshine streaming model layout
+        env:
+          PYTHONPATH: services/ai
+        run: python -m unittest discover -s services/ai/tests -p "test_moonshine_model_layout.py" -v
       - name: Verify resources, queues, backend truth and deterministic unload
         env:
           PYTHONPATH: services/ai
