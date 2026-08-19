@@ -39,8 +39,7 @@ if (-not $pth) { throw 'El paquete embebido no contiene archivo _pth.' }
     'import site'
 ) | Set-Content -Path $pth.FullName -Encoding ascii
 
-# BetaAlpha empaca solo el camino realtime Lite. Torch/Transformers/Google
-# permanecen en Quality y no se instalan en el runtime mínimo.
+# Solo se instala el conjunto de dependencias definido por el canal Lite.
 python -m pip install --disable-pip-version-check --no-input --target $sitePackages -r $Requirements
 if ($LASTEXITCODE -ne 0) { throw 'No se pudieron preparar las dependencias BetaAlpha Lite.' }
 
@@ -63,12 +62,20 @@ if ($LASTEXITCODE -ne 0) {
     throw 'El runtime BetaAlpha Lite no pudo importar sus motores realtime.'
 }
 
-# La ausencia de Quality es parte del contrato, no un accidente del builder.
+# Quality no debe filtrarse al runtime Lite. El helper tolera que ni siquiera
+# exista el paquete padre de un módulo con nombre punteado.
 $qualityProbe = @'
 import importlib.util
+
+def available(name):
+    try:
+        return importlib.util.find_spec(name) is not None
+    except (ModuleNotFoundError, AttributeError, ValueError):
+        return False
+
 blocked = ('torch', 'transformers', 'google.cloud.speech_v2')
 for name in blocked:
-    if importlib.util.find_spec(name) is not None:
+    if available(name):
         raise SystemExit('QUALITY_DEPENDENCY_LEAK:' + name)
 print('BETAALPHA_QUALITY_SPLIT_OK')
 '@
