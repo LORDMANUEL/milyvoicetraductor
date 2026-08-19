@@ -57,7 +57,7 @@ for marker in (
 frontend_api = (ROOT / "apps/desktop/src/lib/api.ts").read_text(encoding="utf-8")
 for marker in (
     "version: '2.0.1-web-preview'",
-    "activeModelPack: 'realtime-m2m100'",
+    "activeModelPack: 'lite-en-es'",
 ):
     if marker not in frontend_api:
         FAILURES.append(f"Frontend API: falta {marker}")
