@@ -57,6 +57,15 @@ class EngineHubCiReleasePolicyTests(unittest.TestCase):
         self.assertNotIn("_process_tree_working_set_mb", text)
         self.assertNotIn("_process_tree_private_working_set_mb", text)
 
+    def test_zh_benchmark_rejects_repetition_and_semantic_loss(self):
+        text = (WINDOWS / "test-zh-es-lite.ps1").read_text(encoding="utf-8")
+        self.assertIn("analyze_translation_quality", text)
+        self.assertIn("ZH_ES_TRANSLATION_REPETITION", text)
+        self.assertIn("ZH_ES_SEMANTIC_INVARIANT", text)
+        self.assertIn("semanticInvariantsPassed", text)
+        self.assertIn("maxRepeatedNgramRatio", text)
+        self.assertIn("maxNgramOccurrences", text)
+
     def test_release_bundle_requires_simulation_and_all_lite_reports(self):
         for filename in (
             "MilyVoiceTraductor-2.0.1-TargetMachineSimulation.json",
