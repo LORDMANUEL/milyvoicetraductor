@@ -28,6 +28,16 @@ _TIER_QUALITY = {
 }
 
 
+def _finite_non_negative(value: object, default: float) -> float:
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError):
+        return default
+    if parsed < 0 or parsed != parsed or parsed in {float("inf"), float("-inf")}:
+        return default
+    return parsed
+
+
 class ModelAdvisor:
     def __init__(
         self,
@@ -48,7 +58,9 @@ class ModelAdvisor:
         )
 
     def describe_catalog(self) -> list[dict[str, Any]]:
-        installed = {f"{item.id}@{item.version}": item for item in self.catalog.installed()}
+        installed = {
+            f"{item.id}@{item.version}": item for item in self.catalog.installed()
+        }
         output: list[dict[str, Any]] = []
         for definition in self.catalog.definitions():
             ref = f"{definition['id']}@{definition['version']}"
@@ -64,6 +76,27 @@ class ModelAdvisor:
             item["resourceAllowed"] = decision.allowed
             item["resourceMode"] = decision.mode
             item["resourceReason"] = decision.reason
+            if current is not None:
+                report = self._load_report(current)
+                item["benchmark"] = report
+                if report is not None:
+                    measured = _finite_non_negative(
+                        report.get(
+                            "peakWorkingSetMb",
+                            report.get("workingSetMb", 0.0),
+                        ),
+                        0.0,
+                    )
+                    item["measuredRamMb"] = measured
+                    measured_decision = self.governor.evaluate(
+                        RuntimeFootprint(
+                            process_mb=max(float(definition.get("ramMb", 0)), measured),
+                            dedicated_vram_mb=float(definition.get("vramMb", 0)),
+                        )
+                    )
+                    item["resourceAllowed"] = measured_decision.allowed
+                    item["resourceMode"] = measured_decision.mode
+                    item["resourceReason"] = measured_decision.reason
             output.append(item)
         return output
 
@@ -85,20 +118,45 @@ class ModelAdvisor:
         report: dict[str, Any],
     ) -> EngineCandidate:
         tier = str(definition.get("tier", "experimental"))
+        declared_ram = _finite_non_negative(definition.get("ramMb", 0), 0.0)
+        measured_ram = _finite_non_negative(
+            report.get("peakWorkingSetMb", report.get("workingSetMb", 0.0)),
+            0.0,
+        )
+        combined_rtf = _finite_non_negative(
+            report.get("combinedRtfP95", report.get("asrRtfP95", 99.0)),
+            99.0,
+        )
+        end_to_end_p50 = _finite_non_negative(
+            report.get("endToEndP50Ms", report.get("translationP50Ms", 0.0)),
+            0.0,
+        )
+        end_to_end_p95 = _finite_non_negative(
+            report.get(
+                "endToEndP95Ms",
+                report.get("translationP95Ms", 99999.0),
+            ),
+            99999.0,
+        )
         return EngineCandidate(
             id=pack.id,
             engine_id=str(definition.get("engine", "")),
-            ram_mb=float(definition.get("ramMb", 0)),
-            vram_mb=float(definition.get("vramMb", 0)),
-            shared_gpu_mb=float(definition.get("sharedGpuMb", 0)),
+            ram_mb=max(declared_ram, measured_ram),
+            vram_mb=_finite_non_negative(definition.get("vramMb", 0), 0.0),
+            shared_gpu_mb=_finite_non_negative(
+                definition.get("sharedGpuMb", 0), 0.0
+            ),
             quality_score=_TIER_QUALITY.get(tier, 0.65),
             benchmark=BenchmarkSample(
-                rtf=float(report.get("asrRtfP95", 99.0)),
-                p50_ms=float(report.get("translationP50Ms", 0.0)),
-                p95_ms=float(report.get("translationP95Ms", 99999.0)),
+                rtf=combined_rtf,
+                p50_ms=end_to_end_p50,
+                p95_ms=end_to_end_p95,
                 stable=bool(report.get("passed", False)),
             ),
-            backends=tuple(str(item) for item in definition.get("supportedBackends", ("cpu",))),
+            backends=tuple(
+                str(item)
+                for item in definition.get("supportedBackends", ("cpu",))
+            ),
         )
 
     def optimize(
@@ -108,7 +166,9 @@ class ModelAdvisor:
         allow_cloud: bool = False,
         force_benchmark: bool = False,
     ) -> tuple[EngineSelection, dict[str, dict[str, Any]]]:
-        definitions = {str(item["id"]): item for item in self.catalog.definitions()}
+        definitions = {
+            str(item["id"]): item for item in self.catalog.definitions()
+        }
         candidates: list[EngineCandidate] = []
         reports: dict[str, dict[str, Any]] = {}
         for pack in self.catalog.installed():
@@ -128,7 +188,9 @@ class ModelAdvisor:
             allow_cloud=allow_cloud,
         )
         selected_pack = next(
-            item for item in self.catalog.installed() if item.id == selection.candidate.id
+            item
+            for item in self.catalog.installed()
+            if item.id == selection.candidate.id
         )
         if not selected_pack.active:
             self.installer.activate(selected_pack.id, selected_pack.version)
