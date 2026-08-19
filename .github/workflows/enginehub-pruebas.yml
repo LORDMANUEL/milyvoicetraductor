@@ -1,4 +1,4 @@
-name: Engine Hub target-machine validation
+name: Engine Hub fast preflight
 
 on:
   push:
@@ -14,14 +14,14 @@ concurrency:
   group: enginehub-pruebas-${{ github.event.pull_request.head.ref || github.ref }}
   cancel-in-progress: true
 
+# Este workflow es deliberadamente Linux-only. La certificación Windows completa
+# vive en ci.yml y ya compila el bridge MSVC, runtime privado, modelos reales,
+# Rust/Clippy, Desktop y NSIS. Pedir aquí otros dos windows-latest duplicaba el
+# trabajo y dejaba varios jobs de la misma candidata esperando runners Windows.
 jobs:
   target-machine:
-    name: 8 GiB host / 2 GiB MilyVoice / ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, windows-latest]
-    runs-on: ${{ matrix.os }}
+    name: Engine Hub preflight / Ubuntu
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v6
@@ -61,41 +61,7 @@ jobs:
           python -m unittest discover -s services/ai/tests -p "test_cli_special_model_install.py" -v
           python -m unittest discover -s services/ai/tests -p "test_model_advisor_backend_failure_isolation.py" -v
           python -m unittest discover -s services/ai/tests -p "test_moonshine_incremental_streaming.py" -v
-
-  windows-native-bridge:
-    name: whisper.cpp persistent bridge / Windows MSVC
-    runs-on: windows-latest
-    env:
-      CARGO_NET_RETRY: 10
-      CARGO_HTTP_TIMEOUT: 120
-    steps:
-      - uses: actions/checkout@v5
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          components: clippy
-      - name: Fetch locked Rust dependencies with bounded retries
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = 'Stop'
-          for ($attempt = 1; $attempt -le 3; $attempt++) {
-            cargo fetch --locked
-            if ($LASTEXITCODE -eq 0) { exit 0 }
-            if ($attempt -eq 3) {
-              throw "cargo fetch falló después de $attempt intentos."
-            }
-            Start-Sleep -Seconds (10 * $attempt)
-          }
-      - name: Build native bridge with platform-generated bindings
-        shell: pwsh
-        run: |
-          if ($env:WHISPER_DONT_GENERATE_BINDINGS) {
-            throw 'WHISPER_DONT_GENERATE_BINDINGS must not be set on Windows MSVC.'
-          }
-          cargo build -p mily-bridge --release --locked
-      - name: Test and lint native bridge
-        run: |
-          cargo test -p mily-bridge --locked
-          cargo clippy -p mily-bridge --all-targets --locked -- -D warnings
+          python -m unittest discover -s services/ai/tests -p "test_translation_latency_policy.py" -v
 
   rustfmt:
     name: Rust formatting gate
