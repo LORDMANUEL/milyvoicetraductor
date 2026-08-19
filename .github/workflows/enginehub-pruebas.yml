@@ -39,13 +39,57 @@ jobs:
         env:
           PYTHONPATH: services/ai
         run: python -m unittest discover -s services/ai/tests -p "test_runtime_discovery.py" -v
-      - name: Verify resource and pressure contracts
+      - name: Verify resources, queues, backend truth and deterministic unload
         env:
           PYTHONPATH: services/ai
         run: |
           python -m unittest discover -s services/ai/tests -p "test_resource_governor.py" -v
           python -m unittest discover -s services/ai/tests -p "test_realtime_telemetry.py" -v
           python -m unittest discover -s services/ai/tests -p "test_coalescing_queue.py" -v
+          python -m unittest discover -s services/ai/tests -p "test_model_advisor_total_product_memory.py" -v
+          python -m unittest discover -s services/ai/tests -p "test_provider_unload.py" -v
+          python -m unittest discover -s services/ai/tests -p "test_model_advisor_backend_matrix.py" -v
+          python -m unittest discover -s services/ai/tests -p "test_model_selection_state.py" -v
+          python -m unittest discover -s services/ai/tests -p "test_measured_shared_gpu_memory.py" -v
+          python -m unittest discover -s services/ai/tests -p "test_engine_benchmark_backend_truth.py" -v
+          python -m unittest discover -s services/ai/tests -p "test_cli_special_model_install.py" -v
+          python -m unittest discover -s services/ai/tests -p "test_model_advisor_backend_failure_isolation.py" -v
+          python -m unittest discover -s services/ai/tests -p "test_moonshine_incremental_streaming.py" -v
+
+  windows-native-bridge:
+    name: whisper.cpp persistent bridge / Windows MSVC
+    runs-on: windows-latest
+    env:
+      CARGO_NET_RETRY: 10
+      CARGO_HTTP_TIMEOUT: 120
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - name: Fetch locked Rust dependencies with bounded retries
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          for ($attempt = 1; $attempt -le 3; $attempt++) {
+            cargo fetch --locked
+            if ($LASTEXITCODE -eq 0) { exit 0 }
+            if ($attempt -eq 3) {
+              throw "cargo fetch falló después de $attempt intentos."
+            }
+            Start-Sleep -Seconds (10 * $attempt)
+          }
+      - name: Build native bridge with platform-generated bindings
+        shell: pwsh
+        run: |
+          if ($env:WHISPER_DONT_GENERATE_BINDINGS) {
+            throw 'WHISPER_DONT_GENERATE_BINDINGS must not be set on Windows MSVC.'
+          }
+          cargo build -p mily-bridge --release --locked
+      - name: Test and lint native bridge
+        run: |
+          cargo test -p mily-bridge --locked
+          cargo clippy -p mily-bridge --all-targets --locked -- -D warnings
 
   rustfmt:
     name: Rust formatting gate

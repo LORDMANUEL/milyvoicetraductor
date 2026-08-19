@@ -624,14 +624,46 @@ class ModelCatalog:
                 return pack
         raise KeyError(pack_id)
 
+    @staticmethod
+    def _normalize_backend(value: object) -> str:
+        backend = str(value or "auto").strip().lower()
+        if backend == "gpu":
+            backend = "cuda"
+        allowed = {
+            "auto", "cpu", "cuda", "vulkan", "openvino",
+            "directml", "windowsml", "cloud",
+        }
+        return backend if backend in allowed else "auto"
+
+    @classmethod
+    def _empty_state(cls) -> dict[str, Any]:
+        return {
+            "schemaVersion": 2,
+            "active": None,
+            "backend": "auto",
+            "previous": None,
+            "previousBackend": "auto",
+        }
+
     def _state(self) -> dict[str, Any]:
         if not self.state_path.exists():
-            return {"schemaVersion": 2, "active": None, "previous": None}
+            return self._empty_state()
         try:
             state = json.loads(self.state_path.read_text(encoding="utf-8"))
-        except json.JSONDecodeError:
-            return {"schemaVersion": 2, "active": None, "previous": None}
-        return state
+        except (OSError, json.JSONDecodeError):
+            return self._empty_state()
+        if not isinstance(state, dict):
+            return self._empty_state()
+        normalized = self._empty_state()
+        normalized.update(state)
+        normalized["backend"] = self._normalize_backend(normalized.get("backend"))
+        normalized["previousBackend"] = self._normalize_backend(
+            normalized.get("previousBackend")
+        )
+        return normalized
+
+    def active_backend(self) -> str:
+        return self._normalize_backend(self._state().get("backend"))
 
     def installed(self) -> list[InstalledPack]:
         active = self._state().get("active")
@@ -929,26 +961,39 @@ class HuggingFacePackInstaller:
             for relative, digest in expected.items()
         )
 
-    def activate(self, pack_id: str, version: str) -> None:
+    def activate(
+        self, pack_id: str, version: str, backend: str = "auto"
+    ) -> None:
+        self.activate_selection(pack_id, version, backend)
+
+    def activate_selection(
+        self, pack_id: str, version: str, backend: str
+    ) -> None:
         pack_dir = self.catalog.packs_dir / pack_id / version
         if not (pack_dir / "pack.json").exists():
             raise FileNotFoundError("Pack no instalado")
         self.catalog.models_dir.mkdir(parents=True, exist_ok=True)
         state = self.catalog._state()
         new_ref = f"{pack_id}@{version}"
-        previous = (
-            state.get("active")
-            if state.get("active") != new_ref
-            else state.get("previous")
-        )
+        current_ref = state.get("active")
+        current_backend = self.catalog._normalize_backend(state.get("backend"))
+        if current_ref != new_ref:
+            previous = current_ref
+            previous_backend = current_backend
+        else:
+            previous = state.get("previous")
+            previous_backend = self.catalog._normalize_backend(
+                state.get("previousBackend")
+            )
+        payload = {
+            "schemaVersion": 2,
+            "active": new_ref,
+            "backend": self.catalog._normalize_backend(backend),
+            "previous": previous,
+            "previousBackend": previous_backend,
+        }
         temp = self.catalog.state_path.with_suffix(".tmp")
-        temp.write_text(
-            json.dumps(
-                {"schemaVersion": 2, "active": new_ref, "previous": previous},
-                indent=2,
-            ),
-            encoding="utf-8",
-        )
+        temp.write_text(json.dumps(payload, indent=2), encoding="utf-8")
         temp.replace(self.catalog.state_path)
 
     def rollback(self) -> InstalledPack:
@@ -958,12 +1003,17 @@ class HuggingFacePackInstaller:
             raise RuntimeError("No existe un pack anterior para rollback")
         pack_id, version = previous.rsplit("@", 1)
         current = state.get("active")
-        self.activate(pack_id, version)
+        current_backend = self.catalog.active_backend()
+        previous_backend = self.catalog._normalize_backend(
+            state.get("previousBackend")
+        )
+        self.activate_selection(pack_id, version, previous_backend)
         new_state = self.catalog._state()
         new_state["previous"] = current
-        self.catalog.state_path.write_text(
-            json.dumps(new_state, indent=2), encoding="utf-8"
-        )
+        new_state["previousBackend"] = current_backend
+        temp = self.catalog.state_path.with_suffix(".tmp")
+        temp.write_text(json.dumps(new_state, indent=2), encoding="utf-8")
+        temp.replace(self.catalog.state_path)
         return self.catalog.active_pack()  # type: ignore[return-value]
 
     def remove(self, pack_id: str, version: str) -> None:

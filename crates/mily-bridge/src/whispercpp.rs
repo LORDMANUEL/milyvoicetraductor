@@ -220,7 +220,7 @@ fn read_request(
         || metadata_length > MAX_METADATA_BYTES
         || pcm_length == 0
         || pcm_length > MAX_PCM_BYTES
-        || pcm_length % 4 != 0
+        || !pcm_length.is_multiple_of(4)
     {
         return Err(WhisperBridgeError::InvalidFrame);
     }

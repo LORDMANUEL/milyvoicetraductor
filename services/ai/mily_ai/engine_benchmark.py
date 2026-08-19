@@ -15,7 +15,11 @@ from .benchmarking import percentile
 from .cpu_budget import detect_cpu_budget
 from .models import InstalledPack
 from .process_memory import process_tree_memory_snapshot_mb
-from .provider_factory import build_asr_provider, build_translation_provider
+from .provider_factory import (
+    build_asr_provider,
+    build_translation_provider,
+    normalize_backend,
+)
 from .resource_governor import (
     ResourceGovernor,
     ResourceLimits,
@@ -142,6 +146,41 @@ def _windows_sapi_fixture() -> list[float]:
         return _read_wave_mono_16k(wave_path)
 
 
+def _provider_device(provider: Any, default: str) -> str:
+    value = str(getattr(provider, "selected_device", "") or "").strip().lower()
+    if value == "gpu":
+        value = "cuda"
+    allowed = {
+        "cpu",
+        "cuda",
+        "vulkan",
+        "openvino",
+        "directml",
+        "windowsml",
+        "cloud",
+    }
+    return value if value in allowed else default
+
+
+def _backend_verified(requested: str, asr_backend: str, mt_backend: str) -> bool:
+    if requested == "auto":
+        return True
+    if requested == "cpu":
+        return asr_backend == "cpu" and mt_backend == "cpu"
+    if requested == "cloud":
+        return asr_backend == "cloud"
+    if requested == "cuda":
+        return "cuda" in {asr_backend, mt_backend}
+    if requested in {"vulkan", "openvino", "directml", "windowsml"}:
+        return asr_backend == requested
+    return False
+
+
+def _benchmark_output_path(pack: InstalledPack, backend: str) -> Path:
+    safe = "".join(character for character in backend if character.isalnum() or character in "-_")
+    return pack.path / f"benchmark-{safe or 'auto'}.json"
+
+
 def benchmark_installed_pack(
     pack: InstalledPack,
     definition: dict[str, Any],
@@ -160,6 +199,7 @@ def benchmark_installed_pack(
     ):
         raise BenchmarkExecutionError("El pack no declara ASR y traducción")
 
+    requested_backend = normalize_backend(compute_profile)
     routes = tuple(str(item) for item in definition.get("routes", ("en-es",)))
     route = routes[0] if routes else "en-es"
     source_language, fallback_text = _sample_for_route(route)
@@ -167,14 +207,14 @@ def benchmark_installed_pack(
     asr = build_asr_provider(
         components["asr"],
         pack.path / "components" / "asr",
-        compute_profile,
+        requested_backend,
         budget,
         False,
     )
     translator = build_translation_provider(
         components["translation"],
         pack.path / "components" / "translation",
-        compute_profile,
+        requested_backend,
         budget,
     )
     audio = (
@@ -192,6 +232,8 @@ def benchmark_installed_pack(
     empty_translation = 0
     current, peak = process_memory_snapshot_mb()
     peak_engine_working_set = max(current, peak)
+    asr_backend = ""
+    translation_backend = ""
     try:
         warm_asr = getattr(asr, "warm_up", None)
         if callable(warm_asr):
@@ -241,6 +283,11 @@ def benchmark_installed_pack(
             asr_ms.append(asr_elapsed)
             mt_ms.append(mt_elapsed)
             e2e_ms.append(asr_elapsed + mt_elapsed)
+
+        default_asr = "cpu" if requested_backend == "cpu" else "unknown"
+        default_mt = "cpu" if requested_backend != "cuda" else "unknown"
+        asr_backend = _provider_device(asr, default_asr)
+        translation_backend = _provider_device(translator, default_mt)
     except Exception as exc:
         raise BenchmarkExecutionError(
             f"El pack {pack.id} no completó su microbenchmark: "
@@ -251,6 +298,15 @@ def benchmark_installed_pack(
             unload = getattr(provider, "unload", None)
             if callable(unload):
                 unload()
+
+    if not asr_backend:
+        asr_backend = "unknown"
+    if not translation_backend:
+        translation_backend = "unknown"
+    verified = _backend_verified(
+        requested_backend, asr_backend, translation_backend
+    )
+    verified_backend = requested_backend if verified else "unverified"
 
     asr_p50 = percentile(asr_ms, 50)
     asr_p95 = percentile(asr_ms, 95)
@@ -281,6 +337,8 @@ def benchmark_installed_pack(
     total_product_working_set = product_decision.effective_process_mb
 
     failures: list[str] = []
+    if not verified:
+        failures.append("BACKEND_MISMATCH")
     if empty_asr:
         failures.append("EMPTY_ASR")
     if empty_translation:
@@ -312,7 +370,10 @@ def benchmark_installed_pack(
         "packId": pack.id,
         "packVersion": pack.version,
         "route": route,
-        "backend": compute_profile,
+        "requestedBackend": requested_backend,
+        "backend": verified_backend,
+        "asrBackend": asr_backend,
+        "translationBackend": translation_backend,
         "samples": repeats,
         "audioSeconds": round(audio_seconds, 3),
         "asrP50Ms": round(asr_p50, 3),
@@ -323,7 +384,6 @@ def benchmark_installed_pack(
         "endToEndP50Ms": round(e2e_p50, 3),
         "endToEndP95Ms": round(e2e_p95, 3),
         "combinedRtfP95": round(combined_rtf_p95, 4),
-        # Compatibilidad: estas dos métricas siguen describiendo motor + sidecars.
         "workingSetMb": round(peak_engine_working_set, 1),
         "peakWorkingSetMb": round(peak_engine_working_set, 1),
         "engineWorkingSetMb": round(peak_engine_working_set, 1),
@@ -332,6 +392,7 @@ def benchmark_installed_pack(
         "sharedGpuMb": round(shared_gpu_mb, 1),
         "dedicatedVramMb": round(dedicated_vram_mb, 1),
         "totalProductWorkingSetMb": round(total_product_working_set, 1),
+        "totalProductIncludesSharedGpu": True,
         "productMemoryMode": product_decision.mode,
         "productMemoryHeadroomMb": round(product_decision.process_headroom_mb, 1),
         "emptyAsrResults": empty_asr,
@@ -339,11 +400,15 @@ def benchmark_installed_pack(
         "failures": list(dict.fromkeys(failures)),
         "passed": not failures,
     }
-    output = pack.path / "benchmark.json"
-    temporary = output.with_suffix(".tmp")
-    temporary.write_text(
-        json.dumps(report, ensure_ascii=False, indent=2, allow_nan=False),
-        encoding="utf-8",
+    outputs = (
+        _benchmark_output_path(pack, requested_backend),
+        pack.path / "benchmark.json",
     )
-    temporary.replace(output)
+    for output in outputs:
+        temporary = output.with_suffix(output.suffix + ".tmp")
+        temporary.write_text(
+            json.dumps(report, ensure_ascii=False, indent=2, allow_nan=False),
+            encoding="utf-8",
+        )
+        temporary.replace(output)
     return report

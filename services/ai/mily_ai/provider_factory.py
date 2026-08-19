@@ -8,6 +8,7 @@ from typing import Any, Callable
 
 from .cloud_providers import GoogleChirpV2Asr
 from .cpu_budget import CpuBudget
+from .moonshine_provider import MoonshineStreamingAsr
 from .optional_providers import CTranslate2MarianTranslator, SherpaOnnxAsr
 from .providers import (
     AsrProvider,
@@ -17,7 +18,6 @@ from .providers import (
     QwenTranslator,
     Translator,
 )
-from .safe_optional_providers import MoonshineResultAsr
 from .vosk_provider import VoskAsr
 from .whispercpp_provider import BundledWhisperCppBridgeAsr
 
@@ -33,24 +33,47 @@ class ProviderConfigurationError(RuntimeError):
 
 AsrBuilder = Callable[[Path, str, CpuBudget, bool], AsrProvider]
 TranslationBuilder = Callable[[dict[str, Any], Path, str, CpuBudget], Translator]
+_ALLOWED_BACKENDS = {
+    "auto",
+    "cpu",
+    "cuda",
+    "vulkan",
+    "openvino",
+    "directml",
+    "windowsml",
+    "cloud",
+}
 
 
-def _faster_whisper(
-    model_path: Path,
-    compute_profile: str,
-    cpu_budget: CpuBudget,
-    word_timestamps: bool,
-) -> AsrProvider:
-    return FasterWhisperAsr(
-        model_path,
-        compute_profile,
-        cpu_budget=cpu_budget,
-        word_timestamps=word_timestamps,
-    )
+def normalize_backend(value: object) -> str:
+    backend = str(value or "auto").strip().lower()
+    if backend == "gpu":
+        backend = "cuda"
+    return backend if backend in _ALLOWED_BACKENDS else "auto"
 
 
-def _optional_asr(cls):
-    def builder(
+def _asr_compute_profile(provider: str, backend: str) -> str:
+    normalized = normalize_backend(backend)
+    if provider == "whisper-cpp":
+        return normalized
+    if provider == "google-chirp":
+        return "cloud" if normalized == "cloud" else normalized
+    if provider == "faster-whisper":
+        if normalized == "cuda":
+            return "gpu"
+        return normalized if normalized in {"auto", "cpu"} else "cpu"
+    return "cpu"
+
+
+def _translation_compute_profile(backend: str) -> str:
+    normalized = normalize_backend(backend)
+    if normalized == "cuda":
+        return "gpu"
+    return normalized if normalized == "auto" else "cpu"
+
+
+def _asr_builder(cls):
+    def build(
         model_path: Path,
         compute_profile: str,
         cpu_budget: CpuBudget,
@@ -63,16 +86,16 @@ def _optional_asr(cls):
             word_timestamps=word_timestamps,
         )
 
-    return builder
+    return build
 
 
 ASR_BUILDERS: dict[str, AsrBuilder] = {
-    "faster-whisper": _faster_whisper,
-    "moonshine": _optional_asr(MoonshineResultAsr),
-    "sherpa-onnx": _optional_asr(SherpaOnnxAsr),
-    "whisper-cpp": _optional_asr(BundledWhisperCppBridgeAsr),
-    "vosk": _optional_asr(VoskAsr),
-    "google-chirp": _optional_asr(GoogleChirpV2Asr),
+    "faster-whisper": _asr_builder(FasterWhisperAsr),
+    "moonshine": _asr_builder(MoonshineStreamingAsr),
+    "sherpa-onnx": _asr_builder(SherpaOnnxAsr),
+    "whisper-cpp": _asr_builder(BundledWhisperCppBridgeAsr),
+    "vosk": _asr_builder(VoskAsr),
+    "google-chirp": _asr_builder(GoogleChirpV2Asr),
 }
 
 
@@ -153,7 +176,7 @@ def build_asr_provider(
         )
     return builder(
         Path(model_path),
-        compute_profile,
+        _asr_compute_profile(provider, compute_profile),
         cpu_budget,
         bool(word_timestamps),
     )
@@ -172,4 +195,9 @@ def build_translation_provider(
             "TRANSLATION_PROVIDER_UNSUPPORTED",
             f"Proveedor de traducción no soportado: {provider or 'vacío'}",
         )
-    return builder(component, Path(model_path), compute_profile, cpu_budget)
+    return builder(
+        component,
+        Path(model_path),
+        _translation_compute_profile(compute_profile),
+        cpu_budget,
+    )
