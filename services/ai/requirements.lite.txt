@@ -1,0 +1,5 @@
+# BetaAlpha Lite runtime: dependencias del camino crítico únicamente.
+-r requirements.runtime.txt
+
+# NOTA: el builder BetaAlpha filtra Torch/Transformers del runtime final Lite.
+# Este archivo sirve como contrato de empaquetado; Quality se instala aparte.
