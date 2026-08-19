@@ -58,6 +58,30 @@ pub async fn import_model_pack(
 }
 
 #[tauri::command]
+pub async fn import_model_pack_url(
+    state: State<'_, AppState>,
+    url: String,
+) -> Result<ModelPackInfo, PublicError> {
+    let models = state.models.clone();
+    let logger = state.logger.clone();
+    tauri::async_runtime::spawn_blocking(move || models.import_pack_url(&url))
+        .await
+        .map_err(|_| {
+            public_error(
+                "MODEL_RUNTIME_ERROR",
+                "La descarga externa terminó inesperadamente.",
+            )
+        })?
+        .inspect(|pack| {
+            let _ = logger.write(
+                "info",
+                &format!("Repositorio externo validado: {}", pack.id),
+            );
+        })
+        .map_err(|error| public_error(error.public_code(), error.public_message()))
+}
+
+#[tauri::command]
 pub async fn optimize_models(
     state: State<'_, AppState>,
     route: String,
