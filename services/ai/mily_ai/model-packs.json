@@ -21,6 +21,7 @@
       "components": {
         "asr": {
           "provider": "moonshine",
+          "runtimeVersion": "0.1.0",
           "language": "en",
           "modelArch": 2,
           "estimatedRamMb": 430
