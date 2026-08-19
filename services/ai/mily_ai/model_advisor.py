@@ -87,6 +87,7 @@ class ModelAdvisor:
             shared_gpu_mb=_finite_non_negative(
                 definition.get("sharedGpuMb", 0), 0.0
             ),
+            total_product_mb=measured_total_product,
             dedicated_vram_mb=_finite_non_negative(
                 definition.get("vramMb", 0), 0.0
             ),
@@ -185,6 +186,9 @@ class ModelAdvisor:
         tier = str(definition.get("tier", "experimental"))
         declared_ram = self._declared_engine_ram(definition)
         measured_ram = self._engine_ram_from_report(report)
+        measured_total_product = _finite_non_negative(
+            report.get("totalProductWorkingSetMb", 0.0), 0.0
+        )
         combined_rtf = _finite_non_negative(
             report.get(
                 "combinedRtfP95", report.get("asrRtfP95", 99.0)

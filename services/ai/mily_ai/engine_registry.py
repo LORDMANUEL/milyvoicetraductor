@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterable
 
-from .resource_governor import ResourceGovernor
+from .resource_governor import ResourceGovernor, RuntimeFootprint
 
 
 @dataclass(frozen=True, slots=True)
@@ -50,11 +50,17 @@ class EngineCandidate:
     benchmark: BenchmarkSample
     backends: tuple[str, ...] = ()
     shared_gpu_mb: float = 0.0
+    total_product_mb: float = 0.0
 
     def __post_init__(self) -> None:
         if not self.id or not self.engine_id:
             raise ValueError("El candidato debe tener id y engine_id")
-        memory = (self.ram_mb, self.vram_mb, self.shared_gpu_mb)
+        memory = (
+            self.ram_mb,
+            self.vram_mb,
+            self.shared_gpu_mb,
+            self.total_product_mb,
+        )
         if not all(
             math.isfinite(float(value)) and float(value) >= 0
             for value in memory
@@ -134,9 +140,13 @@ class EngineRegistry:
         speed = max(0.0, 1.5 - float(benchmark.rtf)) / 1.5
         latency = 1.0 / (1.0 + float(benchmark.p95_ms) / 1000.0)
         total_ram_mb = (
-            float(candidate.ram_mb)
-            + float(candidate.shared_gpu_mb)
-            + float(self.resource_governor.limits.product_reserve_mb)
+            float(candidate.total_product_mb)
+            if candidate.total_product_mb > 0
+            else (
+                float(candidate.ram_mb)
+                + float(candidate.shared_gpu_mb)
+                + float(self.resource_governor.limits.product_reserve_mb)
+            )
         )
         memory = 1.0 / (1.0 + total_ram_mb / 1024.0)
         return (
@@ -184,10 +194,19 @@ class EngineRegistry:
             if commercial_required and not descriptor.commercial_use:
                 rejected[candidate.id] = "NON_COMMERCIAL"
                 continue
-            resource = self.resource_governor.preflight_model(
-                model_ram_mb=candidate.ram_mb,
-                shared_gpu_mb=candidate.shared_gpu_mb,
-                dedicated_vram_mb=candidate.vram_mb,
+            resource = (
+                self.resource_governor.evaluate(
+                    RuntimeFootprint(
+                        process_mb=candidate.total_product_mb,
+                        dedicated_vram_mb=candidate.vram_mb,
+                    )
+                )
+                if candidate.total_product_mb > 0
+                else self.resource_governor.preflight_model(
+                    model_ram_mb=candidate.ram_mb,
+                    shared_gpu_mb=candidate.shared_gpu_mb,
+                    dedicated_vram_mb=candidate.vram_mb,
+                )
             )
             if not resource.allowed:
                 rejected[candidate.id] = resource.reason
