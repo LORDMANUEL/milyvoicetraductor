@@ -10,7 +10,6 @@ logo = ROOT / "apps" / "site" / "assets" / "logo.svg"
 history = ROOT / "docs" / "release" / "VERSION_HISTORY.md"
 
 WINDOWS_DOWNLOAD = "https://github.com/LORDMANUEL/milyvoicetraductor/releases/download/v2.0.1/MilyVoiceTraductor_2.0.1_x64-setup.exe"
-CHROMIUM_DOWNLOAD = "https://github.com/LORDMANUEL/milyvoicetraductor/releases/download/v2.0.1/MilyVoiceTraductor-Chromium-Extension.zip"
 HISTORICAL_DOWNLOADS = [
     "https://github.com/LORDMANUEL/milyvoicetraductor/releases/download/v2.0.0/MilyVoiceTraductor_2.0.0_x64-setup.exe",
     "https://github.com/LORDMANUEL/milyvoicetraductor/releases/download/v1.0.5/MilyVoiceTraductor_1.0.5_x64-setup.exe",
@@ -39,7 +38,6 @@ else:
         "MilyVoiceTraductor 1.0.5",
         "MilyVoiceTraductor 2.0.0",
         WINDOWS_DOWNLOAD,
-        CHROMIUM_DOWNLOAD,
         "https://github.com/LORDMANUEL/milyvoicetraductor/tree/pruebas",
         "https://github.com/LORDMANUEL/milyvoicetraductor/tree/betaalpha",
     ] + HISTORICAL_DOWNLOADS:
