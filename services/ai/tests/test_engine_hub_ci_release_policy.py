@@ -46,17 +46,16 @@ class EngineHubCiReleasePolicyTests(unittest.TestCase):
                 self.assertIn(script, self.workflow)
                 self.assertTrue((WINDOWS / script).is_file())
 
-    def test_zh_benchmark_uses_current_process_tree_memory_probe(self):
+    def test_zh_benchmark_uses_public_process_tree_memory_probe(self):
         text = (WINDOWS / "test-zh-es-lite.ps1").read_text(encoding="utf-8")
         self.assertIn(
-            "from mily_ai.process_memory import _process_tree_private_working_set_mb",
+            "from mily_ai.process_memory import process_tree_memory_snapshot_mb",
             text,
         )
-        self.assertIn("_process_tree_private_working_set_mb(os.getpid())", text)
-        self.assertNotIn(
-            "from mily_ai.engine_benchmark import _process_tree_working_set_mb",
-            text,
-        )
+        self.assertIn("process_tree_memory_snapshot_mb(os.getpid())", text)
+        self.assertIn("memory_snapshot.peak_mb", text)
+        self.assertNotIn("_process_tree_working_set_mb", text)
+        self.assertNotIn("_process_tree_private_working_set_mb", text)
 
     def test_release_bundle_requires_simulation_and_all_lite_reports(self):
         for filename in (
