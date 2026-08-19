@@ -172,6 +172,10 @@ jobs:
         if: success()
         shell: pwsh
         run: .\installer\windows\test-realtime-model.ps1
+      - name: Moonshine Lite real EN to ES benchmark
+        if: success()
+        shell: pwsh
+        run: .\installer\windows\test-moonshine-lite.ps1
       - name: Rust tests
         if: success()
         run: cargo test --workspace
@@ -204,9 +208,11 @@ jobs:
           if (-not $installer) { throw "No se encontró el instalador NSIS generado." }
           $extension = Get-Item "dist/MilyVoiceTraductor-Chromium-Extension.zip"
           $megaBench = Get-Item "dist/performance/MilyVoiceTraductor-2.0.1-MegaBench.json"
+          $moonshineBench = Get-Item "dist/performance/MilyVoiceTraductor-2.0.1-MoonshineLiteBench.json"
           Copy-Item $installer.FullName "dist/release/$($installer.Name)"
           Copy-Item $extension.FullName "dist/release/$($extension.Name)"
           Copy-Item $megaBench.FullName "dist/release/$($megaBench.Name)"
+          Copy-Item $moonshineBench.FullName "dist/release/$($moonshineBench.Name)"
           $lines = foreach ($file in Get-ChildItem "dist/release" -File) {
             $hash = (Get-FileHash $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
             "$hash *$($file.Name)"
