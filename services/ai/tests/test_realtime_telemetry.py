@@ -22,6 +22,29 @@ class RealtimeTelemetryTests(unittest.TestCase):
         self.assertGreaterEqual(snapshot.asr_p95_ms, snapshot.asr_p50_ms)
         self.assertGreater(snapshot.translation_p50_ms, 0)
         self.assertLess(snapshot.real_time_factor, 1.0)
+        self.assertGreaterEqual(
+            snapshot.real_time_factor_p95,
+            snapshot.real_time_factor,
+        )
+        self.assertAlmostEqual(snapshot.real_time_factor_p95, 0.8)
+
+    def test_rtf_p95_exposes_spikes_hidden_by_the_median(self):
+        telemetry = RealtimeTelemetry(max_samples=8)
+        for elapsed_ms in (300.0, 320.0, 340.0, 360.0, 1800.0):
+            telemetry.record_asr(elapsed_ms, audio_ms=1000.0)
+        snapshot = telemetry.snapshot(audio_queue_ms=0, translation_queue_depth=0)
+        self.assertLess(snapshot.real_time_factor, 0.85)
+        self.assertGreaterEqual(snapshot.real_time_factor_p95, 1.8)
+        controller = LatencyController()
+        self.assertEqual(
+            controller.classify(
+                0,
+                0,
+                snapshot.real_time_factor_p95,
+                process_memory_mb=900.0,
+            ),
+            "rescue",
+        )
 
     def test_controller_classifies_all_four_resource_states(self):
         controller = LatencyController()
