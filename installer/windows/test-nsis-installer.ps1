@@ -82,6 +82,7 @@ $DesktopExe = Join-Path $InstallRoot 'MilyVoiceTraductor.exe'
 $BootstrapRoot = Join-Path $InstallRoot 'bootstrap'
 $BootstrapScript = Join-Path $BootstrapRoot 'setup-installed.ps1'
 $PrivatePython = Join-Path $AppRoot 'runtime\python\python.exe'
+$RuntimeManifest = Join-Path $AppRoot 'runtime\python\runtime-manifest.json'
 $EngineMain = Join-Path $AppRoot 'engine\app\main.py'
 $EnginePackage = Join-Path $AppRoot 'engine\app\mily_ai\__init__.py'
 $ExtensionManifest = Join-Path $AppRoot 'extension\manifest.json'
@@ -114,6 +115,7 @@ if (-not (Test-Path $StatusPath -PathType Leaf)) {
 Assert-BootstrapReady $StatusPath
 
 Assert-File $PrivatePython 'NSIS/post-install no dejó el runtime Python privado aunque reportó BOOTSTRAP_OK.'
+Assert-File $RuntimeManifest 'NSIS/post-install no dejó el manifiesto del runtime privado aunque reportó BOOTSTRAP_OK.'
 Assert-File $EngineMain 'NSIS/post-install no dejó main.py del motor aunque reportó BOOTSTRAP_OK.'
 Assert-File $EnginePackage 'NSIS/post-install perdió el paquete mily_ai aunque reportó BOOTSTRAP_OK.'
 Assert-File $ExtensionManifest 'NSIS/post-install no dejó la extensión Chromium aunque reportó BOOTSTRAP_OK.'
@@ -149,27 +151,113 @@ New-Item -ItemType Directory -Force -Path (Split-Path $ConfigPath -Parent) | Out
 '@ | Set-Content -Path $ConfigPath -Encoding UTF8
 
 # Reproduce el fallo observado en Windows real: una versión anterior puede dejar
-# el Python privado vivo. Windows bloquea python.exe y la carpeta runtime\python,
-# por lo que una reinstalación debe cerrar SOLO procesos propiedad de MilyVoice.
-$lockedRuntime = Start-Process -FilePath $PrivatePython -ArgumentList @('-c', 'import time; time.sleep(120)') -PassThru
-Start-Sleep -Milliseconds 500
-if ($lockedRuntime.HasExited) {
-    throw 'El fixture no logró mantener abierto el runtime privado antes de reinstalar.'
+# el Python privado vivo y un archivo dentro de runtime\python bloqueado. Se usa
+# un script temporal y un handshake explícito; Start-Process + Python -c era
+# ambiguo al reconstruir argumentos y podía terminar antes de crear el bloqueo.
+$FixtureRoot = Join-Path $env:RUNNER_TEMP 'MilyVoiceRuntimeFixture'
+$FixtureScript = Join-Path $FixtureRoot 'hold-private-runtime.py'
+$FixtureReady = Join-Path $FixtureRoot 'runtime-fixture-ready'
+Remove-Item $FixtureRoot -Recurse -Force -ErrorAction SilentlyContinue
+New-Item -ItemType Directory -Force -Path $FixtureRoot | Out-Null
+@'
+from __future__ import annotations
+
+import ctypes
+import os
+import sys
+import time
+from ctypes import wintypes
+from pathlib import Path
+
+lock_path = Path(sys.argv[1])
+ready_path = Path(sys.argv[2])
+kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+kernel32.CreateFileW.argtypes = [
+    wintypes.LPCWSTR,
+    wintypes.DWORD,
+    wintypes.DWORD,
+    wintypes.LPVOID,
+    wintypes.DWORD,
+    wintypes.DWORD,
+    wintypes.HANDLE,
+]
+kernel32.CreateFileW.restype = wintypes.HANDLE
+kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
+kernel32.CloseHandle.restype = wintypes.BOOL
+
+handle = kernel32.CreateFileW(
+    str(lock_path),
+    0x80000000,
+    0,
+    None,
+    3,
+    0x80,
+    None,
+)
+if handle == wintypes.HANDLE(-1).value:
+    raise ctypes.WinError(ctypes.get_last_error())
+
+ready_path.write_text(str(os.getpid()), encoding="utf-8")
+try:
+    time.sleep(600)
+finally:
+    kernel32.CloseHandle(handle)
+'@ | Set-Content -Path $FixtureScript -Encoding UTF8
+
+$fixtureStart = [System.Diagnostics.ProcessStartInfo]::new()
+$fixtureStart.FileName = $PrivatePython
+$fixtureStart.UseShellExecute = $false
+$fixtureStart.CreateNoWindow = $true
+$fixtureStart.RedirectStandardOutput = $true
+$fixtureStart.RedirectStandardError = $true
+[void]$fixtureStart.ArgumentList.Add($FixtureScript)
+[void]$fixtureStart.ArgumentList.Add($RuntimeManifest)
+[void]$fixtureStart.ArgumentList.Add($FixtureReady)
+
+$lockedRuntime = [System.Diagnostics.Process]::new()
+$lockedRuntime.StartInfo = $fixtureStart
+if (-not $lockedRuntime.Start()) {
+    throw 'No se pudo iniciar el fixture del runtime privado antes de reinstalar.'
 }
 
+$fixtureReadyObserved = $false
+for ($attempt = 0; $attempt -lt 100; $attempt++) {
+    Start-Sleep -Milliseconds 100
+    $lockedRuntime.Refresh()
+    if ($lockedRuntime.HasExited) {
+        $fixtureError = $lockedRuntime.StandardError.ReadToEnd().Trim()
+        throw "El fixture del runtime privado terminó con código $($lockedRuntime.ExitCode): $fixtureError"
+    }
+    if (Test-Path $FixtureReady -PathType Leaf) {
+        $fixtureReadyObserved = $true
+        break
+    }
+}
+if (-not $fixtureReadyObserved) {
+    Stop-Process -Id $lockedRuntime.Id -Force -ErrorAction SilentlyContinue
+    throw 'El fixture no confirmó que el runtime privado estuviera bloqueado antes de reinstalar.'
+}
+$fixturePid = (Get-Content $FixtureReady -Raw -Encoding UTF8).Trim()
+if ($fixturePid -ne [string]$lockedRuntime.Id) {
+    Stop-Process -Id $lockedRuntime.Id -Force -ErrorAction SilentlyContinue
+    throw "El handshake del fixture reportó PID $fixturePid, pero se esperaba $($lockedRuntime.Id)."
+}
+
+$installerStoppedRuntime = $false
 try {
     Write-Host 'Reinstalando 2.0.1 sobre estado local existente y runtime privado activo...' -ForegroundColor Cyan
     Run-ProcessChecked $Installer.FullName @('/S', "/D=$InstallRoot") 300000
+    $installerStoppedRuntime = $lockedRuntime.WaitForExit(5000)
 } finally {
     $lockedRuntime.Refresh()
     if (-not $lockedRuntime.HasExited) {
         Stop-Process -Id $lockedRuntime.Id -Force -ErrorAction SilentlyContinue
         $lockedRuntime.WaitForExit(10000) | Out-Null
     }
+    Remove-Item $FixtureRoot -Recurse -Force -ErrorAction SilentlyContinue
 }
 
-$lockedRuntime.Refresh()
-if (-not $lockedRuntime.HasExited) {
+if (-not $installerStoppedRuntime) {
     throw 'La reinstalación no cerró el runtime privado anterior.'
 }
 Assert-BootstrapReady $StatusPath
