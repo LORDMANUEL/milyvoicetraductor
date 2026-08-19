@@ -73,7 +73,9 @@ class EngineHubCiReleasePolicyTests(unittest.TestCase):
             "maxNgramOccurrences",
             "maxOutputWords",
             "maxOutputSentences",
-            "lite-zh-es 1.0.1",
+            "$PackVersion = '1.0.1'",
+            "verify lite-zh-es $PackVersion",
+            "activate lite-zh-es $PackVersion",
         ):
             with self.subTest(marker=marker):
                 self.assertIn(marker, text)
