@@ -7,6 +7,7 @@
   import Models from './pages/Models.svelte';
   import Permissions from './pages/Permissions.svelte';
   import Devices from './pages/Devices.svelte';
+  import Diagnostics from './pages/Diagnostics.svelte';
   import Settings from './pages/Settings.svelte';
   import Help from './pages/Help.svelte';
   import About from './pages/About.svelte';
@@ -34,7 +35,7 @@
         desktopApi.getCacheStatus(), desktopApi.getConfig()
       ]);
     } catch {
-      error = 'No se pudo cargar el estado local. Revisa los logs sanitizados de la aplicación.';
+      error = 'No se pudo cargar el estado local. Revisa Diagnóstico y reparación.';
     } finally {
       loading = false;
     }
@@ -75,6 +76,7 @@
       {:else if activePage === 'models'}<Models onChanged={refreshStatus} />
       {:else if activePage === 'permissions'}<Permissions {status} />
       {:else if activePage === 'devices'}<Devices {system} />
+      {:else if activePage === 'diagnostics'}<Diagnostics />
       {:else if activePage === 'settings'}<Settings {config} {cache} onSave={saveConfig} onClearCache={clearCache} />
       {:else if activePage === 'help'}<Help />
       {:else}<About version={status.version} />{/if}
