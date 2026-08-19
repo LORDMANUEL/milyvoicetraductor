@@ -4,8 +4,8 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="theme-color" content="#00a878" />
-  <meta name="description" content="MilyVoiceTraductor 2.0.1 traduce reuniones, cursos, videos y audio de Windows al español mediante inteligencia artificial local." />
-  <title>MilyVoiceTraductor 2.0.1 · Traducción local en tiempo real</title>
+  <meta name="description" content="MilyVoiceTraductor 2.0.1 estable y Engine Hub beta en pruebas para traducción local en tiempo real." />
+  <title>MilyVoiceTraductor · Estable 2.0.1 + Engine Hub Beta</title>
   <link rel="stylesheet" href="./styles.css" />
 </head>
 <body>
@@ -17,21 +17,22 @@
     <nav aria-label="Navegación del sitio">
       <a href="#producto">Producto</a>
       <a href="#compute">MilyCompute</a>
+      <a href="#beta">Beta</a>
       <a href="#privacidad">Privacidad</a>
       <a href="#estado">Descargas</a>
     </nav>
-    <a class="ghost-button" href="https://github.com/LORDMANUEL/milyvoicetraductor/releases/download/v2.0.1/MilyVoiceTraductor_2.0.1_x64-setup.exe">Descargar</a>
+    <a class="ghost-button" href="https://github.com/LORDMANUEL/milyvoicetraductor/releases/download/v2.0.1/MilyVoiceTraductor_2.0.1_x64-setup.exe">Estable 2.0.1</a>
   </header>
 
   <main id="inicio">
     <section class="hero wrap">
       <div class="hero-copy">
-        <div class="eyebrow">2.0.1 · Windows x64 · Inteligencia artificial local</div>
+        <div class="eyebrow">2.0.1 estable · Engine Hub beta en pruebas</div>
         <h1>Escucha. Traduce.<br /><span>Sin regalar el audio.</span></h1>
         <p>MilyVoiceTraductor convierte reuniones, pestañas web, audio de Windows, micrófonos y archivos multimedia en subtítulos y traducción al español, directamente en tu computadora.</p>
         <div class="actions">
-          <a class="primary-button" href="https://github.com/LORDMANUEL/milyvoicetraductor/releases/download/v2.0.1/MilyVoiceTraductor_2.0.1_x64-setup.exe">Descargar Windows 2.0.1</a>
-          <a class="text-link" href="https://github.com/LORDMANUEL/milyvoicetraductor/releases/download/v2.0.1/MilyVoiceTraductor-Chromium-Extension.zip">Extensión Chromium →</a>
+          <a class="primary-button" href="https://github.com/LORDMANUEL/milyvoicetraductor/releases/download/v2.0.1/MilyVoiceTraductor_2.0.1_x64-setup.exe">Descargar estable 2.0.1</a>
+          <a class="text-link" href="#beta">Ver Engine Hub Beta →</a>
         </div>
         <ul class="trust-row" aria-label="Principios principales">
           <li><span>✓</span> Procesamiento local</li>
@@ -41,7 +42,7 @@
       </div>
       <div class="hero-visual" aria-label="Vista conceptual de MilyVoiceTraductor 2.0.1">
         <div class="app-window">
-          <div class="window-bar"><i></i><i></i><i></i><span>MilyVoiceTraductor 2.0.1</span></div>
+          <div class="window-bar"><i></i><i></i><i></i><span>MilyVoiceTraductor</span></div>
           <div class="window-body">
             <div class="mini-sidebar">
               <img src="./assets/logo.svg" alt="" />
@@ -64,7 +65,7 @@
 
     <section id="producto" class="section wrap">
       <div class="section-heading">
-        <span>MilyVoiceTraductor 2.0.1</span>
+        <span>MilyVoiceTraductor</span>
         <h2>Una aplicación para escuchar, transcribir y traducir.</h2>
         <p>Desktop, extensión Chromium, motor de IA, audio de Windows y herramientas de sesión trabajan como un solo producto, sin configuración manual de Python, puertos ni tokens.</p>
       </div>
@@ -91,6 +92,25 @@
       </div>
     </section>
 
+    <section id="beta" class="section wrap">
+      <div class="section-heading">
+        <span>Beta · Engine Hub · Testing</span>
+        <h2>Nuevo motor en pruebas, sin reemplazar la versión estable.</h2>
+        <p>La rama <code>pruebas</code> contiene una beta enfocada en menor latencia, menor consumo de RAM y selección automática de motores/modelos. El build de referencia CI #1078 completó los gates Windows, Lite, NSIS e instalación.</p>
+      </div>
+      <div class="feature-grid">
+        <article><div class="feature-icon emerald">EN</div><h3>Moonshine Lite</h3><p>Moonshine Tiny Streaming + Marian Tiny INT8 para EN→ES con ruta de baja latencia.</p></article>
+        <article><div class="feature-icon sapphire">EN</div><h3>Whisper Tiny Lite</h3><p>Whisper Tiny + Marian Tiny INT8 como fallback local y candidato automático.</p></article>
+        <article><div class="feature-icon emerald">ZH</div><h3>Mandarín Lite</h3><p>Whisper Tiny multilingüe + Marian ZH→EN→ES INT8 para evitar M2M100 Quality en equipos limitados.</p></article>
+        <article><div class="feature-icon sapphire">2G</div><h3>Perfil de 2 GiB</h3><p>Simulación 8 GB: Windows 4 GB, MilyVoice máximo 2 GB, Chrome 1 GB y 1 GB de reserva libre.</p></article>
+      </div>
+      <div class="cta-card">
+        <div><small>BETA · RAMA PRUEBAS · CI #1078</small><h2>Prueba el Engine Hub sin tocar la estable.</h2><p>Este artefacto es para evaluación. GitHub puede requerir iniciar sesión y los artefactos de Actions tienen retención limitada.</p></div>
+        <a class="primary-button" href="https://github.com/LORDMANUEL/milyvoicetraductor/actions/runs/32247097330/artifacts/9364017906">Descargar beta</a>
+      </div>
+      <p><a class="text-link" href="https://github.com/LORDMANUEL/milyvoicetraductor/blob/main/docs/release/BETA_ENGINE_HUB.md">Ver motores, pruebas y criterios de promoción →</a></p>
+    </section>
+
     <section id="privacidad" class="privacy-section">
       <div class="wrap privacy-layout">
         <div><span class="section-label">Privacidad</span><h2>La conversación permanece en tu equipo.</h2><p>Reconocimiento, traducción, TTS y sesiones trabajan en localhost. Solo la preparación inicial de los modelos requiere conexión a Internet.</p></div>
@@ -104,26 +124,26 @@
 
     <section id="estado" class="section wrap">
       <div class="section-heading">
-        <span>Versión disponible</span>
+        <span>Canal estable</span>
         <h2>MilyVoiceTraductor 2.0.1</h2>
-        <p>La distribución para Windows incluye la aplicación nativa, el motor local y el flujo de preparación. La extensión Chromium y los archivos de verificación se publican junto al instalador en el tag v2.0.1.</p>
+        <p>La distribución estable para Windows incluye la aplicación nativa, el motor local y el flujo de preparación. La beta Engine Hub se mantiene separada hasta completar pruebas repetidas en hardware real.</p>
       </div>
       <div class="roadmap">
         <article class="done"><span>1</span><div><b>Aplicación Windows</b><p>Interfaz nativa sin consola negra para reuniones, multimedia y sesiones.</p></div></article>
         <article class="done"><span>2</span><div><b>Extensión Chromium</b><p>Captura de pestañas y subtítulos para Chrome, Edge, Brave y navegadores compatibles.</p></div></article>
-        <article class="done"><span>3</span><div><b>Motor local</b><p>Whisper Small, M2M100 CT2 INT8, runtime privado y procesamiento en localhost.</p></div></article>
-        <article class="done"><span>4</span><div><b>MegaBench</b><p>Medición real de ASR y traducción antes de publicar instalador, extensión y hashes.</p></div></article>
+        <article class="done"><span>3</span><div><b>Motor estable</b><p>Whisper Small, M2M100 CT2 INT8, runtime privado y procesamiento en localhost.</p></div></article>
+        <article class="done"><span>4</span><div><b>Beta separada</b><p>Engine Hub continúa en testeo con Moonshine, Whisper Tiny y ZH→ES Lite antes de promoverse.</p></div></article>
       </div>
       <div class="cta-card">
-        <div><small>WINDOWS X64 · TAG v2.0.1</small><h2>Traducción local lista para probar.</h2><p>Descarga el instalador, prepara el modelo y comienza con una reunión, un video, una pestaña o el audio de Windows.</p></div>
-        <a class="primary-button" href="https://github.com/LORDMANUEL/milyvoicetraductor/releases/download/v2.0.1/MilyVoiceTraductor_2.0.1_x64-setup.exe">Descargar Windows 2.0.1</a>
+        <div><small>ESTABLE · WINDOWS X64 · TAG v2.0.1</small><h2>La versión recomendada sigue siendo 2.0.1.</h2><p>Usa la estable para operación normal y la beta únicamente para validar el nuevo motor y modelos.</p></div>
+        <a class="primary-button" href="https://github.com/LORDMANUEL/milyvoicetraductor/releases/download/v2.0.1/MilyVoiceTraductor_2.0.1_x64-setup.exe">Descargar estable 2.0.1</a>
       </div>
     </section>
   </main>
 
   <footer class="wrap">
     <div class="brand footer-brand"><img src="./assets/logo.svg" alt="" /><span><b>Mily</b><em>Voice</em>Traductor</span></div>
-    <p>2.0.1 · Runtime privado · MilyCompute · MegaBench · Sin telemetría.</p>
+    <p>2.0.1 estable · Engine Hub beta en pruebas · Runtime privado · MilyCompute · Sin telemetría.</p>
   </footer>
   <script src="./app.js" defer></script>
 </body>
