@@ -9,8 +9,9 @@ from typing import Any, Callable
 from .cloud_providers import GoogleChirpV2Asr
 from .cpu_budget import CpuBudget
 from .marian_cascade import CTranslate2MarianCascadeTranslator
+from .marian_realtime import CTranslate2RealtimeMarianTranslator
 from .moonshine_provider import MoonshineStreamingAsr
-from .optional_providers import CTranslate2MarianTranslator, SherpaOnnxAsr
+from .optional_providers import SherpaOnnxAsr
 from .providers import (
     AsrProvider,
     FasterWhisperAsr,
@@ -126,7 +127,7 @@ def _marian(
             "MARIAN_ROUTE_REQUIRED",
             "El proveedor Marian requiere sourceLanguage y targetLanguage.",
         )
-    return CTranslate2MarianTranslator(
+    return CTranslate2RealtimeMarianTranslator(
         model_path,
         compute_profile,
         cpu_budget=cpu_budget,
