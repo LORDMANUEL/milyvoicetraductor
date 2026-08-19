@@ -1,0 +1,44 @@
+name: Patch measured total product candidate
+
+on:
+  push:
+    branches: [agent/enginehub-memory-selection-fix]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: patch-total-product-candidate
+  cancel-in-progress: true
+
+jobs:
+  patch:
+    if: ${{ !contains(github.event.head_commit.message, '[total product candidate applied]') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: agent/enginehub-memory-selection-fix
+          fetch-depth: 0
+      - name: Forward measured total product memory to EngineRegistry
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('services/ai/mily_ai/model_advisor.py')
+          text = path.read_text(encoding='utf-8')
+          marker = '''            shared_gpu_mb=_finite_non_negative(\n                definition.get("sharedGpuMb", 0), 0.0\n            ),\n            quality_score=_TIER_QUALITY.get(tier, 0.65),\n'''
+          replacement = '''            shared_gpu_mb=_finite_non_negative(\n                definition.get("sharedGpuMb", 0), 0.0\n            ),\n            total_product_mb=measured_total_product,\n            quality_score=_TIER_QUALITY.get(tier, 0.65),\n'''
+          if replacement in text:
+              raise SystemExit(0)
+          if marker not in text:
+              raise SystemExit('ModelAdvisor candidate insertion point not found')
+          path.write_text(text.replace(marker, replacement, 1), encoding='utf-8')
+          PY
+          git diff --check
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add services/ai/mily_ai/model_advisor.py
+          git commit -m "fix: pass total product memory to selector [total product candidate applied]"
+          git push origin HEAD:agent/enginehub-memory-selection-fix
