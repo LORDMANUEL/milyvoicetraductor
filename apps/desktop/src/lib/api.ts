@@ -148,6 +148,11 @@ export class DesktopApi {
     return invoke<ModelPackInfo>('import_model_pack', { path });
   }
 
+  async importModelPackUrl(url: string): Promise<ModelPackInfo> {
+    if (!isTauriEnvironment()) throw new Error('La descarga externa requiere la aplicación instalada.');
+    return invoke<ModelPackInfo>('import_model_pack_url', { url });
+  }
+
   async verifyModel(packId: string, version: string): Promise<boolean> {
     if (!isTauriEnvironment()) return false;
     return invoke<boolean>('verify_model', { packId, version });
