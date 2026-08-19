@@ -49,8 +49,15 @@ pub struct ModelPackInfo {
     pub license_note: String,
     pub tier: String,
     pub routes: Vec<String>,
+    /// Huella declarada del motor/modelos sin la interfaz Tauri ni el bridge.
     pub ram_mb: u64,
     pub vram_mb: u64,
+    /// Memoria de sistema que puede reservar una iGPU y cuenta contra los 2 GiB.
+    pub shared_gpu_mb: u64,
+    /// Reserva conservadora para Desktop + Native Messaging bridge.
+    pub product_reserve_mb: u64,
+    /// Motor + iGPU compartida + reserva base del producto.
+    pub estimated_total_product_mb: u64,
     pub engine: String,
     pub supported_backends: Vec<String>,
     pub resource_allowed: bool,
@@ -98,5 +105,35 @@ mod tests {
             serde_json::to_string(&ComponentState::NotInstalled).unwrap(),
             "\"notInstalled\""
         );
+    }
+
+    #[test]
+    fn model_pack_memory_fields_use_camel_case() {
+        let pack = ModelPackInfo {
+            id: "lite".into(),
+            version: "1".into(),
+            title: "Lite".into(),
+            installed: true,
+            active: true,
+            recommended_ram_gb: 2,
+            commercial_use: true,
+            license_note: "MIT".into(),
+            tier: "lite".into(),
+            routes: vec!["en-es".into()],
+            ram_mb: 780,
+            vram_mb: 0,
+            shared_gpu_mb: 0,
+            product_reserve_mb: 320,
+            estimated_total_product_mb: 1100,
+            engine: "local-moonshine-lite".into(),
+            supported_backends: vec!["cpu".into()],
+            resource_allowed: true,
+            resource_reason: "OK".into(),
+            external_allowed: true,
+        };
+        let json = serde_json::to_string(&pack).unwrap();
+        assert!(json.contains("\"productReserveMb\":320"));
+        assert!(json.contains("\"estimatedTotalProductMb\":1100"));
+        assert!(!json.contains("product_reserve_mb"));
     }
 }
