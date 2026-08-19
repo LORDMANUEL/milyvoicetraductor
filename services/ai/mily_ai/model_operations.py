@@ -20,11 +20,10 @@ from .models import (
 _FAST_MOONSHINE_PACK = "fast-moonshine-en-es"
 _LITE_ZH_ES_PACK = "lite-zh-es"
 
-# Layout entregado por moonshine-voice 0.1.0 para ModelArch.TINY_STREAMING.
-# Mantenerlo explícito evita aceptar descargas parciales y, a la vez, impide
-# volver a validar nombres de una arquitectura antigua que el runtime actual no
-# puede abrir.
-_MOONSHINE_010_STREAMING_ASSETS = (
+# Dependencias STT declaradas por el catálogo oficial de Moonshine para las
+# arquitecturas streaming. Los archivos de spelling pertenecen a otro grupo y
+# solo son necesarios cuando el consumidor activa MOONSHINE_FLAG_SPELLING_MODE.
+_MOONSHINE_010_REQUIRED_STREAMING_ASSETS = (
     "adapter.ort",
     "cross_kv.ort",
     "decoder_kv.ort",
@@ -32,19 +31,35 @@ _MOONSHINE_010_STREAMING_ASSETS = (
     "frontend.ort",
     "streaming_config.json",
     "tokenizer.bin",
-    "spelling_cnn.ort",
-    "spelling_cnn_meta.json",
+)
+_MOONSHINE_010_REQUIRED_BINARY_ASSETS = (
+    "adapter.ort",
+    "cross_kv.ort",
+    "decoder_kv.ort",
+    "encoder.ort",
+    "frontend.ort",
+    "tokenizer.bin",
 )
 
 
 def _moonshine_streaming_model_ready(path: Path) -> bool:
-    """Exige el layout streaming completo y archivos no vacíos."""
+    """Valida el STT mínimo sin convertir recursos opcionales en bloqueos.
+
+    Los binarios de inferencia y tokenizer deben existir y tener contenido. El
+    JSON de configuración debe existir; la propia carga Moonshine del benchmark
+    real valida su contenido y produce un error específico si no es utilizable.
+    """
 
     root = Path(path)
-    for name in _MOONSHINE_010_STREAMING_ASSETS:
-        asset = root / name
+    for name in _MOONSHINE_010_REQUIRED_STREAMING_ASSETS:
         try:
-            if not asset.is_file() or asset.stat().st_size <= 0:
+            if not (root / name).is_file():
+                return False
+        except OSError:
+            return False
+    for name in _MOONSHINE_010_REQUIRED_BINARY_ASSETS:
+        try:
+            if (root / name).stat().st_size <= 0:
                 return False
         except OSError:
             return False
