@@ -17,8 +17,9 @@ from .providers import (
     QwenTranslator,
     Translator,
 )
-from .safe_optional_providers import MoonshineResultAsr, WhisperCppBridgeAsr
+from .safe_optional_providers import MoonshineResultAsr
 from .vosk_provider import VoskAsr
+from .whispercpp_provider import BundledWhisperCppBridgeAsr
 
 
 @dataclass(slots=True)
@@ -69,7 +70,7 @@ ASR_BUILDERS: dict[str, AsrBuilder] = {
     "faster-whisper": _faster_whisper,
     "moonshine": _optional_asr(MoonshineResultAsr),
     "sherpa-onnx": _optional_asr(SherpaOnnxAsr),
-    "whisper-cpp": _optional_asr(WhisperCppBridgeAsr),
+    "whisper-cpp": _optional_asr(BundledWhisperCppBridgeAsr),
     "vosk": _optional_asr(VoskAsr),
     "google-chirp": _optional_asr(GoogleChirpV2Asr),
 }

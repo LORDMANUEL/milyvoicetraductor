@@ -2,6 +2,7 @@
 
 mod protocol;
 mod runtime;
+mod whispercpp;
 
 use protocol::{ProtocolError, read_frame, write_frame};
 use runtime::{BridgeRuntime, caller_origin_allowed};
@@ -34,9 +35,22 @@ fn write_json<T: Serialize>(writer: &mut impl io::Write, value: &T) -> Result<()
 }
 
 fn main() {
+    let mut args = std::env::args();
+    let _program = args.next();
+    let first = args.next().unwrap_or_default();
+
+    // El mismo binario incluido por el instalador sirve como Native Messaging
+    // y como bridge privado de whisper.cpp. Los protocolos nunca se mezclan.
+    if matches!(first.as_str(), "--stdio" | "--whispercpp-stdio") {
+        if whispercpp::run_stdio(args).is_err() {
+            std::process::exit(2);
+        }
+        return;
+    }
+
     // Chromium pasa el origen de la extensión como primer argumento. El manifiesto
     // allowed_origins ya limita el acceso; este chequeo agrega defensa en profundidad.
-    let origin = std::env::args().nth(1).unwrap_or_default();
+    let origin = first;
     if !caller_origin_allowed(&origin) {
         return;
     }
