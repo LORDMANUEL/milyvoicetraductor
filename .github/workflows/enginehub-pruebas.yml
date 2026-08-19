@@ -1,0 +1,54 @@
+name: Engine Hub target-machine validation
+
+on:
+  pull_request:
+    branches: [pruebas]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: enginehub-pruebas-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  target-machine:
+    name: 8 GiB host / 2 GiB MilyVoice / ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+      - name: Install lightweight validation dependencies
+        run: python -m pip install --disable-pip-version-check "fastapi>=0.116,<1" "httpx>=0.28,<1" "numpy>=2.2,<3"
+      - name: Simulate target machine, engine selection and ten-minute backlog
+        env:
+          PYTHONPATH: services/ai
+        run: python -m unittest discover -s services/ai/tests -p "test_engine_hub_target_machine.py" -v
+      - name: Verify portable runtime discovery
+        env:
+          PYTHONPATH: services/ai
+        run: python -m unittest discover -s services/ai/tests -p "test_runtime_discovery.py" -v
+      - name: Verify resource and pressure contracts
+        env:
+          PYTHONPATH: services/ai
+        run: |
+          python -m unittest discover -s services/ai/tests -p "test_resource_governor.py" -v
+          python -m unittest discover -s services/ai/tests -p "test_realtime_telemetry.py" -v
+          python -m unittest discover -s services/ai/tests -p "test_coalescing_queue.py" -v
+
+  rustfmt:
+    name: Rust formatting gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - run: cargo fmt --all -- --check
