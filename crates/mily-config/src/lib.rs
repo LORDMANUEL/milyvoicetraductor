@@ -134,7 +134,11 @@ impl AppConfig {
         }
         if !matches!(
             self.active_model_pack.as_str(),
-            "lite-en-es" | "realtime-m2m100" | "lite-nllb" | "business-qwen"
+            "fast-moonshine-en-es"
+                | "lite-en-es"
+                | "realtime-m2m100"
+                | "lite-nllb"
+                | "business-qwen"
         ) {
             self.active_model_pack = DEFAULT_MODEL_PACK.into();
         }
@@ -323,6 +327,16 @@ mod tests {
         assert_eq!(config.compute_profile, "auto");
         assert_eq!(config.engine_port, 1024);
         assert_eq!(config.active_model_pack, "lite-en-es");
+    }
+
+    #[test]
+    fn moonshine_fast_pack_survives_normalization() {
+        let config = AppConfig {
+            active_model_pack: "fast-moonshine-en-es".into(),
+            ..AppConfig::default()
+        }
+        .normalized();
+        assert_eq!(config.active_model_pack, "fast-moonshine-en-es");
     }
 
     #[cfg(windows)]
