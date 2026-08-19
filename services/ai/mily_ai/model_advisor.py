@@ -174,7 +174,9 @@ class ModelAdvisor:
             )
             item["productReserveMb"] = self.governor.limits.product_reserve_mb
             if current is not None:
-                report = self._load_report(current, active_backend if current.active else None)
+                report = self._load_report(
+                    current, active_backend if current.active else None
+                )
                 item["benchmark"] = report
                 if report is not None:
                     measured_engine = self._engine_ram_from_report(report)
@@ -242,6 +244,24 @@ class ModelAdvisor:
         )
         temporary.replace(output)
 
+    @staticmethod
+    def _failed_benchmark_report(
+        pack: InstalledPack,
+        backend: str | None,
+        error: BaseException,
+    ) -> dict[str, Any]:
+        requested = normalize_backend(backend or "cpu")
+        return {
+            "schemaVersion": 2,
+            "packId": pack.id,
+            "packVersion": pack.version,
+            "requestedBackend": requested,
+            "backend": "unverified",
+            "passed": False,
+            "failures": ["BENCHMARK_EXECUTION_ERROR"],
+            "errorType": error.__class__.__name__,
+        }
+
     def _candidate(
         self,
         pack: InstalledPack,
@@ -292,7 +312,11 @@ class ModelAdvisor:
             vram_mb=_finite_non_negative(
                 definition.get("vramMb", 0), 0.0
             ),
-            shared_gpu_mb=0.0 if measured_total_product > 0 else self._shared_gpu(definition),
+            shared_gpu_mb=(
+                0.0
+                if measured_total_product > 0
+                else self._shared_gpu(definition)
+            ),
             total_product_mb=measured_total_product,
             quality_score=_TIER_QUALITY.get(tier, 0.65),
             benchmark=BenchmarkSample(
@@ -351,6 +375,7 @@ class ModelAdvisor:
         candidate_packs: dict[str, InstalledPack] = {}
         candidate_reports: dict[str, dict[str, Any]] = {}
         candidate_backends: dict[str, str] = {}
+        benchmark_rejected: dict[str, str] = {}
 
         for pack in self.catalog.installed():
             definition = definitions.get(pack.id)
@@ -360,13 +385,28 @@ class ModelAdvisor:
                 definition, allow_cloud=allow_cloud
             )
             for backend in backends:
+                variant_backend = backend or "legacy"
+                variant_id = f"{pack.id}@{variant_backend}"
+                candidate_packs[variant_id] = pack
                 report = (
                     None
                     if force_benchmark
                     else self._load_report(pack, backend)
                 )
                 if report is None:
-                    report = self._run_benchmark(pack, definition, backend)
+                    try:
+                        report = self._run_benchmark(
+                            pack, definition, backend
+                        )
+                    except Exception as exc:
+                        report = self._failed_benchmark_report(
+                            pack, backend, exc
+                        )
+                        reports[variant_id] = report
+                        benchmark_rejected[
+                            variant_id
+                        ] = "BENCHMARK_EXECUTION_ERROR"
+                        continue
                 measured_backend = normalize_backend(
                     report.get("backend", backend or "cpu")
                 )
@@ -399,7 +439,7 @@ class ModelAdvisor:
         self._store_selected_report(selected_pack, selected_report)
         reports[selected_pack.id] = selected_report
 
-        normalized_rejected: dict[str, str] = {}
+        normalized_rejected: dict[str, str] = dict(benchmark_rejected)
         for rejected_id, reason in raw_selection.rejected.items():
             pack_id = candidate_packs.get(rejected_id)
             if pack_id is not None:
