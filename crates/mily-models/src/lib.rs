@@ -7,6 +7,7 @@ use mily_config::AppPaths;
 use mily_core::{ComponentState, ModelPackInfo};
 use mily_engine::LaunchSpec;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
 use std::process::Stdio;
@@ -16,6 +17,9 @@ const MODEL_CATALOG: &str = include_str!("../../../resources/model-packs.json");
 const FALLBACK_MODEL_MESSAGE: &str = "La operación sobre modelos no terminó correctamente.";
 const PROCESS_LIMIT_MB: u64 = 2048;
 const VRAM_LIMIT_MB: u64 = 384;
+const DESKTOP_RESERVE_MB: u64 = 256;
+const BRIDGE_RESERVE_MB: u64 = 64;
+const PRODUCT_RESERVE_MB: u64 = DESKTOP_RESERVE_MB + BRIDGE_RESERVE_MB;
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -36,18 +40,25 @@ struct CatalogPack {
     routes: Vec<String>,
     ram_mb: u64,
     vram_mb: u64,
+    shared_gpu_mb: u64,
     engine: String,
     supported_backends: Vec<String>,
     external_allowed: bool,
 }
 
 impl CatalogPack {
+    fn estimated_total_product_mb(&self) -> u64 {
+        self.ram_mb
+            .saturating_add(self.shared_gpu_mb)
+            .saturating_add(PRODUCT_RESERVE_MB)
+    }
+
     fn resource_allowed(&self) -> bool {
-        self.ram_mb <= PROCESS_LIMIT_MB && self.vram_mb <= VRAM_LIMIT_MB
+        self.estimated_total_product_mb() <= PROCESS_LIMIT_MB && self.vram_mb <= VRAM_LIMIT_MB
     }
 
     fn resource_reason(&self) -> String {
-        if self.ram_mb > PROCESS_LIMIT_MB {
+        if self.estimated_total_product_mb() > PROCESS_LIMIT_MB {
             "PROCESS_MEMORY_LIMIT".into()
         } else if self.vram_mb > VRAM_LIMIT_MB {
             "VRAM_LIMIT".into()
@@ -59,6 +70,7 @@ impl CatalogPack {
     fn into_info(self, installed: bool, active: bool) -> ModelPackInfo {
         let resource_allowed = self.resource_allowed();
         let resource_reason = self.resource_reason();
+        let estimated_total_product_mb = self.estimated_total_product_mb();
         ModelPackInfo {
             id: self.id,
             version: self.version,
@@ -72,12 +84,36 @@ impl CatalogPack {
             routes: self.routes,
             ram_mb: self.ram_mb,
             vram_mb: self.vram_mb,
+            shared_gpu_mb: self.shared_gpu_mb,
+            product_reserve_mb: PRODUCT_RESERVE_MB,
+            estimated_total_product_mb,
             engine: self.engine,
             supported_backends: self.supported_backends,
             resource_allowed,
             resource_reason,
             external_allowed: self.external_allowed,
         }
+    }
+
+    fn from_external_manifest(path: &Path, expected_id: &str, expected_version: &str) -> Option<Self> {
+        let text = fs::read_to_string(path).ok()?;
+        let mut pack = serde_json::from_str::<Self>(&text).ok()?;
+        if pack.id != expected_id || pack.version != expected_version {
+            return None;
+        }
+        if pack.title.trim().is_empty()
+            || pack.tier.trim().is_empty()
+            || pack.routes.is_empty()
+            || pack.engine.trim().is_empty()
+            || pack.ram_mb == 0
+            || !pack.external_allowed
+        {
+            return None;
+        }
+        if pack.supported_backends.is_empty() {
+            pack.supported_backends.push("cpu".into());
+        }
+        Some(pack)
     }
 }
 
@@ -173,6 +209,72 @@ impl ModelManagerService {
             .unwrap_or_default()
     }
 
+    fn active_ref(&self) -> Option<String> {
+        fs::read_to_string(self.paths.models_dir.join("current.json"))
+            .ok()
+            .and_then(|text| serde_json::from_str::<serde_json::Value>(&text).ok())
+            .and_then(|value| {
+                value
+                    .get("active")
+                    .and_then(|item| item.as_str())
+                    .map(str::to_owned)
+            })
+    }
+
+    fn installed_entries(&self) -> Vec<(CatalogPack, bool)> {
+        let active = self.active_ref();
+        let definitions: HashMap<String, CatalogPack> = self
+            .definitions()
+            .into_iter()
+            .map(|item| (item.id.clone(), item))
+            .collect();
+        let packs_root = self.paths.models_dir.join("packs");
+        let Ok(pack_ids) = fs::read_dir(packs_root) else {
+            return Vec::new();
+        };
+        let mut output = Vec::new();
+        for pack_id_entry in pack_ids.flatten() {
+            let Ok(kind) = pack_id_entry.file_type() else {
+                continue;
+            };
+            if !kind.is_dir() {
+                continue;
+            }
+            let pack_id = pack_id_entry.file_name().to_string_lossy().into_owned();
+            let Ok(versions) = fs::read_dir(pack_id_entry.path()) else {
+                continue;
+            };
+            for version_entry in versions.flatten() {
+                let Ok(version_kind) = version_entry.file_type() else {
+                    continue;
+                };
+                if !version_kind.is_dir() {
+                    continue;
+                }
+                let version = version_entry.file_name().to_string_lossy().into_owned();
+                if !version_entry.path().join("pack.json").is_file() {
+                    continue;
+                }
+                let definition = definitions.get(&pack_id).cloned().or_else(|| {
+                    CatalogPack::from_external_manifest(
+                        &version_entry.path().join("manifest.json"),
+                        &pack_id,
+                        &version,
+                    )
+                });
+                let Some(definition) = definition else {
+                    continue;
+                };
+                let is_active = active.as_deref() == Some(&format!("{pack_id}@{version}"));
+                output.push((definition, is_active));
+            }
+        }
+        output.sort_by(|left, right| {
+            (&left.0.id, &left.0.version).cmp(&(&right.0.id, &right.0.version))
+        });
+        output
+    }
+
     pub fn status(&self) -> ComponentState {
         if self.installed().iter().any(|pack| pack.active) {
             ComponentState::Ready
@@ -187,7 +289,8 @@ impl ModelManagerService {
 
     pub fn catalog(&self) -> Vec<ModelPackInfo> {
         let installed = self.installed();
-        self.definitions()
+        let mut output: Vec<ModelPackInfo> = self
+            .definitions()
             .into_iter()
             .map(|definition| {
                 let local = installed
@@ -197,36 +300,24 @@ impl ModelManagerService {
                 let active = local.map(|item| item.active).unwrap_or(false);
                 definition.into_info(is_installed, active)
             })
-            .collect()
+            .collect();
+        for pack in installed {
+            if !output
+                .iter()
+                .any(|item| item.id == pack.id && item.version == pack.version)
+            {
+                output.push(pack);
+            }
+        }
+        output.sort_by(|left, right| (&left.id, &left.version).cmp(&(&right.id, &right.version)));
+        output
     }
 
     pub fn installed(&self) -> Vec<ModelPackInfo> {
-        let active = fs::read_to_string(self.paths.models_dir.join("current.json"))
-            .ok()
-            .and_then(|text| serde_json::from_str::<serde_json::Value>(&text).ok())
-            .and_then(|value| {
-                value
-                    .get("active")
-                    .and_then(|item| item.as_str())
-                    .map(str::to_owned)
-            });
-        let mut output = Vec::new();
-        for definition in self.definitions() {
-            let metadata = self
-                .paths
-                .models_dir
-                .join("packs")
-                .join(&definition.id)
-                .join(&definition.version)
-                .join("pack.json");
-            if !metadata.is_file() {
-                continue;
-            }
-            let is_active =
-                active.as_deref() == Some(&format!("{}@{}", definition.id, definition.version));
-            output.push(definition.into_info(true, is_active));
-        }
-        output
+        self.installed_entries()
+            .into_iter()
+            .map(|(definition, active)| definition.into_info(true, active))
+            .collect()
     }
 
     pub fn install(&self, pack_id: &str) -> Result<ModelPackInfo, ModelError> {
@@ -368,12 +459,24 @@ mod tests {
             .find(|pack| pack.id == "lite-en-es")
             .expect("lite profile");
         assert!(lite.resource_allowed());
+        assert_eq!(lite.estimated_total_product_mb(), lite.ram_mb + PRODUCT_RESERVE_MB);
         let quality = parsed
             .packs
             .iter()
             .find(|pack| pack.id == "realtime-m2m100")
             .expect("quality profile");
         assert!(!quality.resource_allowed());
+    }
+
+    #[test]
+    fn product_reserve_rejects_model_that_only_fits_in_isolation() {
+        let pack = CatalogPack {
+            ram_mb: 1800,
+            ..CatalogPack::default()
+        };
+        assert_eq!(pack.estimated_total_product_mb(), 2120);
+        assert!(!pack.resource_allowed());
+        assert_eq!(pack.resource_reason(), "PROCESS_MEMORY_LIMIT");
     }
 
     #[test]
