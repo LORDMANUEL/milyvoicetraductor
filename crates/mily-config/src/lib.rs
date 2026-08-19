@@ -144,12 +144,55 @@ impl AppConfig {
     }
 }
 
+#[cfg(windows)]
+fn replacement_backup_path(destination: &Path) -> PathBuf {
+    let stem = format!("{}.replace-backup", destination.display());
+    let primary = PathBuf::from(&stem);
+    if !primary.exists() {
+        return primary;
+    }
+    for index in 1_u32.. {
+        let candidate = PathBuf::from(format!("{stem}.{index}"));
+        if !candidate.exists() {
+            return candidate;
+        }
+    }
+    unreachable!()
+}
+
 fn replace_file(source: &Path, destination: &Path) -> io::Result<()> {
     #[cfg(windows)]
-    if destination.exists() {
-        fs::remove_file(destination)?;
+    {
+        if !destination.exists() {
+            return fs::rename(source, destination);
+        }
+
+        let backup = replacement_backup_path(destination);
+        fs::rename(destination, &backup)?;
+        match fs::rename(source, destination) {
+            Ok(()) => {
+                let _ = fs::remove_file(backup);
+                Ok(())
+            }
+            Err(error) => {
+                if let Err(restore_error) = fs::rename(&backup, destination) {
+                    return Err(io::Error::new(
+                        restore_error.kind(),
+                        format!(
+                            "falló el reemplazo ({error}) y también la restauración del archivo previo ({restore_error}); respaldo conservado en {}",
+                            backup.display()
+                        ),
+                    ));
+                }
+                Err(error)
+            }
+        }
     }
-    fs::rename(source, destination)
+
+    #[cfg(not(windows))]
+    {
+        fs::rename(source, destination)
+    }
 }
 
 #[derive(Debug, Clone)]
