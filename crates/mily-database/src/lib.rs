@@ -229,7 +229,8 @@ mod tests {
         fs::write(&previous, b"older evidence").unwrap();
         fs::write(&path, b"new corruption").unwrap();
 
-        DatabaseService::open(&path).expect("la recuperación debe conservar cuarentenas anteriores");
+        DatabaseService::open(&path)
+            .expect("la recuperación debe conservar cuarentenas anteriores");
 
         assert_eq!(fs::read(previous).unwrap(), b"older evidence");
         assert_eq!(
