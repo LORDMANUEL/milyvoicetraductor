@@ -328,9 +328,7 @@ impl ModelManagerService {
                 output.push(pack);
             }
         }
-        output.sort_by(|left, right| {
-            (&left.id, &left.version).cmp(&(&right.id, &right.version))
-        });
+        output.sort_by(|left, right| (&left.id, &left.version).cmp(&(&right.id, &right.version)));
         output
     }
 
@@ -517,10 +515,9 @@ mod tests {
 
     #[test]
     fn import_payload_is_not_required_to_be_active() {
-        let payload = parse_model_cli_pack(
-            br#"{"ok":true,"id":"partner-fast-en-es","version":"1.0.0"}"#,
-        )
-        .expect("pack payload");
+        let payload =
+            parse_model_cli_pack(br#"{"ok":true,"id":"partner-fast-en-es","version":"1.0.0"}"#)
+                .expect("pack payload");
         assert_eq!(payload.id, "partner-fast-en-es");
         assert_eq!(payload.version, "1.0.0");
     }
