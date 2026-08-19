@@ -62,6 +62,56 @@
     },
     {
       "schemaVersion": 2,
+      "id": "lite-zh-es",
+      "version": "1.0.0",
+      "title": "Rápido ZH→ES (Whisper Tiny + Marian ZH→EN→ES INT8)",
+      "tier": "lite",
+      "routes": ["zh-es"],
+      "ramMb": 1180,
+      "vramMb": 0,
+      "recommendedRamGb": 2,
+      "engine": "local-ct2-lite",
+      "format": "ctranslate2-int8-cascade",
+      "supportedBackends": ["cpu", "cuda"],
+      "bundled": false,
+      "externalAllowed": false,
+      "commercialUse": true,
+      "licenseNote": "Systran/faster-whisper-tiny declara MIT; Helsinki-NLP/opus-mt-zh-en declara CC-BY-4.0; Helsinki-NLP/opus-mt_tiny_eng-spa declara Apache-2.0. Se fijan por revisión. La cascada es fallback Lite hasta promover un estudiante directo ZH→ES.",
+      "components": {
+        "asr": {
+          "provider": "faster-whisper",
+          "repoId": "Systran/faster-whisper-tiny",
+          "revision": "d90ca5fe260221311c53c58e660288d3deb8d356",
+          "estimatedRamMb": 360
+        },
+        "translation": {
+          "provider": "marian-cascade-ct2",
+          "estimatedRamMb": 500,
+          "stages": [
+            {
+              "provider": "marian-ct2",
+              "repoId": "Helsinki-NLP/opus-mt-zh-en",
+              "revision": "cf109095479db38d6df799875e34039d4938aaa6",
+              "quantization": "int8",
+              "sourceLanguage": "zh",
+              "targetLanguage": "en",
+              "allowPatterns": ["config.json", "generation_config.json", "pytorch_model.bin", "source.spm", "target.spm", "tokenizer_config.json", "vocab.json"]
+            },
+            {
+              "provider": "marian-ct2",
+              "repoId": "Helsinki-NLP/opus-mt_tiny_eng-spa",
+              "revision": "691fd47381a57d0de256a0e0b201bd83d1f48ba0",
+              "quantization": "int8",
+              "sourceLanguage": "en",
+              "targetLanguage": "es",
+              "allowPatterns": ["config.json", "generation_config.json", "model.safetensors", "source.spm", "target.spm", "special_tokens_map.json", "tokenizer_config.json", "vocab.json"]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "schemaVersion": 2,
       "id": "realtime-m2m100",
       "version": "1.0.0",
       "title": "Calidad multilingüe (Whisper Small + M2M100 INT8)",
