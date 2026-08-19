@@ -5,6 +5,7 @@ import base64
 import hashlib
 import json
 import re
+import subprocess
 
 root = Path(__file__).resolve().parents[1]
 ext = root / "apps" / "extension"
@@ -76,6 +77,18 @@ assert "new AudioContext({ sampleRate: 16000" not in offscreen, (
 assert "TARGET_SAMPLE_RATE = 16000" in worklet, "El worklet debe definir el destino ASR de 16 kHz."
 assert "sampleRate / TARGET_SAMPLE_RATE" in worklet, (
     "El worklet debe remuestrear desde la frecuencia nativa del AudioContext hacia 16 kHz."
+)
+
+resampling = subprocess.run(
+    ["node", str(root / "scripts" / "test_audio_worklet.js")],
+    cwd=root,
+    text=True,
+    capture_output=True,
+    check=False,
+)
+assert resampling.returncode == 0, (
+    "El remuestreador AudioWorklet perdió continuidad entre bloques.\n"
+    f"stdout:\n{resampling.stdout}\nstderr:\n{resampling.stderr}"
 )
 
 # Consultar el popup debe ser pasivo. Solo START_CAPTURE puede usar `hello`, que

@@ -32,7 +32,9 @@ class MilyVoicePcmProcessor extends AudioWorkletProcessor {
       this.readPosition += this.resampleRatio;
     }
 
-    const consumed = Math.floor(this.readPosition);
+    // splice elimina como máximo input.length; restar exactamente esa misma
+    // cantidad conserva la fase entre quantums de 128 frames del AudioWorklet.
+    const consumed = Math.min(Math.floor(this.readPosition), this.input.length);
     if (consumed > 0) {
       this.input.splice(0, consumed);
       this.readPosition -= consumed;
