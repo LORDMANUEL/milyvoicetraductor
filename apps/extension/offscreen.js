@@ -1,6 +1,6 @@
 /**
- * Documento offscreen: recibe el stream de la pestaña, lo normaliza a 16 kHz,
- * conserva la reproducción local y transmite únicamente PCM al localhost.
+ * Documento offscreen: recibe el stream de la pestaña, conserva la reproducción
+ * a la frecuencia nativa del dispositivo y transmite una copia PCM16/16 kHz.
  */
 let mediaStream = null;
 let audioContext = null;
@@ -71,7 +71,10 @@ async function startCapture(message) {
   };
   mediaStream = await navigator.mediaDevices.getUserMedia(constraints);
 
-  audioContext = new AudioContext({ sampleRate: 16000, latencyHint: 'interactive' });
+  // No fijar el contexto a 16 kHz: tabCapture necesita reinyectar el audio de la
+  // reunión y debe conservar la frecuencia nativa del dispositivo (habitualmente 48 kHz).
+  // El worklet crea únicamente la copia 16 kHz que consume Whisper.
+  audioContext = new AudioContext({ latencyHint: 'interactive' });
   await audioContext.audioWorklet.addModule('audio-worklet.js');
   const source = audioContext.createMediaStreamSource(mediaStream);
   workletNode = new AudioWorkletNode(audioContext, 'milyvoice-pcm', {
@@ -81,7 +84,8 @@ async function startCapture(message) {
   });
   source.connect(workletNode);
 
-  // tabCapture puede silenciar la salida original; este enlace mantiene audible la reunión.
+  // tabCapture puede silenciar la salida original; esta rama conserva audible la
+  // reunión con la frecuencia nativa, separada de la copia 16 kHz del ASR.
   const playbackGain = audioContext.createGain();
   playbackGain.gain.value = 1;
   source.connect(playbackGain).connect(audioContext.destination);

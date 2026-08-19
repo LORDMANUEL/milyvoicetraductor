@@ -24,7 +24,6 @@ pub struct AppPaths {
 }
 
 impl AppPaths {
-    /// Resuelve carpetas por convenciones del SO; nunca codifica un usuario.
     pub fn discover() -> Result<Self, ConfigError> {
         #[cfg(windows)]
         let (data_dir, config_dir, cache_dir) = {
@@ -145,6 +144,57 @@ impl AppConfig {
     }
 }
 
+#[cfg(windows)]
+fn replacement_backup_path(destination: &Path) -> PathBuf {
+    let stem = format!("{}.replace-backup", destination.display());
+    let primary = PathBuf::from(&stem);
+    if !primary.exists() {
+        return primary;
+    }
+    for index in 1_u32.. {
+        let candidate = PathBuf::from(format!("{stem}.{index}"));
+        if !candidate.exists() {
+            return candidate;
+        }
+    }
+    unreachable!()
+}
+
+fn replace_file(source: &Path, destination: &Path) -> io::Result<()> {
+    #[cfg(windows)]
+    {
+        if !destination.exists() {
+            return fs::rename(source, destination);
+        }
+
+        let backup = replacement_backup_path(destination);
+        fs::rename(destination, &backup)?;
+        match fs::rename(source, destination) {
+            Ok(()) => {
+                let _ = fs::remove_file(backup);
+                Ok(())
+            }
+            Err(error) => {
+                if let Err(restore_error) = fs::rename(&backup, destination) {
+                    return Err(io::Error::new(
+                        restore_error.kind(),
+                        format!(
+                            "falló el reemplazo ({error}) y también la restauración del archivo previo ({restore_error}); respaldo conservado en {}",
+                            backup.display()
+                        ),
+                    ));
+                }
+                Err(error)
+            }
+        }
+    }
+
+    #[cfg(not(windows))]
+    {
+        fs::rename(source, destination)
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct ConfigService {
     path: PathBuf,
@@ -164,8 +214,17 @@ impl ConfigService {
             return Ok(AppConfig::default());
         }
         let data = fs::read_to_string(&self.path)?;
-        let config: AppConfig = serde_json::from_str(&data)?;
-        Ok(config.normalized())
+        match serde_json::from_str::<AppConfig>(&data) {
+            Ok(config) => Ok(config.normalized()),
+            Err(_) => {
+                let quarantine = self.path.with_extension("json.invalid");
+                if quarantine.exists() {
+                    fs::remove_file(&quarantine)?;
+                }
+                fs::rename(&self.path, quarantine)?;
+                Ok(AppConfig::default())
+            }
+        }
     }
 
     pub fn save(&self, config: &AppConfig) -> Result<(), ConfigError> {
@@ -178,11 +237,10 @@ impl ConfigService {
         let mut file = fs::File::create(&temp_path)?;
         file.write_all(&bytes)?;
         file.sync_all()?;
-        fs::rename(temp_path, &self.path)?;
+        replace_file(&temp_path, &self.path)?;
         Ok(())
     }
 
-    /// Genera la configuración mínima que consume el sidecar Python.
     pub fn save_engine_config(&self, config: &AppConfig) -> Result<(), ConfigError> {
         let parent = self
             .path
@@ -200,7 +258,7 @@ impl ConfigService {
         let path = parent.join("engine.json");
         let temp = parent.join("engine.json.tmp");
         fs::write(&temp, serde_json::to_vec_pretty(&value)?)?;
-        fs::rename(temp, path)?;
+        replace_file(&temp, &path)?;
         Ok(())
     }
 }
@@ -234,6 +292,22 @@ mod tests {
     }
 
     #[test]
+    fn malformed_prior_config_is_quarantined_and_defaults_are_loaded() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("config.json");
+        fs::write(&path, b"{ definitely-not-valid-json").unwrap();
+        let service = ConfigService::new(&path);
+
+        let config = service
+            .load_or_default()
+            .expect("una configuración corrupta anterior no debe impedir el arranque");
+
+        assert_eq!(config, AppConfig::default());
+        assert!(!path.exists());
+        assert!(dir.path().join("config.json.invalid").exists());
+    }
+
+    #[test]
     fn invalid_values_are_normalized() {
         let config = AppConfig {
             theme: "neon".into(),
@@ -249,5 +323,54 @@ mod tests {
         assert_eq!(config.compute_profile, "auto");
         assert_eq!(config.engine_port, 1024);
         assert_eq!(config.active_model_pack, "realtime-m2m100");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn save_replaces_an_existing_config_on_windows() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("config.json");
+        fs::write(&path, r#"{"schemaVersion":2,"sourceLanguage":"zh"}"#).unwrap();
+        let service = ConfigService::new(&path);
+        let desired = AppConfig {
+            source_language: "en".into(),
+            ..AppConfig::default()
+        };
+        service
+            .save(&desired)
+            .expect("guardar debe reemplazar config existente");
+        let loaded = service.load_or_default().unwrap();
+        assert_eq!(loaded.source_language, "en");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn engine_config_replaces_an_existing_file_on_windows() {
+        let dir = tempdir().unwrap();
+        let config_path = dir.path().join("config.json");
+        let engine_path = dir.path().join("engine.json");
+        fs::write(&engine_path, br#"{"sourceLanguage":"zh"}"#).unwrap();
+        let service = ConfigService::new(config_path);
+        service
+            .save_engine_config(&AppConfig::default())
+            .expect("guardar engine.json debe reemplazar el archivo existente");
+        let payload = fs::read_to_string(engine_path).unwrap();
+        assert!(payload.contains(r#""sourceLanguage": "auto""#));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn failed_replacement_never_deletes_the_existing_destination() {
+        let dir = tempdir().unwrap();
+        let missing_source = dir.path().join("missing.tmp");
+        let destination = dir.path().join("config.json");
+        fs::write(&destination, b"important prior config").unwrap();
+
+        let error = replace_file(&missing_source, &destination)
+            .expect_err("reemplazar desde una fuente inexistente debe fallar");
+
+        assert_eq!(error.kind(), io::ErrorKind::NotFound);
+        assert!(destination.is_file());
+        assert_eq!(fs::read(destination).unwrap(), b"important prior config");
     }
 }

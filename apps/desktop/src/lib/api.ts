@@ -29,7 +29,7 @@ export function isTauriEnvironment(): boolean {
 export class DesktopApi {
   async getAppStatus(): Promise<AppStatus> {
     if (!isTauriEnvironment()) return {
-      version: '2.0.0-web-preview', engine: 'notInstalled', models: 'notInstalled',
+      version: '2.0.1-web-preview', engine: 'notInstalled', models: 'notInstalled',
       installedModels: 0, extensionConnected: false, activeModelPack: null
     };
     return invoke<AppStatus>('get_app_status');

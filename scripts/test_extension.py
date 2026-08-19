@@ -5,13 +5,16 @@ import base64
 import hashlib
 import json
 import re
+import subprocess
 
 root = Path(__file__).resolve().parents[1]
 ext = root / "apps" / "extension"
 manifest = json.loads((ext / "manifest.json").read_text(encoding="utf-8"))
 popup = (ext / "popup.html").read_text(encoding="utf-8")
+popup_script = (ext / "popup.js").read_text(encoding="utf-8")
 background = (ext / "background.js").read_text(encoding="utf-8")
 offscreen = (ext / "offscreen.js").read_text(encoding="utf-8")
+worklet = (ext / "audio-worklet.js").read_text(encoding="utf-8")
 tts = (ext / "tts.js").read_text(encoding="utf-8")
 settings = (root / "apps" / "desktop" / "src" / "pages" / "Settings.svelte").read_text(encoding="utf-8")
 
@@ -52,6 +55,41 @@ assert "ensureOverlay(tab.id)" in background, "START_CAPTURE debe preparar overl
 assert "speakTranslation" in background, "La traducción final debe poder activar TTS local"
 assert "tts.started" in offscreen and "tts.finished" in offscreen, "TTS debe avisar al motor para anti-feedback"
 assert "chrome.tts.speak" in tts, "La extensión debe usar síntesis local de Chromium/Windows"
+
+# Un motor instalado pero detenido NO debe bloquear Teams Web. START_CAPTURE usa
+# `hello`, y es precisamente esa llamada la que arranca el motor automáticamente.
+# En cambio notInstalled/error sí deben seguir bloqueados para no mostrar un botón falso.
+assert "state?.engine === 'ready' && state?.modelPack" not in popup_script, (
+    "El popup no debe deshabilitar Inicio solo porque el motor esté detenido."
+)
+assert "state?.engine === 'ready' || state?.engine === 'stopped'" in popup_script, (
+    "Teams debe admitir un motor listo o instalado/detenido, no estados rotos."
+)
+assert "Boolean(connected && engineStartable && state?.modelPack)" in popup_script, (
+    "Con bridge, modelo y motor arrancable, el usuario debe poder iniciar Teams."
+)
+
+# Teams/Meet/Zoom deben conservar el audio audible a la frecuencia nativa del
+# dispositivo. Solo la copia para ASR se reduce a 16 kHz dentro del worklet.
+assert "new AudioContext({ sampleRate: 16000" not in offscreen, (
+    "La reproducción de la pestaña no debe forzarse a 16 kHz; degrada la voz de Teams."
+)
+assert "TARGET_SAMPLE_RATE = 16000" in worklet, "El worklet debe definir el destino ASR de 16 kHz."
+assert "sampleRate / TARGET_SAMPLE_RATE" in worklet, (
+    "El worklet debe remuestrear desde la frecuencia nativa del AudioContext hacia 16 kHz."
+)
+
+resampling = subprocess.run(
+    ["node", str(root / "scripts" / "test_audio_worklet.js")],
+    cwd=root,
+    text=True,
+    capture_output=True,
+    check=False,
+)
+assert resampling.returncode == 0, (
+    "El remuestreador AudioWorklet perdió continuidad entre bloques.\n"
+    f"stdout:\n{resampling.stdout}\nstderr:\n{resampling.stderr}"
+)
 
 # Consultar el popup debe ser pasivo. Solo START_CAPTURE puede usar `hello`, que
 # arranca el motor y solicita una credencial efímera al bridge.

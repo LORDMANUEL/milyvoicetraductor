@@ -1,5 +1,43 @@
 # Changelog
 
+## [2.0.1] - 2026-08-18
+
+### Corregido
+- El gate NSIS ya no se limita a comprobar archivos: instala y arranca el `MilyVoiceTraductor.exe` generado.
+- El Desktop instalado debe crear una ventana Windows real antes de aceptar el artefacto.
+- El mismo gate repite instalación sobre estado local existente y vuelve a exigir arranque visible.
+- Sitio, VERSION, Cargo, Node, Tauri, motor Python, extensión, CI y publicación declaran la misma versión 2.0.1.
+- El paquete Python interno deja atrás el `1.0.0rc1` residual.
+- La landing deja de publicar textos 2.0 RC y enlaces v2.0.0 obsoletos.
+- El workflow de publicación toma únicamente el artefacto del SHA verificado por CI.
+
+### MilyCompute / rendimiento
+- CPU INT8 permanece como fallback obligatorio para cualquier PC.
+- Perfil Auto prueba CUDA solo cuando CTranslate2 reporta un dispositivo utilizable.
+- Si CUDA se detecta pero no inicializa, Faster-Whisper y M2M100 vuelven automáticamente a CPU en perfil Auto.
+- Perfil GPU forzado informa errores CUDA explícitos en vez de ocultarlos con fallback.
+- Hardware Advisor deja de asumir `cualquier GPU = CUDA` y cruza Runtime Registry con inventario DXGI real.
+- Intel/AMD pueden aparecer como candidatos de runtimes alternativos, pero nunca se marcan `ready` sin adapter ejecutable y benchmark real.
+- Se conservan los perfiles de CPU débiles, colas acotadas, warm-up y MegaBench P50/P95/RTF.
+
+### Modelos
+- Sin cambio de pesos: `Systran/faster-whisper-small` + `facebook/m2m100_418M` CTranslate2 INT8.
+- Model Labs Quality/TriCore/Legacy siguen en R&D/Features y no forman parte de esta optimización.
+- El benchmark físico específico Intel Core i3 Haswell sigue pendiente y no se sustituye por el runner de GitHub.
+
+### Validación
+- Tests de fallback CPU/CUDA del router y proveedores.
+- Tests de Hardware Advisor para impedir falsos candidatos CUDA en Intel/AMD.
+- Recuperación segura de configuración anterior/corrupta antes del arranque.
+- MegaBench con modelos reales.
+- `WINDOWS_GUI`, Tauri NSIS, Native Messaging, arranque visible y reinstalación real.
+
+## [2.0.0] - 2026-08-18
+
+### Nota
+- Introdujo MilyCompute Foundation, MegaBench y el salto realtime/multimodal.
+- La publicación se considera reemplazada por 2.0.1 porque su smoke NSIS verificaba payload/registro pero no arrancaba explícitamente el Desktop instalado, y la web conservó referencias RC/2.0.0 inconsistentes.
+
 ## [1.0.5] - 2026-08-18
 
 ### Corregido
