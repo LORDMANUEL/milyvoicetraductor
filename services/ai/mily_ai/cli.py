@@ -7,6 +7,7 @@ import json
 import sys
 from pathlib import Path
 
+from .external_sources import download_external_pack
 from .model_advisor import ModelAdvisor
 from .model_operations import download_pack
 from .models import (
@@ -43,6 +44,20 @@ def _emit_model_error(error: ModelOperationError) -> int:
         file=sys.stderr,
     )
     return 10
+
+
+def _emit_pack(pack) -> None:
+    print(
+        json.dumps(
+            {
+                "ok": True,
+                "id": pack.id,
+                "version": pack.version,
+                "active": pack.active,
+            },
+            ensure_ascii=False,
+        )
+    )
 
 
 def cmd_serve(args) -> int:
@@ -128,17 +143,7 @@ def cmd_models(args) -> int:
                         "El modelo supera el límite total de 2 GB o 384 MB de VRAM.",
                     )
                 pack = installer.install(args.pack_id)
-            print(
-                json.dumps(
-                    {
-                        "ok": True,
-                        "id": pack.id,
-                        "version": pack.version,
-                        "active": pack.active,
-                    },
-                    ensure_ascii=False,
-                )
-            )
+            _emit_pack(pack)
             return 0
         if args.model_action == "activate":
             definition = catalog.definition(args.pack_id)
@@ -157,18 +162,16 @@ def cmd_models(args) -> int:
             )
             return 0
         if args.model_action == "import":
-            pack = installer.import_pack(Path(args.archive))
-            print(
-                json.dumps(
-                    {
-                        "ok": True,
-                        "id": pack.id,
-                        "version": pack.version,
-                        "active": pack.active,
-                    },
-                    ensure_ascii=False,
-                )
-            )
+            _emit_pack(installer.import_pack(Path(args.archive)))
+            return 0
+        if args.model_action == "import-url":
+            staging = paths.models_dir / ".staging" / "external-downloads"
+            archive = download_external_pack(args.url, staging)
+            try:
+                pack = installer.import_pack(archive)
+            finally:
+                archive.unlink(missing_ok=True)
+            _emit_pack(pack)
             return 0
         if args.model_action == "auto-select":
             advisor = ModelAdvisor(catalog, installer)
@@ -319,6 +322,9 @@ def build_parser() -> argparse.ArgumentParser:
     import_pack = model_sub.add_parser("import")
     import_pack.add_argument("archive")
     import_pack.set_defaults(func=cmd_models)
+    import_url = model_sub.add_parser("import-url")
+    import_url.add_argument("url")
+    import_url.set_defaults(func=cmd_models)
     auto = model_sub.add_parser("auto-select")
     auto.add_argument("--route", default="en-es")
     auto.add_argument("--allow-cloud", action="store_true")
