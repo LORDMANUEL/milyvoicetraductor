@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import importlib
 import json
 import sys
 from pathlib import Path
@@ -20,6 +21,57 @@ from .resource_governor import ResourceGovernor, ResourceLimits
 from .runtime import RuntimePaths
 from .runtime_discovery import discover_runtime_inventory
 from .security import PairingTokenService
+
+
+_DEFAULT_REQUIRED_RUNTIME_MODULES = (
+    "fastapi",
+    "uvicorn",
+    "numpy",
+    "faster_whisper",
+    "ctranslate2",
+    "huggingface_hub",
+    "sentencepiece",
+)
+_DEFAULT_OPTIONAL_RUNTIME_MODULES = (
+    "transformers",
+    "torch",
+    "moonshine_voice",
+    "sherpa_onnx",
+    "onnxruntime",
+    "vosk",
+    "google.cloud.speech_v2",
+    "pyaudiowpatch",
+)
+
+
+def _runtime_module_contract() -> tuple[tuple[str, ...], tuple[str, ...]]:
+    """Lee el mismo contrato firmado dentro del runtime que usa el instalador.
+
+    En desarrollo/source no existe runtime-manifest.json, por eso se conserva un
+    fallback equivalente. Un manifest incompleto nunca puede vaciar el núcleo.
+    """
+
+    manifest_path = Path(sys.executable).resolve().parent / "runtime-manifest.json"
+    try:
+        payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError, TypeError):
+        return _DEFAULT_REQUIRED_RUNTIME_MODULES, _DEFAULT_OPTIONAL_RUNTIME_MODULES
+
+    def normalized(key: str, fallback: tuple[str, ...]) -> tuple[str, ...]:
+        value = payload.get(key)
+        if not isinstance(value, list):
+            return fallback
+        modules = tuple(
+            item.strip()
+            for item in value
+            if isinstance(item, str) and item.strip()
+        )
+        return modules or fallback
+
+    return (
+        normalized("requiredModules", _DEFAULT_REQUIRED_RUNTIME_MODULES),
+        normalized("optionalModules", _DEFAULT_OPTIONAL_RUNTIME_MODULES),
+    )
 
 
 def _paths(args) -> RuntimePaths:
@@ -233,33 +285,18 @@ def cmd_models(args) -> int:
 
 def cmd_diagnose(args) -> int:
     paths = _paths(args)
-    required_modules = (
-        "fastapi",
-        "uvicorn",
-        "numpy",
-        "faster_whisper",
-        "ctranslate2",
-        "huggingface_hub",
-        "sentencepiece",
-    )
-    optional_modules = (
-        "transformers",
-        "torch",
-        "moonshine_voice",
-        "sherpa_onnx",
-        "onnxruntime",
-    )
+    required_modules, optional_modules = _runtime_module_contract()
     required: dict[str, bool] = {}
     optional: dict[str, bool] = {}
     for module in required_modules:
         try:
-            __import__(module)
+            importlib.import_module(module)
             required[module] = True
         except Exception:
             required[module] = False
     for module in optional_modules:
         try:
-            __import__(module)
+            importlib.import_module(module)
             optional[module] = True
         except Exception:
             optional[module] = False

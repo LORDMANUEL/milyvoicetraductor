@@ -15,6 +15,28 @@ function Assert-File([string]$Path, [string]$Message) {
     if (-not (Test-Path $Path -PathType Leaf)) { throw $Message }
 }
 
+function Assert-WindowsPowerShell51Syntax([string]$Path) {
+    $windowsRoot = if ([string]::IsNullOrWhiteSpace($env:WINDIR)) { 'C:\Windows' } else { $env:WINDIR }
+    $powershell = Join-Path $windowsRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+    Assert-File $powershell 'No se encontró Windows PowerShell 5.1 para validar el bootstrap.'
+    $escapedPath = $Path.Replace("'", "''")
+    $parserProbe = @"
+`$tokens = `$null
+`$errors = `$null
+[System.Management.Automation.Language.Parser]::ParseFile('$escapedPath', [ref]`$tokens, [ref]`$errors) | Out-Null
+if (`$errors.Count -gt 0) {
+    `$errors | ForEach-Object { [Console]::Error.WriteLine(`$_.Message) }
+    exit 1
+}
+exit 0
+"@
+    $encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($parserProbe))
+    & $powershell -NoProfile -NonInteractive -EncodedCommand $encoded
+    if ($LASTEXITCODE -ne 0) {
+        throw "Windows PowerShell 5.1 rechazó la sintaxis de $Path"
+    }
+}
+
 function Run-ProcessChecked([string]$FilePath, [string[]]$Arguments, [int]$TimeoutMs = 300000) {
     $process = Start-Process -FilePath $FilePath -ArgumentList $Arguments -PassThru
     if (-not $process.WaitForExit($TimeoutMs)) {
@@ -71,6 +93,15 @@ function Assert-DesktopStartsWithWindow([string]$DesktopExe, [string]$Label) {
     }
 }
 
+# Gate explícito del shell que ejecuta NSIS en PCs reales. pwsh y powershell.exe
+# no son intercambiables para compatibilidad de parser.
+foreach ($bundledScript in @(
+    (Join-Path $PSScriptRoot 'setup-installed.ps1'),
+    (Join-Path $PSScriptRoot 'register-native-host.ps1')
+)) {
+    Assert-WindowsPowerShell51Syntax $bundledScript
+}
+
 Get-Process -Name 'MilyVoiceTraductor' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
 Remove-Item $InstallRoot -Recurse -Force -ErrorAction SilentlyContinue
 Remove-Item $AppRoot -Recurse -Force -ErrorAction SilentlyContinue
@@ -121,6 +152,17 @@ Assert-File $EnginePackage 'NSIS/post-install perdió el paquete mily_ai aunque 
 Assert-File $ExtensionManifest 'NSIS/post-install no dejó la extensión Chromium aunque reportó BOOTSTRAP_OK.'
 Assert-File $Bridge 'NSIS/post-install no dejó el bridge Native Messaging aunque reportó BOOTSTRAP_OK.'
 Assert-File $NativeManifest 'NSIS/post-install no generó el manifiesto Native Messaging aunque reportó BOOTSTRAP_OK.'
+
+$runtimeContract = Get-Content $RuntimeManifest -Raw -Encoding UTF8 | ConvertFrom-Json
+$requiredModules = @($runtimeContract.requiredModules)
+$optionalModules = @($runtimeContract.optionalModules)
+foreach ($module in @('fastapi','uvicorn','numpy','faster_whisper','ctranslate2','huggingface_hub','sentencepiece')) {
+    if ($requiredModules -notcontains $module) { throw "El runtime manifest no marca '$module' como requisito base." }
+}
+foreach ($module in @('torch','transformers','moonshine_voice','sherpa_onnx')) {
+    if ($requiredModules -contains $module) { throw "El runtime manifest marcó '$module' como requisito bloqueante." }
+    if ($optionalModules -notcontains $module) { throw "El runtime manifest no declara '$module' como adapter opcional." }
+}
 
 foreach ($key in @(
     'HKCU:\Software\Google\Chrome\NativeMessagingHosts\com.milyvoice.traductor',
@@ -263,4 +305,4 @@ if (-not $installerStoppedRuntime) {
 Assert-BootstrapReady $StatusPath
 Assert-DesktopStartsWithWindow $DesktopExe 'reinstalación sobre estado existente'
 
-Write-Host 'NSIS INSTALLER FLOW OK: payload + bootstrap + Native Messaging + visible Desktop + locked-runtime reinstall' -ForegroundColor Green
+Write-Host 'NSIS INSTALLER FLOW OK: PS5.1 parse + payload + bootstrap + Native Messaging + visible Desktop + locked-runtime reinstall' -ForegroundColor Green

@@ -15,6 +15,30 @@ $RuntimeZip = Join-Path $OutputRoot 'milyvoice-python-runtime.zip'
 $RuntimeHash = "$RuntimeZip.sha256"
 $DownloadUrl = "https://www.python.org/ftp/python/$PythonVersion/python-$PythonVersion-embeddable-amd64.zip"
 
+# Contrato único del runtime. El bootstrap del usuario solo bloquea la instalación
+# si falla el núcleo necesario para arrancar y traducir. Los motores Quality y
+# adapters alternativos se empaquetan y se prueban en build, pero una DLL opcional
+# incompatible en una PC concreta no debe impedir abrir MilyVoice con fallback.
+$RequiredRuntimeModules = @(
+    'fastapi',
+    'uvicorn',
+    'numpy',
+    'faster_whisper',
+    'ctranslate2',
+    'huggingface_hub',
+    'sentencepiece'
+)
+$OptionalRuntimeModules = @(
+    'transformers',
+    'torch',
+    'moonshine_voice',
+    'sherpa_onnx',
+    'onnxruntime',
+    'vosk',
+    'google.cloud.speech_v2',
+    'pyaudiowpatch'
+)
+
 Write-Host "[MilyVoice] Preparando Python $PythonVersion privado..." -ForegroundColor Cyan
 Remove-Item $BuildRoot -Recurse -Force -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Force -Path $BuildRoot,$Stage,$OutputRoot | Out-Null
@@ -44,36 +68,24 @@ python -m pip install --disable-pip-version-check --no-input --target $sitePacka
 if ($LASTEXITCODE -ne 0) { throw 'No se pudieron preparar las dependencias del runtime privado.' }
 
 $embeddedPython = Join-Path $Stage 'python.exe'
-$runtimeSmoke = @'
-import ctranslate2
-import fastapi
-import google.cloud.speech_v2
-import huggingface_hub
-import moonshine_voice
-import numpy
-import pyaudiowpatch
-import sentencepiece
-import sherpa_onnx
-import torch
-import transformers
-import uvicorn
-import vosk
-from faster_whisper import WhisperModel
-print('MILY_RUNTIME_OK')
-'@
-& $embeddedPython -c $runtimeSmoke
-if ($LASTEXITCODE -ne 0) {
-    throw 'El Python embebido no pudo importar todos los motores Engine Hub, traducción, nube opcional y WASAPI.'
+foreach ($module in @($RequiredRuntimeModules + $OptionalRuntimeModules)) {
+    $probe = "import importlib; importlib.import_module('$module'); print('MILY_RUNTIME_MODULE_OK')"
+    & $embeddedPython -c $probe
+    if ($LASTEXITCODE -ne 0) {
+        throw "El Python embebido no pudo importar el módulo empaquetado '$module' durante el build."
+    }
 }
 
 $metadata = [ordered]@{
-    schemaVersion = 2
+    schemaVersion = 3
     pythonVersion = $PythonVersion
     source = $DownloadUrl
     sourceSha256 = $ExpectedSha256.ToLowerInvariant()
     pythonSha256 = (Get-FileHash $embeddedPython -Algorithm SHA256).Hash.ToLowerInvariant()
     architecture = 'x86_64'
     windowsLoopback = 'PyAudioWPatch-0.2.12.8'
+    requiredModules = $RequiredRuntimeModules
+    optionalModules = $OptionalRuntimeModules
     engineHubRuntimes = @(
         'faster-whisper',
         'moonshine-voice',
@@ -84,7 +96,7 @@ $metadata = [ordered]@{
         'google-cloud-speech'
     )
 }
-$metadata | ConvertTo-Json -Depth 4 | Set-Content (Join-Path $Stage 'runtime-manifest.json') -Encoding UTF8
+$metadata | ConvertTo-Json -Depth 5 | Set-Content (Join-Path $Stage 'runtime-manifest.json') -Encoding UTF8
 
 Remove-Item $RuntimeZip,$RuntimeHash -Force -ErrorAction SilentlyContinue
 Compress-Archive -Path (Join-Path $Stage '*') -DestinationPath $RuntimeZip -CompressionLevel Optimal
