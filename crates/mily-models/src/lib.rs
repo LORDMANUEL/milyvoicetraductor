@@ -128,6 +128,13 @@ struct ModelCliErrorPayload {
     message: String,
 }
 
+#[derive(Debug, Clone, Deserialize)]
+struct ModelCliPackPayload {
+    ok: bool,
+    id: String,
+    version: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AutoSelectionResult {
@@ -158,6 +165,14 @@ fn parse_model_cli_error(bytes: &[u8]) -> Option<ModelError> {
         });
     }
     None
+}
+
+fn parse_model_cli_pack(bytes: &[u8]) -> Option<ModelCliPackPayload> {
+    let payload = serde_json::from_slice::<ModelCliPackPayload>(bytes).ok()?;
+    if !payload.ok || payload.id.trim().is_empty() || payload.version.trim().is_empty() {
+        return None;
+    }
+    Some(payload)
 }
 
 fn valid_public_model_code(code: &str) -> bool {
@@ -313,7 +328,9 @@ impl ModelManagerService {
                 output.push(pack);
             }
         }
-        output.sort_by(|left, right| (&left.id, &left.version).cmp(&(&right.id, &right.version)));
+        output.sort_by(|left, right| {
+            (&left.id, &left.version).cmp(&(&right.id, &right.version))
+        });
         output
     }
 
@@ -341,10 +358,11 @@ impl ModelManagerService {
     }
 
     pub fn import_pack(&self, path: &Path) -> Result<ModelPackInfo, ModelError> {
-        self.run_engine_cli(&["import".into(), path.to_string_lossy().into_owned()])?;
+        let bytes = self.run_engine_cli(&["import".into(), path.to_string_lossy().into_owned()])?;
+        let payload = parse_model_cli_pack(&bytes).ok_or(ModelError::InstallFailed)?;
         self.installed()
             .into_iter()
-            .find(|pack| pack.active)
+            .find(|pack| pack.id == payload.id && pack.version == payload.version)
             .ok_or(ModelError::InstallFailed)
     }
 
@@ -495,6 +513,16 @@ mod tests {
         .expect("structured error");
         assert_eq!(error.public_code(), "MODEL_NO_NETWORK");
         assert_eq!(error.public_message(), "No hay conexión a Internet.");
+    }
+
+    #[test]
+    fn import_payload_is_not_required_to_be_active() {
+        let payload = parse_model_cli_pack(
+            br#"{"ok":true,"id":"partner-fast-en-es","version":"1.0.0"}"#,
+        )
+        .expect("pack payload");
+        assert_eq!(payload.id, "partner-fast-en-es");
+        assert_eq!(payload.version, "1.0.0");
     }
 
     #[test]
