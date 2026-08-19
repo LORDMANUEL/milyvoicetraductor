@@ -36,7 +36,7 @@ def _parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _terminate(process: subprocess.Popen[str]) -> None:
+def _terminate(process: subprocess.Popen[bytes]) -> None:
     if process.poll() is not None:
         return
     try:
@@ -48,22 +48,56 @@ def _terminate(process: subprocess.Popen[str]) -> None:
         process.kill()
 
 
+def _decode_output(payload: bytes) -> str:
+    """Decodifica salida de tests Linux/Windows sin introducir U+FFFD evitable."""
+
+    preferred = getattr(sys.stdout, "encoding", None) or "utf-8"
+    attempted: set[str] = set()
+    for encoding in ("utf-8-sig", preferred, "cp1252"):
+        normalized = encoding.casefold()
+        if normalized in attempted:
+            continue
+        attempted.add(normalized)
+        try:
+            return payload.decode(encoding)
+        except (LookupError, UnicodeDecodeError):
+            continue
+    return payload.decode("utf-8", errors="backslashreplace")
+
+
+def _write_output(text: str, *, error: bool = False) -> None:
+    """Escribe incluso cuando la consola Windows usa CP1252."""
+
+    if not text:
+        return
+    stream = sys.stderr if error else sys.stdout
+    encoding = getattr(stream, "encoding", None) or "utf-8"
+    try:
+        safe = text.encode(encoding, errors="backslashreplace").decode(encoding)
+    except LookupError:
+        safe = text.encode("utf-8", errors="backslashreplace").decode("utf-8")
+    stream.write(safe)
+    stream.flush()
+
+
 def main(argv: list[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     if args.timeout <= 0:
-        print("AI TEST RUNNER ERROR: --timeout debe ser mayor que cero", file=sys.stderr)
+        _write_output(
+            "AI TEST RUNNER ERROR: --timeout debe ser mayor que cero\n", error=True
+        )
         return 2
 
     root = Path(__file__).resolve().parents[1]
     tests_dir = (root / args.tests_dir).resolve()
     ai_root = (root / "services" / "ai").resolve()
     if not tests_dir.is_dir():
-        print(f"AI TEST RUNNER ERROR: no existe {tests_dir}", file=sys.stderr)
+        _write_output(f"AI TEST RUNNER ERROR: no existe {tests_dir}\n", error=True)
         return 2
 
     files = sorted(path for path in tests_dir.glob(args.pattern) if path.is_file())
     if not files:
-        print("AI TEST RUNNER ERROR: no se encontraron pruebas", file=sys.stderr)
+        _write_output("AI TEST RUNNER ERROR: no se encontraron pruebas\n", error=True)
         return 2
 
     environment = os.environ.copy()
@@ -74,10 +108,7 @@ def main(argv: list[str] | None = None) -> int:
 
     for index, path in enumerate(files, start=1):
         relative = path.relative_to(root)
-        print(
-            f"\n=== AI TEST FILE {index}/{len(files)}: {relative} ===",
-            flush=True,
-        )
+        _write_output(f"\n=== AI TEST FILE {index}/{len(files)}: {relative} ===\n")
         command = [
             sys.executable,
             "-m",
@@ -99,9 +130,7 @@ def main(argv: list[str] | None = None) -> int:
             env=environment,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
+            text=False,
             start_new_session=start_new_session,
             creationflags=creationflags,
         )
@@ -110,25 +139,21 @@ def main(argv: list[str] | None = None) -> int:
         except subprocess.TimeoutExpired:
             _terminate(process)
             output, _ = process.communicate()
-            if output:
-                print(output, end="")
-            print(
-                f"AI TEST TIMEOUT: {relative} excedió {args.timeout:g} segundos",
-                file=sys.stderr,
-                flush=True,
+            _write_output(_decode_output(output or b""))
+            _write_output(
+                f"AI TEST TIMEOUT: {relative} excedió {args.timeout:g} segundos\n",
+                error=True,
             )
             return 124
-        if output:
-            print(output, end="")
+        _write_output(_decode_output(output or b""))
         if process.returncode != 0:
-            print(
-                f"AI TEST FAILED: {relative} (exit {process.returncode})",
-                file=sys.stderr,
-                flush=True,
+            _write_output(
+                f"AI TEST FAILED: {relative} (exit {process.returncode})\n",
+                error=True,
             )
             return int(process.returncode or 1)
 
-    print(f"\nAI TEST RUNNER OK: {len(files)} archivos", flush=True)
+    _write_output(f"\nAI TEST RUNNER OK: {len(files)} archivos\n")
     return 0
 
 
