@@ -9,7 +9,8 @@ from __future__ import annotations
 from pathlib import Path
 
 from .cpu_budget import CpuBudget
-from .optional_providers import CTranslate2MarianTranslator, OptionalProviderRuntimeError
+from .marian_realtime import CTranslate2RealtimeMarianTranslator
+from .optional_providers import OptionalProviderRuntimeError
 from .providers import Translator
 
 
@@ -34,14 +35,14 @@ class CTranslate2MarianCascadeTranslator(Translator):
         self.source_language = source_language
         self.pivot_language = pivot_language
         self.target_language = target_language
-        self._first = CTranslate2MarianTranslator(
+        self._first = CTranslate2RealtimeMarianTranslator(
             self.model_path / "stage-1",
             compute_profile,
             cpu_budget=cpu_budget,
             source_language=source_language,
             target_language=pivot_language,
         )
-        self._second = CTranslate2MarianTranslator(
+        self._second = CTranslate2RealtimeMarianTranslator(
             self.model_path / "stage-2",
             compute_profile,
             cpu_budget=cpu_budget,
