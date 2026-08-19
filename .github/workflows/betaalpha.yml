@@ -16,6 +16,7 @@ concurrency:
 
 jobs:
   betaalpha-windows:
+    # Un solo SHA debe superar runtime Lite, OPUS nativo, benchmarks y NSIS.
     name: BetaAlpha Windows CPU certification
     runs-on: windows-latest
     steps:
