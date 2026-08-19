@@ -165,7 +165,7 @@ for path in ROOT.rglob("*"):
     if path.is_file() and path.stat().st_size > 25 * 1024 * 1024:
         fail(f"Archivo >25MB no permitido en fuente: {path.relative_to(ROOT)}")
 
-run("AI unit tests", [sys.executable, "-m", "unittest", "discover", "-s", "tests", "-p", "test_*.py"], ROOT / "services/ai")
+run("AI unit tests", [sys.executable, "scripts/run_ai_tests.py", "--timeout", "120"])
 run("Extension guard", [sys.executable, "scripts/test_extension.py"])
 run("Site smoke", [sys.executable, "scripts/test_site.py"])
 run("Privacy scan", [sys.executable, "scripts/privacy_scan.py", "."])
