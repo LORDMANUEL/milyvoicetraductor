@@ -5,12 +5,13 @@ from __future__ import annotations
 import errno
 import hashlib
 import json
+import math
 import shutil
 import socket
 import zipfile
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
-from typing import Any
+from typing import Any, Iterable
 
 
 @dataclass(slots=True)
@@ -111,6 +112,24 @@ _FORBIDDEN_EXTERNAL_SUFFIXES = {
     ".js",
     ".msi",
 }
+_EXTERNAL_MAX_FILES = 1024
+_EXTERNAL_MAX_UNCOMPRESSED_BYTES = 12 * 1024 * 1024 * 1024
+_EXTERNAL_MAX_SINGLE_FILE_BYTES = 8 * 1024 * 1024 * 1024
+_EXTERNAL_TIERS = {"lite", "balanced", "quality", "experimental"}
+_EXTERNAL_BACKENDS = {"cpu", "cuda", "directml", "windowsml", "openvino", "vulkan"}
+_EXTERNAL_ASR_PROVIDERS = {
+    "faster-whisper",
+    "moonshine",
+    "sherpa-onnx",
+    "whisper-cpp",
+    "vosk",
+}
+_EXTERNAL_TRANSLATION_PROVIDERS = {
+    "m2m100-ct2",
+    "marian-ct2",
+    "qwen",
+    "nllb",
+}
 
 
 def validate_external_pack_member(name: str) -> bool:
@@ -126,6 +145,237 @@ def validate_external_pack_member(name: str) -> bool:
     if suffix in _FORBIDDEN_EXTERNAL_SUFFIXES:
         return False
     return path.name in _ALLOWED_EXTERNAL_NAMES or suffix in _ALLOWED_EXTERNAL_SUFFIXES
+
+
+def _external_archive_size_allowed(members: Iterable[zipfile.ZipInfo]) -> bool:
+    """Rechaza ZIP bombs mediante metadatos antes de extraer un byte."""
+
+    files = [item for item in members if not item.is_dir()]
+    if not files or len(files) > _EXTERNAL_MAX_FILES:
+        return False
+    total = 0
+    for item in files:
+        if item.flag_bits & 0x1:  # ZIP cifrado: no puede verificarse de forma determinista.
+            return False
+        size = int(item.file_size)
+        compressed = int(item.compress_size)
+        if size < 0 or size > _EXTERNAL_MAX_SINGLE_FILE_BYTES:
+            return False
+        total += size
+        if total > _EXTERNAL_MAX_UNCOMPRESSED_BYTES:
+            return False
+        if size > 64 * 1024 * 1024 and compressed > 0 and size / compressed > 250:
+            return False
+    return True
+
+
+def _registered_engine_routes() -> dict[str, set[str]]:
+    path = Path(__file__).with_name("engine-families.json")
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ModelOperationError(
+            "MODEL_RUNTIME_ERROR",
+            "El registro local de motores no está disponible.",
+        ) from exc
+    output: dict[str, set[str]] = {}
+    for item in payload.get("engines", []):
+        if not isinstance(item, dict) or bool(item.get("cloud", False)):
+            continue
+        engine_id = str(item.get("id", "")).strip()
+        routes = {
+            str(route).strip().lower()
+            for route in item.get("routes", [])
+            if str(route).strip()
+        }
+        if engine_id and routes:
+            output[engine_id] = routes
+    return output
+
+
+def _safe_identifier(value: object, *, version: bool = False) -> str:
+    normalized = str(value or "").strip()
+    allowed = "abcdefghijklmnopqrstuvwxyz0123456789-_." if version else "abcdefghijklmnopqrstuvwxyz0123456789-_"
+    if (
+        not normalized
+        or len(normalized) > 80
+        or normalized != normalized.lower()
+        or any(character not in allowed for character in normalized)
+    ):
+        raise ModelOperationError(
+            "MODEL_EXTERNAL_MANIFEST",
+            "El identificador o versión del pack externo no es válido.",
+        )
+    return normalized
+
+
+def _safe_positive_int(value: object, field: str, *, allow_zero: bool = False) -> int:
+    if isinstance(value, bool):
+        raise ModelOperationError(
+            "MODEL_EXTERNAL_MANIFEST", f"{field} debe ser un número entero."
+        )
+    try:
+        parsed = int(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError) as exc:
+        raise ModelOperationError(
+            "MODEL_EXTERNAL_MANIFEST", f"{field} debe ser un número entero."
+        ) from exc
+    minimum = 0 if allow_zero else 1
+    if parsed < minimum or parsed > 32768:
+        raise ModelOperationError(
+            "MODEL_EXTERNAL_MANIFEST", f"{field} está fuera del rango permitido."
+        )
+    return parsed
+
+
+def _safe_routes(value: object) -> list[str]:
+    if not isinstance(value, list) or not value:
+        raise ModelOperationError(
+            "MODEL_EXTERNAL_MANIFEST", "El pack externo debe declarar routes."
+        )
+    output: list[str] = []
+    for item in value:
+        route = str(item).strip().lower()
+        parts = route.split("-")
+        if (
+            len(parts) != 2
+            or any(not part.isalpha() or not 2 <= len(part) <= 8 for part in parts)
+        ):
+            raise ModelOperationError(
+                "MODEL_EXTERNAL_MANIFEST", "Una ruta de idioma no es válida."
+            )
+        if route not in output:
+            output.append(route)
+    return output
+
+
+def validate_external_pack_manifest(manifest: object) -> dict[str, Any]:
+    """Normaliza un manifiesto externo sin admitir código ni providers nuevos."""
+
+    if not isinstance(manifest, dict) or int(manifest.get("schemaVersion", 0)) != 2:
+        raise ModelOperationError(
+            "MODEL_EXTERNAL_MANIFEST",
+            "El pack externo requiere manifest.json schemaVersion 2.",
+        )
+    pack_id = _safe_identifier(manifest.get("id"))
+    version = _safe_identifier(manifest.get("version"), version=True)
+    title = str(manifest.get("title", "")).strip()
+    license_note = str(manifest.get("licenseNote", "")).strip()
+    if not title or len(title) > 160 or not license_note or len(license_note) > 1000:
+        raise ModelOperationError(
+            "MODEL_EXTERNAL_MANIFEST",
+            "El pack externo debe declarar título y licencia legibles.",
+        )
+    if not isinstance(manifest.get("commercialUse"), bool):
+        raise ModelOperationError(
+            "MODEL_EXTERNAL_MANIFEST",
+            "El pack externo debe declarar commercialUse explícitamente.",
+        )
+    if manifest.get("externalAllowed") is not True:
+        raise ModelOperationError(
+            "MODEL_EXTERNAL_MANIFEST",
+            "El manifiesto debe autorizar explícitamente la importación externa.",
+        )
+    tier = str(manifest.get("tier", "")).strip().lower()
+    if tier not in _EXTERNAL_TIERS:
+        raise ModelOperationError(
+            "MODEL_EXTERNAL_MANIFEST", "El tier del pack externo no es válido."
+        )
+    routes = _safe_routes(manifest.get("routes"))
+    engine = str(manifest.get("engine", "")).strip()
+    engine_routes = _registered_engine_routes().get(engine)
+    if engine_routes is None or not set(routes).issubset(engine_routes):
+        raise ModelOperationError(
+            "MODEL_EXTERNAL_MANIFEST",
+            "El motor externo no está registrado para las rutas declaradas.",
+        )
+    ram_mb = _safe_positive_int(manifest.get("ramMb"), "ramMb")
+    vram_mb = _safe_positive_int(
+        manifest.get("vramMb", 0), "vramMb", allow_zero=True
+    )
+    shared_gpu_mb = _safe_positive_int(
+        manifest.get("sharedGpuMb", 0), "sharedGpuMb", allow_zero=True
+    )
+    backends_value = manifest.get("supportedBackends")
+    if not isinstance(backends_value, list) or not backends_value:
+        raise ModelOperationError(
+            "MODEL_EXTERNAL_MANIFEST",
+            "El pack externo debe declarar supportedBackends.",
+        )
+    backends: list[str] = []
+    for item in backends_value:
+        backend = str(item).strip().lower()
+        if backend not in _EXTERNAL_BACKENDS:
+            raise ModelOperationError(
+                "MODEL_EXTERNAL_MANIFEST",
+                "El pack externo declara un backend no autorizado.",
+            )
+        if backend not in backends:
+            backends.append(backend)
+    components = manifest.get("components")
+    if not isinstance(components, dict):
+        raise ModelOperationError(
+            "MODEL_EXTERNAL_MANIFEST",
+            "El pack externo debe declarar components.",
+        )
+    asr = components.get("asr")
+    translation = components.get("translation")
+    if not isinstance(asr, dict) or not isinstance(translation, dict):
+        raise ModelOperationError(
+            "MODEL_EXTERNAL_MANIFEST",
+            "El pack externo requiere componentes ASR y traducción.",
+        )
+    asr_provider = str(asr.get("provider", "")).strip().lower()
+    translation_provider = str(translation.get("provider", "")).strip().lower()
+    if asr_provider not in _EXTERNAL_ASR_PROVIDERS:
+        raise ModelOperationError(
+            "MODEL_EXTERNAL_MANIFEST",
+            "El proveedor ASR externo no está permitido.",
+        )
+    if translation_provider not in _EXTERNAL_TRANSLATION_PROVIDERS:
+        raise ModelOperationError(
+            "MODEL_EXTERNAL_MANIFEST",
+            "El proveedor de traducción externo no está permitido.",
+        )
+    if any(
+        str(key).lower() in {"trustremotecode", "python", "script", "executable"}
+        for component in (asr, translation)
+        for key in component
+    ):
+        raise ModelOperationError(
+            "MODEL_EXTERNAL_MANIFEST",
+            "El pack externo intenta habilitar ejecución no permitida.",
+        )
+    if translation_provider == "marian-ct2":
+        source = str(translation.get("sourceLanguage", "")).strip().lower()
+        target = str(translation.get("targetLanguage", "")).strip().lower()
+        if not source or not target or f"{source}-{target}" not in routes:
+            raise ModelOperationError(
+                "MODEL_EXTERNAL_MANIFEST",
+                "La ruta Marian no coincide con las rutas del manifiesto.",
+            )
+    recommended = _safe_positive_int(
+        manifest.get("recommendedRamGb", max(1, math.ceil(ram_mb / 1024))),
+        "recommendedRamGb",
+    )
+    return {
+        "schemaVersion": 2,
+        "id": pack_id,
+        "version": version,
+        "title": title,
+        "recommendedRamGb": recommended,
+        "commercialUse": bool(manifest["commercialUse"]),
+        "licenseNote": license_note,
+        "tier": tier,
+        "routes": routes,
+        "ramMb": ram_mb,
+        "vramMb": vram_mb,
+        "sharedGpuMb": shared_gpu_mb,
+        "engine": engine,
+        "supportedBackends": backends,
+        "externalAllowed": True,
+        "components": {"asr": dict(asr), "translation": dict(translation)},
+    }
 
 
 def _sha256(path: Path) -> str:
@@ -159,8 +409,12 @@ def _is_m2m100_ready(path: Path) -> bool:
 
 
 def _is_marian_ready(path: Path) -> bool:
-    source = (path / "source.spm").is_file() or (path / "tokenizer" / "source.spm").is_file()
-    target = (path / "target.spm").is_file() or (path / "tokenizer" / "target.spm").is_file()
+    source = (path / "source.spm").is_file() or (
+        path / "tokenizer" / "source.spm"
+    ).is_file()
+    target = (path / "target.spm").is_file() or (
+        path / "tokenizer" / "target.spm"
+    ).is_file()
     return _is_ctranslate2_model(path) and source and target
 
 
@@ -317,7 +571,7 @@ class ModelCatalog:
         )
         temp.replace(self.operation_path)
 
-    def definitions(self) -> list[dict[str, Any]]:
+    def _builtin_definitions(self) -> list[dict[str, Any]]:
         payload = json.loads(self.catalog_path.read_text(encoding="utf-8"))
         schema = int(payload.get("schemaVersion", 0))
         packs = payload.get("packs")
@@ -335,6 +589,33 @@ class ModelCatalog:
                 raise ValueError("El catálogo contiene ids duplicados")
             seen.add(pack_id)
             output.append(pack)
+        return output
+
+    def _external_definitions(self) -> list[dict[str, Any]]:
+        output: list[dict[str, Any]] = []
+        if not self.packs_dir.is_dir():
+            return output
+        for manifest_path in self.packs_dir.glob("*/*/manifest.json"):
+            try:
+                manifest = validate_external_pack_manifest(
+                    json.loads(manifest_path.read_text(encoding="utf-8"))
+                )
+            except (OSError, json.JSONDecodeError, ModelOperationError):
+                continue
+            if manifest_path.parent.name != manifest["version"]:
+                continue
+            if manifest_path.parent.parent.name != manifest["id"]:
+                continue
+            output.append(manifest)
+        return output
+
+    def definitions(self) -> list[dict[str, Any]]:
+        output = self._builtin_definitions()
+        seen = {str(item["id"]) for item in output}
+        for item in self._external_definitions():
+            if str(item["id"]) not in seen:
+                output.append(item)
+                seen.add(str(item["id"]))
         return output
 
     def definition(self, pack_id: str) -> dict[str, Any]:
@@ -530,7 +811,7 @@ class HuggingFacePackInstaller:
             raise error from exc
 
     def import_pack(self, archive: Path) -> InstalledPack:
-        """Importa un `.mmpack` ZIP sin ejecutar ningún archivo del paquete."""
+        """Importa un `.mmpack` como datos verificados, sin activarlo."""
 
         archive = Path(archive)
         if not archive.is_file():
@@ -541,12 +822,15 @@ class HuggingFacePackInstaller:
         try:
             with zipfile.ZipFile(archive) as bundle:
                 members = [item for item in bundle.infolist() if not item.is_dir()]
-                if not members or not all(
-                    validate_external_pack_member(item.filename) for item in members
+                if (
+                    not _external_archive_size_allowed(members)
+                    or not all(
+                        validate_external_pack_member(item.filename) for item in members
+                    )
                 ):
                     raise ModelOperationError(
                         "MODEL_EXTERNAL_UNSAFE",
-                        "El pack externo contiene archivos ejecutables o rutas inseguras.",
+                        "El pack externo contiene archivos, rutas o tamaños inseguros.",
                     )
                 bundle.extractall(staging)
             manifest_path = staging / "manifest.json"
@@ -555,13 +839,29 @@ class HuggingFacePackInstaller:
                     "MODEL_EXTERNAL_MANIFEST",
                     "El pack externo no contiene manifest.json.",
                 )
-            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-            pack_id = str(manifest.get("id", "")).strip()
-            version = str(manifest.get("version", "")).strip()
-            if not pack_id or not version or any(ch not in "abcdefghijklmnopqrstuvwxyz0123456789-_" for ch in pack_id.lower()):
+            manifest = validate_external_pack_manifest(
+                json.loads(manifest_path.read_text(encoding="utf-8"))
+            )
+            pack_id = str(manifest["id"])
+            version = str(manifest["version"])
+            if any(
+                str(item.get("id")) == pack_id
+                for item in self.catalog._builtin_definitions()
+            ):
                 raise ModelOperationError(
-                    "MODEL_EXTERNAL_MANIFEST", "El identificador del pack no es válido."
+                    "MODEL_EXTERNAL_MANIFEST",
+                    "Un pack externo no puede reemplazar un modelo integrado.",
                 )
+            asr_dir = staging / "components" / "asr"
+            translation_dir = staging / "components" / "translation"
+            if not asr_dir.is_dir() or not translation_dir.is_dir():
+                raise ModelOperationError(
+                    "MODEL_EXTERNAL_INVALID",
+                    "El pack externo no contiene los componentes declarados.",
+                )
+            manifest_path.write_text(
+                json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8"
+            )
             final_dir = self.catalog.packs_dir / pack_id / version
             (staging / "pack.json").write_text(
                 json.dumps(
@@ -569,7 +869,8 @@ class HuggingFacePackInstaller:
                         "schemaVersion": 2,
                         "id": pack_id,
                         "version": version,
-                        "components": manifest.get("components", {}),
+                        "components": manifest["components"],
+                        "definition": manifest,
                         "files": _file_manifest(staging),
                     },
                     ensure_ascii=False,
@@ -581,14 +882,19 @@ class HuggingFacePackInstaller:
             if final_dir.exists():
                 shutil.rmtree(final_dir)
             staging.replace(final_dir)
-            self.activate(pack_id, version)
+            if not self.verify(pack_id, version):
+                shutil.rmtree(final_dir, ignore_errors=True)
+                raise ModelOperationError(
+                    "MODEL_HASH_MISMATCH",
+                    "El pack externo no pasó la verificación de integridad.",
+                )
             return InstalledPack(
                 id=pack_id,
                 version=version,
                 path=final_dir,
-                active=True,
-                title=str(manifest.get("title", pack_id)),
-                commercial_use=bool(manifest.get("commercialUse", False)),
+                active=self.catalog._state().get("active") == f"{pack_id}@{version}",
+                title=str(manifest["title"]),
+                commercial_use=bool(manifest["commercialUse"]),
             )
         except ModelOperationError:
             shutil.rmtree(staging, ignore_errors=True)
