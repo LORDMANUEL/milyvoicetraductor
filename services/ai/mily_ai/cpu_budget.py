@@ -50,8 +50,8 @@ def detect_cpu_budget(profile: str = "balanced", physical_cores: int | None = No
     Perfiles:
     - ``light``: limita trabajo concurrente a dos núcleos.
     - ``balanced``: reserva capacidad para UI/audio en >=3 cores. En equipos
-      dual-core reutiliza ambos cores para ASR y ejecuta traducción de forma
-      serial para no convertir un Haswell 2C/4T en un equipo de un solo core.
+      dual-core reutiliza ambos cores para ASR y MT porque ambas etapas se
+      serializan mediante un único executor y nunca compiten simultáneamente.
     - ``max``: permite usar el presupuesto físico completo en paralelo.
     """
 
@@ -70,15 +70,16 @@ def detect_cpu_budget(profile: str = "balanced", physical_cores: int | None = No
             parallel_stages=False,
         )
 
-    # El perfil objetivo para i3 Haswell 2C/4T debe usar ambos cores en Whisper,
-    # pero no ejecutar Whisper y MT pesados simultáneamente. La traducción Tiny
-    # futura también hereda este contrato sin cambiar la API.
+    # En un i3 Haswell 2C/4T el servidor usa el mismo executor para ASR y MT.
+    # Como no se ejecutan en paralelo, ambos pueden reutilizar los dos cores
+    # físicos sin sobresuscripción. Antes MT recibía solo un core y se convertía
+    # en el cuello de botella justamente cuando el ASR ya había terminado.
     if normalized == "balanced" and physical == 2:
         return CpuBudget(
             profile=normalized,
             physical_cores=physical,
             asr_threads=2,
-            translation_threads=1,
+            translation_threads=2,
             parallel_stages=False,
         )
 
