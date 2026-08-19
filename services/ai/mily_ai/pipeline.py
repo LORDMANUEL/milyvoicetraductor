@@ -8,6 +8,10 @@ from collections import deque
 from dataclasses import dataclass
 from typing import Literal
 
+from .betaalpha_optimization import (
+    AdaptiveStreamingController,
+    IncrementalTranslationPlanner,
+)
 from .cpu_budget import detect_cpu_budget
 from .echo_guard import EchoGuard
 from .hypothesis import HypothesisStabilizer
@@ -22,8 +26,6 @@ from .telemetry import RealtimeTelemetry
 
 @dataclass(frozen=True, slots=True)
 class PipelineEvent:
-    """Evento semántico listo para salir por WebSocket."""
-
     type: Literal[
         "transcription.partial",
         "transcription.final",
@@ -41,12 +43,6 @@ class PipelineEvent:
 
 @dataclass(frozen=True, slots=True)
 class TranslationRequest:
-    """Trabajo de traducción desacoplado del worker ASR.
-
-    `utterance_id` permite reemplazar parciales obsoletos de la misma frase.
-    `created_at` permite medir edad real de cola, no solamente profundidad.
-    """
-
     type: Literal["translation.partial", "translation.final"]
     start: float
     end: float
@@ -85,6 +81,14 @@ class RealtimePipeline:
             else "meeting"
         )
         self.sample_rate = 16000
+        self._betaalpha_mode = str(pack.id).startswith("betaalpha-")
+        self._betaalpha_streaming = (
+            AdaptiveStreamingController() if self._betaalpha_mode else None
+        )
+        self._betaalpha_translation = (
+            IncrementalTranslationPlanner() if self._betaalpha_mode else None
+        )
+
         if self.session_mode == "karaoke":
             self.segmenter = AdaptiveSpeechSegmenter(
                 sample_rate=self.sample_rate,
@@ -94,8 +98,14 @@ class RealtimePipeline:
                 max_utterance_ms=4000,
                 energy_threshold=0.008,
             )
+        elif self._betaalpha_mode:
+            self.segmenter = AdaptiveSpeechSegmenter(
+                sample_rate=self.sample_rate,
+                partial_step_ms=450,
+            )
         else:
             self.segmenter = AdaptiveSpeechSegmenter(sample_rate=self.sample_rate)
+
         self.stabilizer = HypothesisStabilizer()
         self.telemetry = RealtimeTelemetry()
         self.recorder = recorder
@@ -153,8 +163,6 @@ class RealtimePipeline:
 
     @property
     def compute_status(self) -> dict[str, str | bool]:
-        """Expone únicamente el backend real y motivos de fallback sanitizados."""
-
         def provider_state(provider) -> tuple[str, bool, str]:
             device = str(getattr(provider, "selected_device", "") or "unknown").lower()
             if device not in {
@@ -186,9 +194,21 @@ class RealtimePipeline:
             "resourceMode": self._resource_mode,
         }
 
-    def set_resource_mode(self, mode: str) -> None:
-        """Activa/desactiva funciones costosas sin perder frases finales."""
+    def _update_betaalpha_partial_cadence(self) -> None:
+        controller = self._betaalpha_streaming
+        if controller is None or self.session_mode == "karaoke":
+            return
+        snapshot = self.telemetry.snapshot(
+            audio_queue_ms=0,
+            translation_queue_depth=0,
+        )
+        interval = controller.interval_ms(
+            rtf_p95=snapshot.real_time_factor_p95,
+            pressure=self._resource_mode != "healthy",
+        )
+        self.segmenter.set_partial_step_ms(interval)
 
+    def set_resource_mode(self, mode: str) -> None:
         normalized = str(mode).strip().lower()
         if normalized not in {"healthy", "pressure", "catch_up", "rescue"}:
             normalized = "rescue"
@@ -197,6 +217,9 @@ class RealtimePipeline:
             self.asr.word_timestamps = bool(
                 self._word_timestamps_requested and normalized == "healthy"
             )
+        if self._betaalpha_mode:
+            self.segmenter.set_partial_decoding(normalized in {"healthy", "pressure"})
+            self._update_betaalpha_partial_cadence()
 
     def set_speaker_focus(self, mode: str, speaker_id: str | None = None) -> None:
         self.speaker_focus_mode = mode if mode in {"all", "dominant", "fixed"} else "all"
@@ -216,8 +239,8 @@ class RealtimePipeline:
             warm_up()
 
     def unload(self) -> None:
-        """Libera explícitamente el ASR y MT antes de cambiar de pack."""
-
+        if self._betaalpha_translation is not None:
+            self._betaalpha_translation.reset()
         for provider in (self.asr, self.translator):
             unload = getattr(provider, "unload", None)
             if callable(unload):
@@ -256,8 +279,6 @@ class RealtimePipeline:
         return speaker_id
 
     def ingest(self, samples) -> tuple[list[PipelineEvent], list[TranslationRequest]]:
-        """Ejecuta únicamente segmentación + ASR; nunca llama al traductor."""
-
         events: list[PipelineEvent] = []
         requests: list[TranslationRequest] = []
         for window in self.segmenter.push(samples):
@@ -267,8 +288,6 @@ class RealtimePipeline:
         return events, requests
 
     def flush_ingest(self) -> tuple[list[PipelineEvent], list[TranslationRequest]]:
-        """Finaliza audio pendiente sin bloquearse esperando traducción."""
-
         events: list[PipelineEvent] = []
         requests: list[TranslationRequest] = []
         for window in self.segmenter.flush():
@@ -277,11 +296,27 @@ class RealtimePipeline:
             requests.extend(window_requests)
         return events, requests
 
-    def execute_translation(self, request: TranslationRequest) -> PipelineEvent:
-        """Ejecuta el proveedor activo y persiste únicamente frases finales."""
+    def _translate_request_text(self, request: TranslationRequest) -> str:
+        planner = self._betaalpha_translation
+        if planner is None or request.final:
+            translated = self.translator.translate(request.original, request.language)
+            if planner is not None:
+                planner.reset()
+            return translated
 
+        plan = planner.plan(request.original, request.language)
+        if not plan.text_to_translate:
+            return plan.stable_translation_prefix
+        tail = self.translator.translate(plan.text_to_translate, request.language)
+        translated = " ".join(
+            part for part in (plan.stable_translation_prefix, tail) if part
+        ).strip()
+        planner.commit(plan, tail)
+        return translated
+
+    def execute_translation(self, request: TranslationRequest) -> PipelineEvent:
         started = time.perf_counter()
-        translated = self.translator.translate(request.original, request.language)
+        translated = self._translate_request_text(request)
         self.telemetry.record_translation((time.perf_counter() - started) * 1000.0)
         if request.final:
             self.recorder.add(
@@ -309,15 +344,11 @@ class RealtimePipeline:
         )
 
     def push(self, samples) -> list[PipelineEvent]:
-        """Ruta síncrona de compatibilidad y pruebas."""
-
         events, requests = self.ingest(samples)
         events.extend(self.execute_translation(request) for request in requests)
         return events
 
     def flush(self) -> list[PipelineEvent]:
-        """Ruta síncrona de compatibilidad y pruebas."""
-
         events, requests = self.flush_ingest()
         events.extend(self.execute_translation(request) for request in requests)
         return events
@@ -326,12 +357,18 @@ class RealtimePipeline:
         self, window: StreamingEvent
     ) -> tuple[str, str, tuple[AsrWord, ...]]:
         started = time.perf_counter()
-        segments = self.asr.transcribe(window.samples, self.source_language)
+        final_transcribe = getattr(self.asr, "transcribe_final", None)
+        if window.kind == "final" and callable(final_transcribe):
+            segments = final_transcribe(window.samples, self.source_language)
+        else:
+            segments = self.asr.transcribe(window.samples, self.source_language)
         elapsed_ms = (time.perf_counter() - started) * 1000.0
         self.telemetry.record_asr(
             elapsed_ms,
             audio_ms=len(window.samples) * 1000.0 / self.sample_rate,
         )
+        if self._betaalpha_mode:
+            self._update_betaalpha_partial_cadence()
         original = self._normalize(
             " ".join(segment.text for segment in segments if segment.text)
         )
@@ -364,6 +401,10 @@ class RealtimePipeline:
             return [], []
 
         original, detected, words = self._transcribe_window(window)
+        if window.kind == "final" and not hasattr(self.asr, "transcribe_final"):
+            finish_utterance = getattr(self.asr, "finish_utterance", None)
+            if callable(finish_utterance):
+                finish_utterance()
         if original and self.echo_guard.matches(original):
             return [], []
         start = window.start_sample / self.sample_rate
@@ -412,9 +453,13 @@ class RealtimePipeline:
         final_original = self.stabilizer.finalize(original)
         self._last_partial_translation = ""
         if not final_original:
+            if self._betaalpha_translation is not None:
+                self._betaalpha_translation.reset()
             return [], []
         folded = final_original.casefold()
         if folded in self._recent_originals:
+            if self._betaalpha_translation is not None:
+                self._betaalpha_translation.reset()
             return [], []
         self._recent_originals.append(folded)
         return [
