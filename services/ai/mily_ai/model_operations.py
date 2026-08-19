@@ -14,9 +14,11 @@ from .models import (
     ModelCatalog,
     ModelOperationError,
     _file_manifest,
+    _prepare_component,
 )
 
 _FAST_MOONSHINE_PACK = "fast-moonshine-en-es"
+_LITE_ZH_ES_PACK = "lite-zh-es"
 
 
 def _restore_state(catalog: ModelCatalog, state: dict[str, Any]) -> None:
@@ -38,12 +40,7 @@ def _download_moonshine_fast_pack(
     installer: HuggingFacePackInstaller,
     catalog: ModelCatalog,
 ) -> InstalledPack:
-    """Prepara Moonshine Tiny Streaming EN + Marian Tiny INT8 de forma atómica.
-
-    Moonshine publica sus modelos ORT mediante su downloader oficial, no como el
-    snapshot CT2 que usa el instalador histórico. El componente MT se reutiliza
-    desde `lite-en-es`, por lo que no mantenemos dos conversores Marian.
-    """
+    """Prepara Moonshine Tiny Streaming EN + Marian Tiny INT8 de forma atómica."""
 
     definition = catalog.definition(_FAST_MOONSHINE_PACK)
     version = str(definition["version"])
@@ -162,23 +159,117 @@ def _download_moonshine_fast_pack(
     return _installed_pack(catalog, _FAST_MOONSHINE_PACK, version)
 
 
+def _download_lite_zh_es_pack(
+    installer: HuggingFacePackInstaller,
+    catalog: ModelCatalog,
+) -> InstalledPack:
+    """Descarga Whisper Tiny multilingüe + ZH→EN→ES Marian y convierte MT a INT8."""
+
+    try:
+        from huggingface_hub import snapshot_download
+    except ImportError as exc:
+        raise ModelOperationError(
+            "MODEL_RUNTIME_ERROR",
+            "El runtime privado no contiene huggingface_hub.",
+        ) from exc
+
+    definition = catalog.definition(_LITE_ZH_ES_PACK)
+    version = str(definition["version"])
+    final_dir = catalog.packs_dir / _LITE_ZH_ES_PACK / version
+    if final_dir.is_dir() and installer.verify(_LITE_ZH_ES_PACK, version):
+        return _installed_pack(catalog, _LITE_ZH_ES_PACK, version)
+
+    staging = catalog.models_dir / ".staging" / f"{_LITE_ZH_ES_PACK}-{version}"
+    shutil.rmtree(staging, ignore_errors=True)
+    staging.mkdir(parents=True, exist_ok=True)
+    components = definition["components"]
+
+    asr = components["asr"]
+    asr_target = staging / "components" / "asr"
+    catalog.write_operation(
+        state="installing",
+        phase="download",
+        message="Descargando Whisper Tiny multilingüe para mandarín.",
+        pack_id=_LITE_ZH_ES_PACK,
+        component="asr",
+    )
+    snapshot_download(
+        repo_id=asr["repoId"],
+        revision=asr["revision"],
+        local_dir=asr_target,
+        allow_patterns=asr.get("allowPatterns"),
+    )
+
+    translation = components["translation"]
+    stages = translation.get("stages", [])
+    if len(stages) != 2:
+        raise ModelOperationError(
+            "MODEL_CASCADE_INVALID",
+            "El pack ZH→ES Lite requiere exactamente dos etapas Marian.",
+        )
+    for index, stage in enumerate(stages, start=1):
+        target = staging / "components" / "translation" / f"stage-{index}"
+        catalog.write_operation(
+            state="installing",
+            phase="download",
+            message=f"Descargando traductor Marian etapa {index}/2.",
+            pack_id=_LITE_ZH_ES_PACK,
+            component=f"translation-stage-{index}",
+        )
+        snapshot_download(
+            repo_id=stage["repoId"],
+            revision=stage["revision"],
+            local_dir=target,
+            allow_patterns=stage.get("allowPatterns"),
+        )
+        catalog.write_operation(
+            state="installing",
+            phase="optimize",
+            message=f"Convirtiendo Marian etapa {index}/2 a CTranslate2 INT8.",
+            pack_id=_LITE_ZH_ES_PACK,
+            component=f"translation-stage-{index}",
+        )
+        _prepare_component(stage, target)
+
+    (staging / "pack.json").write_text(
+        json.dumps(
+            {
+                "schemaVersion": int(definition.get("schemaVersion", 2)),
+                "id": _LITE_ZH_ES_PACK,
+                "version": version,
+                "components": components,
+                "files": _file_manifest(staging),
+            },
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    final_dir.parent.mkdir(parents=True, exist_ok=True)
+    shutil.rmtree(final_dir, ignore_errors=True)
+    staging.replace(final_dir)
+    if not installer.verify(_LITE_ZH_ES_PACK, version):
+        shutil.rmtree(final_dir, ignore_errors=True)
+        raise ModelOperationError(
+            "MODEL_HASH_MISMATCH",
+            "El pack ZH→ES Lite no pasó la verificación de integridad.",
+        )
+    return _installed_pack(catalog, _LITE_ZH_ES_PACK, version)
+
+
 def download_pack(
     installer: HuggingFacePackInstaller,
     catalog: ModelCatalog,
     pack_id: str,
 ) -> InstalledPack:
-    """Descarga/verifica un pack sin dejarlo activo.
-
-    El instalador histórico activa al terminar. Para Engine Hub, descargar y
-    cargar son operaciones distintas: se restaura atómicamente el estado previo
-    antes de devolver el pack instalado. Ningún peso queda cargado por esta
-    función.
-    """
+    """Descarga/verifica un pack sin dejarlo activo."""
 
     previous_state = dict(catalog._state())
     try:
         if pack_id == _FAST_MOONSHINE_PACK:
             installed = _download_moonshine_fast_pack(installer, catalog)
+        elif pack_id == _LITE_ZH_ES_PACK:
+            installed = _download_lite_zh_es_pack(installer, catalog)
         else:
             installed = installer.install(pack_id)
         _restore_state(catalog, previous_state)
