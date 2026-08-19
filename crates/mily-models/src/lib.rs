@@ -191,6 +191,8 @@ fn valid_public_model_code(code: &str) -> bool {
             | "MODEL_EXTERNAL_UNSAFE"
             | "MODEL_EXTERNAL_MANIFEST"
             | "MODEL_EXTERNAL_INVALID"
+            | "MODEL_EXTERNAL_SOURCE"
+            | "MODEL_EXTERNAL_TOO_LARGE"
             | "PROCESS_MEMORY_LIMIT"
             | "VRAM_LIMIT"
             | "NO_COMPATIBLE_ENGINE"
@@ -294,6 +296,14 @@ impl ModelManagerService {
         output
     }
 
+    fn pack_from_cli_bytes(&self, bytes: &[u8]) -> Result<ModelPackInfo, ModelError> {
+        let payload = parse_model_cli_pack(bytes).ok_or(ModelError::InstallFailed)?;
+        self.installed()
+            .into_iter()
+            .find(|pack| pack.id == payload.id && pack.version == payload.version)
+            .ok_or(ModelError::InstallFailed)
+    }
+
     pub fn status(&self) -> ComponentState {
         if self.installed().iter().any(|pack| pack.active) {
             ComponentState::Ready
@@ -359,11 +369,12 @@ impl ModelManagerService {
 
     pub fn import_pack(&self, path: &Path) -> Result<ModelPackInfo, ModelError> {
         let bytes = self.run_engine_cli(&["import".into(), path.to_string_lossy().into_owned()])?;
-        let payload = parse_model_cli_pack(&bytes).ok_or(ModelError::InstallFailed)?;
-        self.installed()
-            .into_iter()
-            .find(|pack| pack.id == payload.id && pack.version == payload.version)
-            .ok_or(ModelError::InstallFailed)
+        self.pack_from_cli_bytes(&bytes)
+    }
+
+    pub fn import_pack_url(&self, url: &str) -> Result<ModelPackInfo, ModelError> {
+        let bytes = self.run_engine_cli(&["import-url".into(), url.into()])?;
+        self.pack_from_cli_bytes(&bytes)
     }
 
     pub fn auto_select(
@@ -523,6 +534,15 @@ mod tests {
         .expect("pack payload");
         assert_eq!(payload.id, "partner-fast-en-es");
         assert_eq!(payload.version, "1.0.0");
+    }
+
+    #[test]
+    fn external_source_error_is_safe_for_ui() {
+        let error = parse_model_cli_error(
+            br#"{"ok":false,"code":"MODEL_EXTERNAL_SOURCE","message":"URL externa no permitida."}"#,
+        )
+        .expect("structured source error");
+        assert_eq!(error.public_code(), "MODEL_EXTERNAL_SOURCE");
     }
 
     #[test]
