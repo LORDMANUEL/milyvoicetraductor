@@ -2,9 +2,14 @@
 
 from __future__ import annotations
 
+import time
 from collections import deque
 from dataclasses import dataclass
 from threading import Lock
+from typing import Callable
+
+from .process_memory import process_tree_memory_snapshot_mb
+from .resource_governor import ResourceLimits
 
 
 @dataclass(frozen=True, slots=True)
@@ -74,11 +79,62 @@ class LatencyController:
     - ``pressure``: conserva parciales ASR, pero omite MT parcial y diarización.
     - ``catch_up``: solo trabajo esencial/final para vaciar colas.
     - ``rescue``: subtítulos finales, sin TTS ni funciones costosas.
+
+    Si el servidor no proporciona memoria explícita, el controlador mide el
+    árbol del motor (incluidos sidecars) y suma la reserva Desktop/bridge. La
+    muestra se reutiliza durante 500 ms para no recorrer procesos por cada chunk.
     """
 
     SOFT_MEMORY_MB = 1200.0
     CATCH_UP_MEMORY_MB = 1600.0
     RESCUE_MEMORY_MB = 1920.0
+
+    def __init__(
+        self,
+        *,
+        memory_provider: Callable[[], float] | None = None,
+        product_reserve_mb: float | None = None,
+        memory_sample_interval_seconds: float = 0.5,
+    ) -> None:
+        interval = float(memory_sample_interval_seconds)
+        if interval <= 0:
+            raise ValueError("memory_sample_interval_seconds debe ser positivo")
+        limits = ResourceLimits()
+        reserve = (
+            float(limits.product_reserve_mb)
+            if product_reserve_mb is None
+            else float(product_reserve_mb)
+        )
+        if reserve < 0:
+            raise ValueError("product_reserve_mb no puede ser negativo")
+        self._memory_provider = memory_provider or (
+            lambda: process_tree_memory_snapshot_mb().current_mb
+        )
+        self._product_reserve_mb = reserve
+        self._memory_sample_interval_seconds = interval
+        self._last_memory_sample_at = float("-inf")
+        self._last_process_memory_mb = 0.0
+
+    @property
+    def last_process_memory_mb(self) -> float:
+        """Última estimación del producto completo, no solo Python."""
+
+        return self._last_process_memory_mb
+
+    def _sample_product_memory(self) -> float:
+        now = time.monotonic()
+        if (
+            now - self._last_memory_sample_at
+            < self._memory_sample_interval_seconds
+        ):
+            return self._last_process_memory_mb
+        try:
+            engine_tree_mb = max(0.0, float(self._memory_provider()))
+        except (OSError, TypeError, ValueError):
+            engine_tree_mb = 0.0
+        self._last_memory_sample_at = now
+        self._last_process_memory_mb = engine_tree_mb + self._product_reserve_mb
+        return self._last_process_memory_mb
 
     def classify(
         self,
@@ -87,13 +143,17 @@ class LatencyController:
         real_time_factor: float,
         *,
         translation_queue_age_ms: float = 0.0,
-        process_memory_mb: float = 0.0,
+        process_memory_mb: float | None = None,
     ) -> str:
         audio = max(0, int(audio_queue_ms))
         translation = max(0, int(translation_queue_depth))
         age = max(0.0, float(translation_queue_age_ms))
         rtf = max(0.0, float(real_time_factor))
-        memory = max(0.0, float(process_memory_mb))
+        if process_memory_mb is None:
+            memory = self._sample_product_memory()
+        else:
+            memory = max(0.0, float(process_memory_mb))
+            self._last_process_memory_mb = memory
 
         if (
             memory >= self.RESCUE_MEMORY_MB
