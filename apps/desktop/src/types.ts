@@ -45,6 +45,23 @@ export interface ModelPackInfo {
   recommendedRamGb: number;
   commercialUse: boolean;
   licenseNote: string;
+  tier: 'lite' | 'balanced' | 'quality' | 'experimental' | string;
+  routes: string[];
+  ramMb: number;
+  vramMb: number;
+  engine: string;
+  supportedBackends: string[];
+  resourceAllowed: boolean;
+  resourceReason: string;
+  externalAllowed: boolean;
+}
+
+export interface AutoSelectionResult {
+  selected: string;
+  backend: string;
+  score: number;
+  rejected: Record<string, string>;
+  benchmarks: Record<string, unknown>;
 }
 
 export interface SessionSummary {
@@ -115,7 +132,7 @@ export interface AppConfig {
   persistTranscripts: boolean;
   computeProfile: 'auto' | 'cpu' | 'gpu';
   enginePort: number;
-  activeModelPack: 'realtime-m2m100' | 'lite-nllb' | 'business-qwen';
+  activeModelPack: 'lite-en-es' | 'realtime-m2m100' | 'lite-nllb' | 'business-qwen';
   showOriginalSubtitle: boolean;
 }
 
@@ -147,8 +164,9 @@ export interface RealtimeEvent {
   peak?: number;
   silentMs?: number;
   speech?: boolean;
-  pressure?: 'healthy' | 'pressure' | 'overloaded';
+  pressure?: 'healthy' | 'pressure' | 'overloaded' | 'catchUp' | 'rescue';
   audioQueueMs?: number;
+  translationQueueAgeMs?: number;
   realTimeFactor?: number;
   asrP50Ms?: number;
   asrP95Ms?: number;

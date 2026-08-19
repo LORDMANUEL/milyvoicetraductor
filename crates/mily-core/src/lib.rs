@@ -1,7 +1,4 @@
 //! Contratos de dominio y DTOs públicos de MilyVoiceTraductor.
-//!
-//! No depende de Tauri, SQLite ni Python. Mantener estos tipos pequeños hace
-//! que los límites entre UI, runtime y motor sean explícitos y testeables.
 
 use serde::{Deserialize, Serialize};
 
@@ -50,6 +47,15 @@ pub struct ModelPackInfo {
     pub recommended_ram_gb: u64,
     pub commercial_use: bool,
     pub license_note: String,
+    pub tier: String,
+    pub routes: Vec<String>,
+    pub ram_mb: u64,
+    pub vram_mb: u64,
+    pub engine: String,
+    pub supported_backends: Vec<String>,
+    pub resource_allowed: bool,
+    pub resource_reason: String,
+    pub external_allowed: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

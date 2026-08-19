@@ -5,14 +5,19 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from pathlib import Path
 
+from .model_advisor import ModelAdvisor
+from .model_operations import download_pack
 from .models import (
     HuggingFacePackInstaller,
     ModelCatalog,
     ModelOperationError,
     classify_model_exception,
 )
+from .resource_governor import ResourceGovernor, ResourceLimits, RuntimeFootprint
 from .runtime import RuntimePaths
+from .runtime_discovery import discover_runtime_inventory
 from .security import PairingTokenService
 
 
@@ -30,7 +35,6 @@ def _paths(args) -> RuntimePaths:
 
 
 def _emit_model_error(error: ModelOperationError) -> int:
-    """Escribe una única línea JSON estable que Rust puede interpretar sin traceback."""
     print(
         json.dumps(
             {"ok": False, "code": error.code, "message": error.message},
@@ -66,20 +70,44 @@ def cmd_token(args) -> int:
     return 0
 
 
+def _definition_resource(definition: dict) -> dict:
+    decision = ResourceGovernor(ResourceLimits()).evaluate(
+        RuntimeFootprint(
+            process_mb=float(definition.get("ramMb", 0)),
+            dedicated_vram_mb=float(definition.get("vramMb", 0)),
+            shared_gpu_mb=float(definition.get("sharedGpuMb", 0)),
+        )
+    )
+    return {
+        "allowed": decision.allowed,
+        "mode": decision.mode,
+        "reason": decision.reason,
+        "effectiveProcessMb": decision.effective_process_mb,
+    }
+
+
 def cmd_models(args) -> int:
     paths = _paths(args)
     catalog = ModelCatalog(paths.models_dir)
     installer = HuggingFacePackInstaller(catalog)
     try:
         if args.model_action == "list":
+            definitions = []
+            for definition in catalog.definitions():
+                enriched = dict(definition)
+                enriched["resource"] = _definition_resource(definition)
+                definitions.append(enriched)
+            inventory = discover_runtime_inventory()
             print(
                 json.dumps(
                     {
-                        "definitions": catalog.definitions(),
+                        "definitions": definitions,
                         "installed": [
                             {"id": p.id, "version": p.version, "active": p.active}
                             for p in catalog.installed()
                         ],
+                        "runtimes": sorted(inventory.runtimes),
+                        "backends": sorted(inventory.backends),
                     },
                     indent=2,
                     ensure_ascii=False,
@@ -87,10 +115,71 @@ def cmd_models(args) -> int:
             )
             return 0
         if args.model_action == "install":
-            pack = installer.install(args.pack_id)
+            if args.download_only:
+                pack = download_pack(installer, catalog, args.pack_id)
+            else:
+                definition = catalog.definition(args.pack_id)
+                resource = _definition_resource(definition)
+                if not resource["allowed"]:
+                    raise ModelOperationError(
+                        str(resource["reason"]),
+                        "El modelo supera el límite de 2 GB o 384 MB de VRAM.",
+                    )
+                pack = installer.install(args.pack_id)
+            print(
+                json.dumps(
+                    {
+                        "ok": True,
+                        "id": pack.id,
+                        "version": pack.version,
+                        "active": pack.active,
+                    },
+                    ensure_ascii=False,
+                )
+            )
+            return 0
+        if args.model_action == "activate":
+            definition = catalog.definition(args.pack_id)
+            resource = _definition_resource(definition)
+            if not resource["allowed"]:
+                raise ModelOperationError(
+                    str(resource["reason"]),
+                    "El modelo supera el límite de 2 GB o 384 MB de VRAM.",
+                )
+            installer.activate(args.pack_id, args.version)
+            print(
+                json.dumps(
+                    {"ok": True, "active": f"{args.pack_id}@{args.version}"},
+                    ensure_ascii=False,
+                )
+            )
+            return 0
+        if args.model_action == "import":
+            pack = installer.import_pack(Path(args.archive))
             print(
                 json.dumps(
                     {"ok": True, "id": pack.id, "version": pack.version},
+                    ensure_ascii=False,
+                )
+            )
+            return 0
+        if args.model_action == "auto-select":
+            advisor = ModelAdvisor(catalog, installer)
+            selection, reports = advisor.optimize(
+                args.route,
+                allow_cloud=args.allow_cloud,
+                force_benchmark=args.force_benchmark,
+            )
+            print(
+                json.dumps(
+                    {
+                        "ok": True,
+                        "selected": selection.candidate.id,
+                        "backend": selection.backend,
+                        "score": round(selection.score, 4),
+                        "rejected": selection.rejected,
+                        "benchmarks": reports,
+                    },
                     ensure_ascii=False,
                 )
             )
@@ -133,42 +222,54 @@ def cmd_models(args) -> int:
 
 def cmd_diagnose(args) -> int:
     paths = _paths(args)
-    checks = {}
-    for module in (
+    required_modules = (
         "fastapi",
         "uvicorn",
         "numpy",
         "faster_whisper",
         "ctranslate2",
-        "transformers",
-        "torch",
         "huggingface_hub",
         "sentencepiece",
-    ):
+    )
+    optional_modules = (
+        "transformers",
+        "torch",
+        "moonshine_voice",
+        "sherpa_onnx",
+        "onnxruntime",
+    )
+    required: dict[str, bool] = {}
+    optional: dict[str, bool] = {}
+    for module in required_modules:
         try:
             __import__(module)
-            checks[module] = True
+            required[module] = True
         except Exception:
-            checks[module] = False
-    try:
-        import torch
-
-        cuda = bool(torch.cuda.is_available())
-    except Exception:
-        cuda = False
+            required[module] = False
+    for module in optional_modules:
+        try:
+            __import__(module)
+            optional[module] = True
+        except Exception:
+            optional[module] = False
+    inventory = discover_runtime_inventory()
     active = ModelCatalog(paths.models_dir).active_pack()
     print(
         json.dumps(
             {
                 "python": sys.version.split()[0],
-                "dependencies": checks,
-                "cuda": cuda,
+                "dependencies": required,
+                "optionalDependencies": optional,
+                "runtimes": sorted(inventory.runtimes),
+                "backends": sorted(inventory.backends),
+                "cuda": "cuda" in inventory.backends,
                 "activeModelPack": f"{active.id}@{active.version}" if active else None,
+                "resourceLimits": {"processMb": 2048, "vramMb": 384},
             },
             indent=2,
         )
     )
-    return 0 if all(checks.values()) else 1
+    return 0 if all(required.values()) else 1
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -192,7 +293,20 @@ def build_parser() -> argparse.ArgumentParser:
     model_sub.add_parser("list").set_defaults(func=cmd_models)
     install = model_sub.add_parser("install")
     install.add_argument("pack_id")
+    install.add_argument("--download-only", action="store_true")
     install.set_defaults(func=cmd_models)
+    activate = model_sub.add_parser("activate")
+    activate.add_argument("pack_id")
+    activate.add_argument("version")
+    activate.set_defaults(func=cmd_models)
+    import_pack = model_sub.add_parser("import")
+    import_pack.add_argument("archive")
+    import_pack.set_defaults(func=cmd_models)
+    auto = model_sub.add_parser("auto-select")
+    auto.add_argument("--route", default="en-es")
+    auto.add_argument("--allow-cloud", action="store_true")
+    auto.add_argument("--force-benchmark", action="store_true")
+    auto.set_defaults(func=cmd_models)
     rollback = model_sub.add_parser("rollback")
     rollback.set_defaults(func=cmd_models)
     verify = model_sub.add_parser("verify")

@@ -1,13 +1,68 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "packs": [
     {
+      "schemaVersion": 2,
+      "id": "lite-en-es",
+      "version": "1.0.0",
+      "title": "Rápido EN→ES (Whisper Tiny + OPUS-MT Tiny INT8)",
+      "tier": "lite",
+      "routes": ["en-es"],
+      "ramMb": 950,
+      "vramMb": 0,
+      "recommendedRamGb": 2,
+      "engine": "local-ct2-lite",
+      "format": "ctranslate2-int8",
+      "supportedBackends": ["cpu", "cuda"],
+      "bundled": false,
+      "externalAllowed": true,
+      "commercialUse": true,
+      "licenseNote": "Systran/faster-whisper-tiny.en declara MIT y Helsinki-NLP/opus-mt_tiny_eng-spa declara Apache-2.0. Ambos se fijan por revisión y se ejecutan localmente.",
+      "components": {
+        "asr": {
+          "provider": "faster-whisper",
+          "repoId": "Systran/faster-whisper-tiny.en",
+          "revision": "0d3d19a",
+          "estimatedRamMb": 360
+        },
+        "translation": {
+          "provider": "marian-ct2",
+          "repoId": "Helsinki-NLP/opus-mt_tiny_eng-spa",
+          "revision": "691fd47",
+          "quantization": "int8",
+          "sourceLanguage": "en",
+          "targetLanguage": "es",
+          "estimatedRamMb": 190,
+          "allowPatterns": [
+            "config.json",
+            "generation_config.json",
+            "model.safetensors",
+            "source.spm",
+            "target.spm",
+            "special_tokens_map.json",
+            "tokenizer_config.json",
+            "vocab.json"
+          ]
+        }
+      }
+    },
+    {
+      "schemaVersion": 2,
       "id": "realtime-m2m100",
       "version": "1.0.0",
-      "title": "Tiempo real CPU (Whisper Small + M2M100 INT8)",
+      "title": "Calidad multilingüe (Whisper Small + M2M100 INT8)",
+      "tier": "quality",
+      "routes": ["en-es", "zh-es"],
+      "ramMb": 2300,
+      "vramMb": 1600,
       "recommendedRamGb": 8,
+      "engine": "local-ct2-quality",
+      "format": "ctranslate2-int8",
+      "supportedBackends": ["cpu", "cuda"],
+      "bundled": false,
+      "externalAllowed": true,
       "commercialUse": true,
-      "licenseNote": "Systran/faster-whisper-small y facebook/m2m100_418M declaran licencia MIT. M2M100 se convierte localmente a CTranslate2 INT8 una sola vez para reducir latencia y memoria.",
+      "licenseNote": "Systran/faster-whisper-small y facebook/m2m100_418M declaran licencia MIT. M2M100 se convierte localmente a CTranslate2 INT8.",
       "components": {
         "asr": {
           "provider": "faster-whisper",
@@ -32,12 +87,22 @@
       }
     },
     {
+      "schemaVersion": 2,
       "id": "business-qwen",
       "version": "1.0.0",
       "title": "Contexto/calidad (Whisper Small + Qwen3 0.6B)",
+      "tier": "quality",
+      "routes": ["en-es", "zh-es"],
+      "ramMb": 3200,
+      "vramMb": 2200,
       "recommendedRamGb": 10,
+      "engine": "local-transformers-quality",
+      "format": "transformers",
+      "supportedBackends": ["cpu", "cuda"],
+      "bundled": false,
+      "externalAllowed": false,
       "commercialUse": true,
-      "licenseNote": "Systran/faster-whisper-small declara MIT y Qwen/Qwen3-0.6B declara Apache-2.0; ambos snapshots quedan fijados por commit en este pack.",
+      "licenseNote": "Systran/faster-whisper-small declara MIT y Qwen/Qwen3-0.6B declara Apache-2.0; ambos snapshots quedan fijados por commit.",
       "components": {
         "asr": {
           "provider": "faster-whisper",
@@ -52,12 +117,22 @@
       }
     },
     {
+      "schemaVersion": 2,
       "id": "lite-nllb",
       "version": "1.0.0",
       "title": "NLLB investigación (Whisper Small + NLLB 600M)",
+      "tier": "experimental",
+      "routes": ["en-es", "zh-es"],
+      "ramMb": 3400,
+      "vramMb": 2400,
       "recommendedRamGb": 8,
+      "engine": "local-transformers-research",
+      "format": "transformers",
+      "supportedBackends": ["cpu", "cuda"],
+      "bundled": false,
+      "externalAllowed": false,
       "commercialUse": false,
-      "licenseNote": "Systran/faster-whisper-small declara MIT; facebook/nllb-200-distilled-600M declara CC-BY-NC-4.0. Este perfil es para investigación/no comercial.",
+      "licenseNote": "facebook/nllb-200-distilled-600M declara CC-BY-NC-4.0. Este perfil es únicamente de investigación/no comercial.",
       "components": {
         "asr": {
           "provider": "faster-whisper",
