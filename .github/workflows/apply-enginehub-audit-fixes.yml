@@ -1,0 +1,160 @@
+name: Apply Engine Hub audit fixes
+
+on:
+  push:
+    branches: [agent/enginehub-memory-selection-fix]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: apply-enginehub-audit-fixes
+  cancel-in-progress: true
+
+jobs:
+  patch:
+    if: ${{ !contains(github.event.head_commit.message, '[enginehub audit applied]') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: agent/enginehub-memory-selection-fix
+          fetch-depth: 0
+      - name: Apply verified audit corrections
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path_name: str, old: str, new: str) -> None:
+              path = Path(path_name)
+              text = path.read_text(encoding='utf-8')
+              if new in text:
+                  return
+              if old not in text:
+                  raise SystemExit(f'Patch marker not found in {path_name}: {old[:80]!r}')
+              path.write_text(text.replace(old, new, 1), encoding='utf-8')
+
+          # Capture the real backend before deterministic unload clears provider state.
+          replace_once(
+              'services/ai/mily_ai/engine_benchmark.py',
+              '    peak_engine_working_set = max(current, peak)\n    try:\n',
+              '    peak_engine_working_set = max(current, peak)\n    asr_backend = ""\n    translation_backend = ""\n    try:\n',
+          )
+          replace_once(
+              'services/ai/mily_ai/engine_benchmark.py',
+              '            asr_ms.append(asr_elapsed)\n            mt_ms.append(mt_elapsed)\n            e2e_ms.append(asr_elapsed + mt_elapsed)\n    except Exception as exc:\n',
+              '            asr_ms.append(asr_elapsed)\n            mt_ms.append(mt_elapsed)\n            e2e_ms.append(asr_elapsed + mt_elapsed)\n\n        default_asr = "cpu" if requested_backend == "cpu" else "unknown"\n        default_mt = "cpu" if requested_backend != "cuda" else "unknown"\n        asr_backend = _provider_device(asr, default_asr)\n        translation_backend = _provider_device(translator, default_mt)\n    except Exception as exc:\n',
+          )
+          replace_once(
+              'services/ai/mily_ai/engine_benchmark.py',
+              '    default_asr = "cloud" if requested_backend == "cloud" else "cpu"\n    default_mt = "cuda" if requested_backend == "cuda" else "cpu"\n    asr_backend = _provider_device(asr, default_asr)\n    translation_backend = _provider_device(translator, default_mt)\n    verified = _backend_verified(\n',
+              '    if not asr_backend:\n        asr_backend = "unknown"\n    if not translation_backend:\n        translation_backend = "unknown"\n    verified = _backend_verified(\n',
+          )
+          replace_once(
+              'services/ai/mily_ai/engine_benchmark.py',
+              '        "totalProductWorkingSetMb": round(total_product_working_set, 1),\n        "productMemoryMode": product_decision.mode,\n',
+              '        "totalProductWorkingSetMb": round(total_product_working_set, 1),\n        "totalProductIncludesSharedGpu": True,\n        "productMemoryMode": product_decision.mode,\n',
+          )
+
+          # total_product_mb is already the effective product total supplied by ModelAdvisor.
+          replace_once(
+              'services/ai/mily_ai/engine_registry.py',
+              '            float(candidate.total_product_mb) + float(candidate.shared_gpu_mb)\n            if candidate.total_product_mb > 0\n',
+              '            float(candidate.total_product_mb)\n            if candidate.total_product_mb > 0\n',
+          )
+          replace_once(
+              'services/ai/mily_ai/engine_registry.py',
+              '                    RuntimeFootprint(\n                        process_mb=candidate.total_product_mb,\n                        shared_gpu_mb=candidate.shared_gpu_mb,\n                        dedicated_vram_mb=candidate.vram_mb,\n                    )\n',
+              '                    RuntimeFootprint(\n                        process_mb=candidate.total_product_mb,\n                        dedicated_vram_mb=candidate.vram_mb,\n                    )\n',
+          )
+
+          # Persist pack + measured backend atomically and restore both on rollback.
+          models = Path('services/ai/mily_ai/models.py')
+          text = models.read_text(encoding='utf-8')
+          old_state = '''    def _state(self) -> dict[str, Any]:\n        if not self.state_path.exists():\n            return {"schemaVersion": 2, "active": None, "previous": None}\n        try:\n            state = json.loads(self.state_path.read_text(encoding="utf-8"))\n        except json.JSONDecodeError:\n            return {"schemaVersion": 2, "active": None, "previous": None}\n        return state\n'''
+          new_state = '''    @staticmethod\n    def _normalize_backend(value: object) -> str:\n        backend = str(value or "auto").strip().lower()\n        if backend == "gpu":\n            backend = "cuda"\n        allowed = {\n            "auto",\n            "cpu",\n            "cuda",\n            "vulkan",\n            "openvino",\n            "directml",\n            "windowsml",\n            "cloud",\n        }\n        return backend if backend in allowed else "auto"\n\n    @classmethod\n    def _empty_state(cls) -> dict[str, Any]:\n        return {\n            "schemaVersion": 2,\n            "active": None,\n            "backend": "auto",\n            "previous": None,\n            "previousBackend": "auto",\n        }\n\n    def _state(self) -> dict[str, Any]:\n        if not self.state_path.exists():\n            return self._empty_state()\n        try:\n            state = json.loads(self.state_path.read_text(encoding="utf-8"))\n        except (OSError, json.JSONDecodeError):\n            return self._empty_state()\n        if not isinstance(state, dict):\n            return self._empty_state()\n        normalized = self._empty_state()\n        normalized.update(state)\n        normalized["backend"] = self._normalize_backend(\n            normalized.get("backend")\n        )\n        normalized["previousBackend"] = self._normalize_backend(\n            normalized.get("previousBackend")\n        )\n        return normalized\n\n    def active_backend(self) -> str:\n        return self._normalize_backend(self._state().get("backend"))\n'''
+          if new_state not in text:
+              if old_state not in text:
+                  raise SystemExit('ModelCatalog state block not found')
+              text = text.replace(old_state, new_state, 1)
+
+          old_activate = '''    def activate(self, pack_id: str, version: str) -> None:\n        pack_dir = self.catalog.packs_dir / pack_id / version\n        if not (pack_dir / "pack.json").exists():\n            raise FileNotFoundError("Pack no instalado")\n        self.catalog.models_dir.mkdir(parents=True, exist_ok=True)\n        state = self.catalog._state()\n        new_ref = f"{pack_id}@{version}"\n        previous = (\n            state.get("active")\n            if state.get("active") != new_ref\n            else state.get("previous")\n        )\n        temp = self.catalog.state_path.with_suffix(".tmp")\n        temp.write_text(\n            json.dumps(\n                {"schemaVersion": 2, "active": new_ref, "previous": previous},\n                indent=2,\n            ),\n            encoding="utf-8",\n        )\n        temp.replace(self.catalog.state_path)\n\n    def rollback(self) -> InstalledPack:\n        state = self.catalog._state()\n        previous = state.get("previous")\n        if not previous or "@" not in previous:\n            raise RuntimeError("No existe un pack anterior para rollback")\n        pack_id, version = previous.rsplit("@", 1)\n        current = state.get("active")\n        self.activate(pack_id, version)\n        new_state = self.catalog._state()\n        new_state["previous"] = current\n        self.catalog.state_path.write_text(\n            json.dumps(new_state, indent=2), encoding="utf-8"\n        )\n        return self.catalog.active_pack()  # type: ignore[return-value]\n'''
+          new_activate = '''    def activate(\n        self, pack_id: str, version: str, backend: str = "auto"\n    ) -> None:\n        self.activate_selection(pack_id, version, backend)\n\n    def activate_selection(\n        self, pack_id: str, version: str, backend: str\n    ) -> None:\n        pack_dir = self.catalog.packs_dir / pack_id / version\n        if not (pack_dir / "pack.json").exists():\n            raise FileNotFoundError("Pack no instalado")\n        self.catalog.models_dir.mkdir(parents=True, exist_ok=True)\n        state = self.catalog._state()\n        new_ref = f"{pack_id}@{version}"\n        current_ref = state.get("active")\n        current_backend = self.catalog._normalize_backend(\n            state.get("backend")\n        )\n        if current_ref != new_ref:\n            previous = current_ref\n            previous_backend = current_backend\n        else:\n            previous = state.get("previous")\n            previous_backend = self.catalog._normalize_backend(\n                state.get("previousBackend")\n            )\n        payload = {\n            "schemaVersion": 2,\n            "active": new_ref,\n            "backend": self.catalog._normalize_backend(backend),\n            "previous": previous,\n            "previousBackend": previous_backend,\n        }\n        temp = self.catalog.state_path.with_suffix(".tmp")\n        temp.write_text(\n            json.dumps(payload, indent=2), encoding="utf-8"\n        )\n        temp.replace(self.catalog.state_path)\n\n    def rollback(self) -> InstalledPack:\n        state = self.catalog._state()\n        previous = state.get("previous")\n        if not previous or "@" not in previous:\n            raise RuntimeError("No existe un pack anterior para rollback")\n        pack_id, version = previous.rsplit("@", 1)\n        current = state.get("active")\n        current_backend = self.catalog.active_backend()\n        previous_backend = self.catalog._normalize_backend(\n            state.get("previousBackend")\n        )\n        self.activate_selection(pack_id, version, previous_backend)\n        new_state = self.catalog._state()\n        new_state["previous"] = current\n        new_state["previousBackend"] = current_backend\n        temp = self.catalog.state_path.with_suffix(".tmp")\n        temp.write_text(\n            json.dumps(new_state, indent=2), encoding="utf-8"\n        )\n        temp.replace(self.catalog.state_path)\n        return self.catalog.active_pack()  # type: ignore[return-value]\n'''
+          if new_activate not in text:
+              if old_activate not in text:
+                  raise SystemExit('Model activation block not found')
+              text = text.replace(old_activate, new_activate, 1)
+          models.write_text(text, encoding='utf-8')
+
+          # Both CLI and API always use the pack-aware downloader; activation is explicit.
+          replace_once(
+              'services/ai/mily_ai/cli.py',
+              '''        if args.model_action == "install":\n            if args.download_only:\n                pack = download_pack(installer, catalog, args.pack_id)\n            else:\n                definition = catalog.definition(args.pack_id)\n                resource = _definition_resource(definition)\n                if not resource["allowed"]:\n                    raise ModelOperationError(\n                        str(resource["reason"]),\n                        "El modelo supera el límite total de 2 GB o 384 MB de VRAM.",\n                    )\n                pack = installer.install(args.pack_id)\n            _emit_pack(pack)\n            return 0\n''',
+              '''        if args.model_action == "install":\n            definition = catalog.definition(args.pack_id)\n            if not args.download_only:\n                resource = _definition_resource(definition)\n                if not resource["allowed"]:\n                    raise ModelOperationError(\n                        str(resource["reason"]),\n                        "El modelo supera el límite total de 2 GB o 384 MB de VRAM.",\n                    )\n            pack = download_pack(installer, catalog, args.pack_id)\n            if not args.download_only:\n                installer.activate(pack.id, pack.version)\n                pack = next(\n                    item\n                    for item in catalog.installed()\n                    if item.id == pack.id and item.version == pack.version\n                )\n            _emit_pack(pack)\n            return 0\n''',
+          )
+
+          server = Path('services/ai/mily_ai/server.py')
+          text = server.read_text(encoding='utf-8')
+          import_marker = 'from .model_advisor import ModelAdvisor\n'
+          if 'from .model_operations import download_pack\n' not in text:
+              text = text.replace(
+                  import_marker,
+                  import_marker + 'from .model_operations import download_pack\n',
+                  1,
+              )
+          text = text.replace(
+              '            pack = await loop.run_in_executor(None, installer.install, pack_id)\n',
+              '            pack = await loop.run_in_executor(\n                None, download_pack, installer, catalog, pack_id\n            )\n',
+              1,
+          )
+          text = text.replace(
+              '            "modelPack": f"{active.id}@{active.version}" if active else None,\n            "resourceLimits": resource_limits_payload(),\n',
+              '            "modelPack": f"{active.id}@{active.version}" if active else None,\n            "backend": catalog.active_backend(),\n            "resourceLimits": resource_limits_payload(),\n',
+              1,
+          )
+          text = text.replace(
+              '            "backends": sorted(inventory.backends),\n            "limits": resource_limits_payload(),\n',
+              '            "backends": sorted(inventory.backends),\n            "activeBackend": catalog.active_backend(),\n            "limits": resource_limits_payload(),\n',
+              1,
+          )
+          hello_marker = '''                    if resource is None or not resource.allowed:\n                        await safe_send(\n                            event(\n                                "engine.error",\n                                code=(resource.reason if resource else "MODEL_CATALOG_INVALID"),\n                                message="El modelo activo excede el presupuesto. Ejecuta Optimizar automáticamente.",\n                            )\n                        )\n                        continue\n                    recorder = SessionRecorder(\n'''
+          hello_replacement = '''                    if resource is None or not resource.allowed:\n                        await safe_send(\n                            event(\n                                "engine.error",\n                                code=(resource.reason if resource else "MODEL_CATALOG_INVALID"),\n                                message="El modelo activo excede el presupuesto. Ejecuta Optimizar automáticamente.",\n                            )\n                        )\n                        continue\n                    selected_backend = catalog.active_backend()\n                    session_compute_profile = (\n                        selected_backend\n                        if selected_backend != "auto"\n                        else settings.compute_profile\n                    )\n                    recorder = SessionRecorder(\n'''
+          if 'session_compute_profile = (' not in text:
+              if hello_marker not in text:
+                  raise SystemExit('Server session backend insertion point not found')
+              text = text.replace(hello_marker, hello_replacement, 1)
+          text = text.replace(
+              '''                            modelPack=f"{active.id}@{active.version}",\n                            phase="warming",\n''',
+              '''                            modelPack=f"{active.id}@{active.version}",\n                            backend=selected_backend,\n                            phase="warming",\n''',
+              1,
+          )
+          text = text.replace(
+              '''                            message.source_language,\n                            settings.compute_profile,\n                            recorder,\n''',
+              '''                            message.source_language,\n                            session_compute_profile,\n                            recorder,\n''',
+              1,
+          )
+          text = text.replace(
+              '''                            processMemoryMb=round(\n                                latency_controller.last_process_memory_mb, 1\n                            ),\n''',
+              '''                            processMemoryMb=round(\n                                latency_controller.last_process_memory_mb, 1\n                            ),\n                            selectedBackend=selected_backend,\n                            asrDevice=pipeline.compute_status["asrDevice"],\n                            translationDevice=pipeline.compute_status[\n                                "translationDevice"\n                            ],\n''',
+              1,
+          )
+          server.write_text(text, encoding='utf-8')
+
+          workflow = Path('.github/workflows/enginehub-pruebas.yml')
+          wtext = workflow.read_text(encoding='utf-8')
+          marker = '''          python -m unittest discover -s services/ai/tests -p "test_provider_unload.py" -v\n'''
+          additions = marker + '''          python -m unittest discover -s services/ai/tests -p "test_model_advisor_backend_matrix.py" -v\n          python -m unittest discover -s services/ai/tests -p "test_model_selection_state.py" -v\n          python -m unittest discover -s services/ai/tests -p "test_measured_shared_gpu_memory.py" -v\n          python -m unittest discover -s services/ai/tests -p "test_engine_benchmark_backend_truth.py" -v\n          python -m unittest discover -s services/ai/tests -p "test_cli_special_model_install.py" -v\n'''
+          if 'test_model_advisor_backend_matrix.py' not in wtext:
+              if marker not in wtext:
+                  raise SystemExit('Engine Hub workflow test insertion point not found')
+              workflow.write_text(wtext.replace(marker, additions, 1), encoding='utf-8')
+          PY
+          cargo fmt --all
+          git diff --check
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add services/ai/mily_ai .github/workflows/enginehub-pruebas.yml
+          git commit -m "fix: close Engine Hub audit gaps [enginehub audit applied]"
+          git push origin HEAD:agent/enginehub-memory-selection-fix
