@@ -15,7 +15,9 @@ class RealtimeTelemetryTests(unittest.TestCase):
         telemetry.record_translation(120.0)
         telemetry.record_translation(240.0)
 
-        snapshot = telemetry.snapshot(audio_queue_ms=300, translation_queue_depth=1)
+        snapshot = telemetry.snapshot(
+            audio_queue_ms=300, translation_queue_depth=1
+        )
         self.assertGreater(snapshot.asr_p50_ms, 0)
         self.assertGreaterEqual(snapshot.asr_p95_ms, snapshot.asr_p50_ms)
         self.assertGreater(snapshot.translation_p50_ms, 0)
@@ -76,6 +78,25 @@ class RealtimeTelemetryTests(unittest.TestCase):
             ),
             "rescue",
         )
+
+    def test_controller_samples_process_tree_and_product_reserve(self):
+        calls = []
+
+        def memory_provider():
+            calls.append(True)
+            return 1650.0
+
+        controller = LatencyController(
+            memory_provider=memory_provider,
+            product_reserve_mb=320.0,
+            memory_sample_interval_seconds=60.0,
+        )
+        self.assertEqual(controller.classify(0, 0, 0.1), "rescue")
+        self.assertEqual(controller.last_process_memory_mb, 1970.0)
+        # La segunda clasificación reutiliza la muestra y no recorre procesos
+        # por cada chunk de audio.
+        self.assertEqual(controller.classify(0, 0, 0.1), "rescue")
+        self.assertEqual(len(calls), 1)
 
     def test_partial_translation_is_optional_outside_healthy(self):
         controller = LatencyController()
