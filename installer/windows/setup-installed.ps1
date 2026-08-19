@@ -184,6 +184,40 @@ function Stop-MilyVoiceOwnedProcesses {
     }
 }
 
+function Resolve-RuntimeImportModules($Manifest) {
+    $runtimeProperty = $Manifest.PSObject.Properties['engineHubRuntimes']
+    if ($null -eq $runtimeProperty) {
+        throw 'RUNTIME_MANIFEST_INVALID|El manifiesto del runtime no declara sus motores incluidos.'
+    }
+
+    $declared = @($runtimeProperty.Value)
+    if ($declared.Count -eq 0) {
+        throw 'RUNTIME_MANIFEST_INVALID|El manifiesto del runtime no declara motores verificables.'
+    }
+
+    $modules = @('fastapi', 'uvicorn', 'numpy', 'huggingface_hub', 'sentencepiece')
+    $runtimeMap = @{
+        'faster-whisper' = @('faster_whisper')
+        'moonshine-voice' = @('moonshine_voice')
+        'sherpa-onnx' = @('sherpa_onnx')
+        'vosk' = @('vosk')
+        'ctranslate2' = @('ctranslate2')
+        'transformers' = @('transformers', 'torch')
+        'google-cloud-speech' = @('google.cloud.speech_v2')
+    }
+
+    foreach ($runtime in $declared) {
+        $name = ([string]$runtime).Trim().ToLowerInvariant()
+        if (-not $runtimeMap.ContainsKey($name)) { continue }
+        foreach ($module in @($runtimeMap[$name])) {
+            if ($modules -notcontains $module) {
+                $modules += $module
+            }
+        }
+    }
+    return $modules
+}
+
 function Resolve-UnstructuredFailure([string]$Stage) {
     switch ($Stage) {
         'COMPONENTS_CHECK' { return @('BOOTSTRAP_COMPONENT_CHECK_FAILED', 'No se pudieron validar los componentes incluidos.') }
@@ -254,7 +288,9 @@ try {
     }
 
     Set-BootstrapStage 'RUNTIME_IMPORT' 'Comprobando dependencias del runtime privado.'
-    & $nextPython -c "import fastapi,uvicorn,numpy,faster_whisper,transformers,torch,huggingface_hub; print('MILY_RUNTIME_OK')"
+    $runtimeModules = Resolve-RuntimeImportModules $runtimeManifest
+    $runtimeImportCode = (($runtimeModules | ForEach-Object { "import $_" }) -join '; ') + "; print('MILY_RUNTIME_OK')"
+    & $nextPython -c $runtimeImportCode
     if ($LASTEXITCODE -ne 0) {
         throw 'RUNTIME_IMPORT_FAILED|El runtime privado no pudo cargar sus dependencias.'
     }
