@@ -19,7 +19,7 @@ const MAX_PCM_BYTES: usize = 16 * 1024 * 1024;
 const MAX_RESPONSE_BYTES: usize = 16 * 1024 * 1024;
 
 #[derive(Debug, Error)]
-enum WhisperBridgeError {
+pub(crate) enum WhisperBridgeError {
     #[error("argumentos whisper.cpp inválidos")]
     InvalidArguments,
     #[error("backend whisper.cpp no disponible en este binario")]
