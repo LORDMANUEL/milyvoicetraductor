@@ -92,11 +92,9 @@ impl WhisperEngine {
                 .model
                 .to_str()
                 .ok_or(WhisperBridgeError::ModelMissing)?;
-            let context = WhisperContext::new_with_params(
-                model,
-                WhisperContextParameters::default(),
-            )
-            .map_err(|error| WhisperBridgeError::Runtime(error.to_string()))?;
+            let context =
+                WhisperContext::new_with_params(model, WhisperContextParameters::default())
+                    .map_err(|error| WhisperBridgeError::Runtime(error.to_string()))?;
             self.context = Some(context);
         }
         self.context
@@ -180,9 +178,7 @@ where
                     .to_ascii_lowercase();
             }
             "--threads" => {
-                let raw = values
-                    .next()
-                    .ok_or(WhisperBridgeError::InvalidArguments)?;
+                let raw = values.next().ok_or(WhisperBridgeError::InvalidArguments)?;
                 threads = raw
                     .to_string_lossy()
                     .parse::<i32>()
