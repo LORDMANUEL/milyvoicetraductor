@@ -21,23 +21,82 @@ class RealtimeTelemetryTests(unittest.TestCase):
         self.assertGreater(snapshot.translation_p50_ms, 0)
         self.assertLess(snapshot.real_time_factor, 1.0)
 
-    def test_controller_classifies_healthy_pressure_and_overloaded(self):
+    def test_controller_classifies_all_four_resource_states(self):
         controller = LatencyController()
-        self.assertEqual(controller.classify(200, 1, 0.5), "healthy")
-        self.assertEqual(controller.classify(800, 4, 1.0), "pressure")
-        self.assertEqual(controller.classify(1800, 7, 1.6), "overloaded")
+        self.assertEqual(
+            controller.classify(
+                200,
+                1,
+                0.5,
+                translation_queue_age_ms=150,
+                process_memory_mb=900,
+            ),
+            "healthy",
+        )
+        self.assertEqual(
+            controller.classify(
+                650,
+                3,
+                0.9,
+                translation_queue_age_ms=800,
+                process_memory_mb=1350,
+            ),
+            "pressure",
+        )
+        self.assertEqual(
+            controller.classify(
+                1500,
+                6,
+                1.4,
+                translation_queue_age_ms=1500,
+                process_memory_mb=1750,
+            ),
+            "catch_up",
+        )
+        self.assertEqual(
+            controller.classify(
+                2600,
+                8,
+                1.9,
+                translation_queue_age_ms=2600,
+                process_memory_mb=2010,
+            ),
+            "rescue",
+        )
 
-    def test_partial_translation_is_optional_under_pressure(self):
+    def test_memory_alone_can_force_rescue_before_two_gib(self):
+        controller = LatencyController()
+        self.assertEqual(
+            controller.classify(
+                0,
+                0,
+                0.1,
+                translation_queue_age_ms=0,
+                process_memory_mb=1950,
+            ),
+            "rescue",
+        )
+
+    def test_partial_translation_is_optional_outside_healthy(self):
         controller = LatencyController()
         self.assertTrue(controller.allow_partial_translation("healthy"))
-        self.assertFalse(controller.allow_partial_translation("pressure"))
-        self.assertFalse(controller.allow_partial_translation("overloaded"))
+        for state in ("pressure", "catch_up", "rescue"):
+            with self.subTest(state=state):
+                self.assertFalse(controller.allow_partial_translation(state))
 
-    def test_partial_asr_is_optional_under_pressure_but_final_asr_is_not_controlled_here(self):
+    def test_partial_asr_survives_pressure_but_not_catch_up_or_rescue(self):
         controller = LatencyController()
         self.assertTrue(controller.allow_partial_asr("healthy"))
-        self.assertFalse(controller.allow_partial_asr("pressure"))
-        self.assertFalse(controller.allow_partial_asr("overloaded"))
+        self.assertTrue(controller.allow_partial_asr("pressure"))
+        self.assertFalse(controller.allow_partial_asr("catch_up"))
+        self.assertFalse(controller.allow_partial_asr("rescue"))
+
+    def test_expensive_features_are_disabled_progressively(self):
+        controller = LatencyController()
+        self.assertTrue(controller.allow_speaker_detection("healthy"))
+        self.assertFalse(controller.allow_speaker_detection("pressure"))
+        self.assertFalse(controller.allow_word_timestamps("catch_up"))
+        self.assertFalse(controller.allow_tts("rescue"))
 
 
 if __name__ == "__main__":
