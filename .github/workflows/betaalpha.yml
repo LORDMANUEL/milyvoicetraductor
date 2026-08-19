@@ -74,10 +74,10 @@ jobs:
         run: .\installer\windows\test-bootstrap.ps1
       - name: Native Messaging bridge release build
         run: cargo build -p mily-bridge --release
-      - name: Build private Python runtime
+      - name: Build BetaAlpha Lite Python runtime
         id: runtime
         shell: pwsh
-        run: .\installer\windows\build-python-runtime.ps1
+        run: .\installer\windows\build-betaalpha-runtime.ps1
       - name: Validate private runtime
         shell: pwsh
         run: .\installer\windows\test-bootstrap.ps1 -RequireRuntime
@@ -202,7 +202,7 @@ jobs:
             "| Frontend | $env:FRONTEND |",
             "| AI + Source Verification | $env:AI |",
             "| Bootstrap | $env:BOOTSTRAP |",
-            "| Runtime privado | $env:RUNTIME |",
+            "| Runtime privado Lite | $env:RUNTIME |",
             "| Simulación 2 GiB | $env:TARGET_MACHINE |",
             "| Moonshine baseline | $env:MOONSHINE |",
             "| Whisper Tiny baseline | $env:WHISPER |",
