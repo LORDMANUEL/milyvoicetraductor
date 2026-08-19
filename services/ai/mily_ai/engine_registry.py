@@ -140,7 +140,7 @@ class EngineRegistry:
         speed = max(0.0, 1.5 - float(benchmark.rtf)) / 1.5
         latency = 1.0 / (1.0 + float(benchmark.p95_ms) / 1000.0)
         total_ram_mb = (
-            float(candidate.total_product_mb) + float(candidate.shared_gpu_mb)
+            float(candidate.total_product_mb)
             if candidate.total_product_mb > 0
             else (
                 float(candidate.ram_mb)
@@ -198,7 +198,6 @@ class EngineRegistry:
                 self.resource_governor.evaluate(
                     RuntimeFootprint(
                         process_mb=candidate.total_product_mb,
-                        shared_gpu_mb=candidate.shared_gpu_mb,
                         dedicated_vram_mb=candidate.vram_mb,
                     )
                 )

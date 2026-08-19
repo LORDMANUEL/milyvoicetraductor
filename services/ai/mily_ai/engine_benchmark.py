@@ -232,6 +232,8 @@ def benchmark_installed_pack(
     empty_translation = 0
     current, peak = process_memory_snapshot_mb()
     peak_engine_working_set = max(current, peak)
+    asr_backend = ""
+    translation_backend = ""
     try:
         warm_asr = getattr(asr, "warm_up", None)
         if callable(warm_asr):
@@ -281,6 +283,11 @@ def benchmark_installed_pack(
             asr_ms.append(asr_elapsed)
             mt_ms.append(mt_elapsed)
             e2e_ms.append(asr_elapsed + mt_elapsed)
+
+        default_asr = "cpu" if requested_backend == "cpu" else "unknown"
+        default_mt = "cpu" if requested_backend != "cuda" else "unknown"
+        asr_backend = _provider_device(asr, default_asr)
+        translation_backend = _provider_device(translator, default_mt)
     except Exception as exc:
         raise BenchmarkExecutionError(
             f"El pack {pack.id} no completó su microbenchmark: "
@@ -292,10 +299,10 @@ def benchmark_installed_pack(
             if callable(unload):
                 unload()
 
-    default_asr = "cloud" if requested_backend == "cloud" else "cpu"
-    default_mt = "cuda" if requested_backend == "cuda" else "cpu"
-    asr_backend = _provider_device(asr, default_asr)
-    translation_backend = _provider_device(translator, default_mt)
+    if not asr_backend:
+        asr_backend = "unknown"
+    if not translation_backend:
+        translation_backend = "unknown"
     verified = _backend_verified(
         requested_backend, asr_backend, translation_backend
     )
@@ -385,6 +392,7 @@ def benchmark_installed_pack(
         "sharedGpuMb": round(shared_gpu_mb, 1),
         "dedicatedVramMb": round(dedicated_vram_mb, 1),
         "totalProductWorkingSetMb": round(total_product_working_set, 1),
+        "totalProductIncludesSharedGpu": True,
         "productMemoryMode": product_decision.mode,
         "productMemoryHeadroomMb": round(product_decision.process_headroom_mb, 1),
         "emptyAsrResults": empty_asr,

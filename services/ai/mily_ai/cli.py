@@ -132,17 +132,22 @@ def cmd_models(args) -> int:
             )
             return 0
         if args.model_action == "install":
-            if args.download_only:
-                pack = download_pack(installer, catalog, args.pack_id)
-            else:
-                definition = catalog.definition(args.pack_id)
+            definition = catalog.definition(args.pack_id)
+            if not args.download_only:
                 resource = _definition_resource(definition)
                 if not resource["allowed"]:
                     raise ModelOperationError(
                         str(resource["reason"]),
                         "El modelo supera el límite total de 2 GB o 384 MB de VRAM.",
                     )
-                pack = installer.install(args.pack_id)
+            pack = download_pack(installer, catalog, args.pack_id)
+            if not args.download_only:
+                installer.activate(pack.id, pack.version)
+                pack = next(
+                    item
+                    for item in catalog.installed()
+                    if item.id == pack.id and item.version == pack.version
+                )
             _emit_pack(pack)
             return 0
         if args.model_action == "activate":

@@ -13,6 +13,7 @@ from .audio import decode_pcm16_base64, decode_pcm16_bytes
 from .event_payloads import pipeline_event_fields
 from .logging_safe import build_logger, close_logger
 from .model_advisor import ModelAdvisor
+from .model_operations import download_pack
 from .models import HuggingFacePackInstaller, ModelCatalog, ModelOperationError
 from .pipeline import RealtimePipeline
 from .protocol import ClientMessage, ProtocolError, event
@@ -141,6 +142,7 @@ def create_app(paths: RuntimePaths, port: int = 8765, parent_pid: int | None = N
             "version": "2.0.1",
             "protocol": 1,
             "modelPack": f"{active.id}@{active.version}" if active else None,
+            "backend": catalog.active_backend(),
             "resourceLimits": resource_limits_payload(),
             "resourceLimitMb": governor.limits.hard_process_mb,
             "vramLimitMb": governor.limits.vram_budget_mb,
@@ -166,6 +168,7 @@ def create_app(paths: RuntimePaths, port: int = 8765, parent_pid: int | None = N
             ],
             "runtimes": sorted(inventory.runtimes),
             "backends": sorted(inventory.backends),
+            "activeBackend": catalog.active_backend(),
             "limits": resource_limits_payload(),
         }
 
@@ -207,7 +210,9 @@ def create_app(paths: RuntimePaths, port: int = 8765, parent_pid: int | None = N
                         "message": "Este modelo excede el presupuesto total del producto.",
                     },
                 )
-            pack = await loop.run_in_executor(None, installer.install, pack_id)
+            pack = await loop.run_in_executor(
+                None, download_pack, installer, catalog, pack_id
+            )
         except ModelOperationError as exc:
             logger.warning("Fallo de instalación de modelo: %s", exc.code)
             return JSONResponse(
@@ -804,6 +809,12 @@ def create_app(paths: RuntimePaths, port: int = 8765, parent_pid: int | None = N
                             )
                         )
                         continue
+                    selected_backend = catalog.active_backend()
+                    session_compute_profile = (
+                        selected_backend
+                        if selected_backend != "auto"
+                        else settings.compute_profile
+                    )
                     recorder = SessionRecorder(
                         paths.sessions_dir,
                         message.persist_transcript or settings.persist_transcripts,
@@ -815,6 +826,7 @@ def create_app(paths: RuntimePaths, port: int = 8765, parent_pid: int | None = N
                         event(
                             "engine.loading",
                             modelPack=f"{active.id}@{active.version}",
+                            backend=selected_backend,
                             phase="warming",
                         )
                     )
@@ -822,7 +834,7 @@ def create_app(paths: RuntimePaths, port: int = 8765, parent_pid: int | None = N
                         pipeline = RealtimePipeline(
                             active,
                             message.source_language,
-                            settings.compute_profile,
+                            session_compute_profile,
                             recorder,
                             session_mode=message.session_mode,
                             speaker_detection=message.speaker_detection,
@@ -911,6 +923,11 @@ def create_app(paths: RuntimePaths, port: int = 8765, parent_pid: int | None = N
                             processMemoryMb=round(
                                 latency_controller.last_process_memory_mb, 1
                             ),
+                            selectedBackend=selected_backend,
+                            asrDevice=pipeline.compute_status["asrDevice"],
+                            translationDevice=pipeline.compute_status[
+                                "translationDevice"
+                            ],
                         )
                     )
                     continue
