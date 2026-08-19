@@ -31,6 +31,10 @@ jobs:
         env:
           PYTHONPATH: services/ai
         run: python -m unittest discover -s services/ai/tests -p "test_engine_hub_target_machine.py" -v
+      - name: Verify complete private runtime contract
+        env:
+          PYTHONPATH: services/ai
+        run: python -m unittest discover -s services/ai/tests -p "test_engine_hub_runtime_bundle.py" -v
       - name: Verify portable runtime discovery
         env:
           PYTHONPATH: services/ai
