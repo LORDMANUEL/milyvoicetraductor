@@ -65,10 +65,14 @@ for marker in (
 ci = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
 for marker in (
     "MilyVoiceTraductor-Full-2.0.1-Windows-x64-${{ github.sha }}",
-    "MilyVoiceTraductor-2.0.1-MegaBench.json",
+    "MilyVoiceTraductor-2.0.1-TargetMachineSimulation.json",
+    "MilyVoiceTraductor-2.0.1-MoonshineLiteBench.json",
+    "MilyVoiceTraductor-2.0.1-WhisperTinyLiteBench.json",
 ):
     if marker not in ci:
         FAILURES.append(f"CI: falta {marker}")
+if "MilyVoiceTraductor-2.0.1-MegaBench.json" in ci:
+    FAILURES.append("CI: MegaBench Quality antiguo no debe ser gate del perfil 2 GiB")
 
 publish = (ROOT / ".github/workflows/publish-rc.yml").read_text(encoding="utf-8")
 required_publish_markers = (
@@ -76,11 +80,15 @@ required_publish_markers = (
     "RELEASE_TAG: v2.0.1",
     "RELEASE_TITLE: MilyVoiceTraductor 2.0.1",
     "release/MilyVoiceTraductor_2.0.1_x64-setup.exe",
-    "release/MilyVoiceTraductor-2.0.1-MegaBench.json",
+    "release/MilyVoiceTraductor-2.0.1-TargetMachineSimulation.json",
+    "release/MilyVoiceTraductor-2.0.1-MoonshineLiteBench.json",
+    "release/MilyVoiceTraductor-2.0.1-WhisperTinyLiteBench.json",
 )
 for marker in required_publish_markers:
     if marker not in publish:
         FAILURES.append(f"Publish workflow: falta {marker}")
+if "release/MilyVoiceTraductor-2.0.1-MegaBench.json" in publish:
+    FAILURES.append("Publish workflow: MegaBench Quality antiguo no debe publicarse como gate Lite")
 
 readme = (ROOT / "README.md").read_text(encoding="utf-8")
 for marker in ("MilyVoiceTraductor 2.0.1", "2.0.1"):
