@@ -314,4 +314,20 @@ mod tests {
         let payload = fs::read_to_string(engine_path).unwrap();
         assert!(payload.contains(r#""sourceLanguage": "auto""#));
     }
+
+    #[cfg(windows)]
+    #[test]
+    fn failed_replacement_never_deletes_the_existing_destination() {
+        let dir = tempdir().unwrap();
+        let missing_source = dir.path().join("missing.tmp");
+        let destination = dir.path().join("config.json");
+        fs::write(&destination, b"important prior config").unwrap();
+
+        let error = replace_file(&missing_source, &destination)
+            .expect_err("reemplazar desde una fuente inexistente debe fallar");
+
+        assert_eq!(error.kind(), io::ErrorKind::NotFound);
+        assert!(destination.is_file());
+        assert_eq!(fs::read(destination).unwrap(), b"important prior config");
+    }
 }
