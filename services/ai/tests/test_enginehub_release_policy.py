@@ -12,6 +12,9 @@ class EngineHubReleasePolicyTests(unittest.TestCase):
             self.root / "installer" / "windows" / "test-quality-pack-policy.ps1"
         )
 
+    def test_complete_ci_runs_for_main_and_pruebas(self):
+        self.assertGreaterEqual(self.ci.count("branches: [main, pruebas]"), 2)
+
     def test_two_gib_release_never_requires_the_oversized_quality_benchmark(self):
         self.assertNotIn(
             "run: .\\installer\\windows\\test-realtime-model.ps1",
