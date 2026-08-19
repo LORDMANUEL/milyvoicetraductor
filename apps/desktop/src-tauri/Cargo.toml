@@ -21,6 +21,8 @@ tauri = { version = "2", features = [] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 thiserror = "2"
+sha2 = "0.10"
+zip = { version = "2", default-features = false, features = ["deflate"] }
 mily-core = { path = "../../../crates/mily-core" }
 mily-config = { path = "../../../crates/mily-config" }
 mily-database = { path = "../../../crates/mily-database" }
@@ -31,6 +33,13 @@ mily-compute = { path = "../../../crates/mily-compute" }
 mily-engine = { path = "../../../crates/mily-engine" }
 mily-models = { path = "../../../crates/mily-models" }
 mily-sessions = { path = "../../../crates/mily-sessions" }
+
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.62.1", features = [
+  "Win32_Foundation",
+  "Win32_System_Diagnostics_ToolHelp",
+  "Win32_System_Threading",
+] }
 
 [dev-dependencies]
 tempfile = "3"
