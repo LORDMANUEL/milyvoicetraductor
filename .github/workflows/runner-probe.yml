@@ -1,7 +1,7 @@
 name: Runner probe
 
 on:
-  push:
+  pull_request:
     branches: [runner-probe-20260819]
 
 permissions:
