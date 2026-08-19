@@ -67,19 +67,59 @@ class RealtimeTelemetry:
 
 
 class LatencyController:
-    """Clasifica presión sin sacrificar trabajo final de ASR o traducción."""
+    """Degrada trabajo opcional antes de agotar 2 GiB o acumular frases.
+
+    Estados:
+    - ``healthy``: experiencia completa.
+    - ``pressure``: conserva parciales ASR, pero omite MT parcial y diarización.
+    - ``catch_up``: solo trabajo esencial/final para vaciar colas.
+    - ``rescue``: subtítulos finales, sin TTS ni funciones costosas.
+    """
+
+    SOFT_MEMORY_MB = 1200.0
+    CATCH_UP_MEMORY_MB = 1600.0
+    RESCUE_MEMORY_MB = 1920.0
 
     def classify(
-        self, audio_queue_ms: int, translation_queue_depth: int, real_time_factor: float
+        self,
+        audio_queue_ms: int,
+        translation_queue_depth: int,
+        real_time_factor: float,
+        *,
+        translation_queue_age_ms: float = 0.0,
+        process_memory_mb: float = 0.0,
     ) -> str:
         audio = max(0, int(audio_queue_ms))
         translation = max(0, int(translation_queue_depth))
+        age = max(0.0, float(translation_queue_age_ms))
         rtf = max(0.0, float(real_time_factor))
-        if audio < 500 and translation <= 2 and rtf < 0.85:
-            return "healthy"
-        if audio < 1400 and translation <= 5 and rtf < 1.35:
+        memory = max(0.0, float(process_memory_mb))
+
+        if (
+            memory >= self.RESCUE_MEMORY_MB
+            or audio >= 2400
+            or translation >= 8
+            or age >= 2400.0
+            or rtf >= 1.80
+        ):
+            return "rescue"
+        if (
+            memory >= self.CATCH_UP_MEMORY_MB
+            or audio >= 1200
+            or translation >= 6
+            or age >= 1200.0
+            or rtf >= 1.25
+        ):
+            return "catch_up"
+        if (
+            memory >= self.SOFT_MEMORY_MB
+            or audio >= 500
+            or translation >= 3
+            or age >= 700.0
+            or rtf >= 0.85
+        ):
             return "pressure"
-        return "overloaded"
+        return "healthy"
 
     @staticmethod
     def allow_partial_translation(state: str) -> bool:
@@ -87,6 +127,18 @@ class LatencyController:
 
     @staticmethod
     def allow_partial_asr(state: str) -> bool:
-        """Los parciales son degradables; la frase final nunca pasa por este gate."""
+        """Bajo presión moderada se conserva un parcial; catch-up usa finales."""
 
+        return state in {"healthy", "pressure"}
+
+    @staticmethod
+    def allow_speaker_detection(state: str) -> bool:
         return state == "healthy"
+
+    @staticmethod
+    def allow_word_timestamps(state: str) -> bool:
+        return state == "healthy"
+
+    @staticmethod
+    def allow_tts(state: str) -> bool:
+        return state in {"healthy", "pressure"}
