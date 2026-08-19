@@ -2,7 +2,7 @@ import unittest
 from pathlib import Path
 from types import SimpleNamespace
 
-from mily_ai.optional_providers import CTranslate2MarianTranslator
+from mily_ai.marian_realtime import CTranslate2RealtimeMarianTranslator
 from mily_ai.translation_quality import analyze_translation_quality
 
 
@@ -42,7 +42,7 @@ class TranslationQualityTests(unittest.TestCase):
         self.assertEqual(result.max_ngram_occurrences, 1)
 
     def test_marian_decoder_enforces_anti_repetition_options(self):
-        provider = CTranslate2MarianTranslator(
+        provider = CTranslate2RealtimeMarianTranslator(
             Path("unused"),
             "cpu",
             source_language="en",
