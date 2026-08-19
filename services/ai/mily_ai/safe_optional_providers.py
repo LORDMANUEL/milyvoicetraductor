@@ -1,6 +1,6 @@
 """Adapters opcionales seguros para el hot path realtime.
 
-Moonshine conserva el modelo cargado y entiende el contrato `Transcript.lines`.
+Moonshine conserva modelo y stream cargados entre hipótesis de una utterance.
 whisper.cpp se comunica con un bridge stdio persistente; el `whisper-cli` que
 carga el modelo por fragmento no se considera un runtime realtime válido.
 """
@@ -21,7 +21,72 @@ from .providers import AsrProvider, AsrSegment
 
 
 class MoonshineResultAsr(MoonshineAsr):
-    """Moonshine compatible con el `Transcript` oficial basado en `lines`."""
+    """Moonshine streaming residente compatible con `Transcript.lines`.
+
+    El segmentador de MilyVoice entrega ventanas acumulativas para una misma
+    utterance. Este adapter conserva un único stream Moonshine y le agrega solo
+    el delta nuevo; así evita redecodificar desde cero los primeros 0.9–2.4 s
+    en cada hipótesis parcial.
+    """
+
+    def __init__(
+        self,
+        model_path: Path,
+        compute_profile: str = "auto",
+        cpu_budget: CpuBudget | None = None,
+        word_timestamps: bool = False,
+    ):
+        super().__init__(model_path, compute_profile, cpu_budget, word_timestamps)
+        self._stream: Any | None = None
+        self._stream_samples = 0
+        self._update_interval = 0.45
+
+    def _config(self) -> dict[str, Any]:
+        path = self.model_path / "moonshine-config.json"
+        if not path.is_file():
+            return {"modelArch": 2, "language": "en", "updateInterval": 0.45}
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            raise OptionalProviderRuntimeError(
+                "MOONSHINE_CONFIG_INVALID",
+                "La configuración del modelo Moonshine no es válida.",
+            ) from exc
+        if not isinstance(payload, dict):
+            raise OptionalProviderRuntimeError(
+                "MOONSHINE_CONFIG_INVALID",
+                "La configuración del modelo Moonshine no es válida.",
+            )
+        return payload
+
+    def _load(self):
+        if self._transcriber is not None:
+            return self._transcriber
+        try:
+            from moonshine_voice import Transcriber
+        except ImportError as exc:
+            raise OptionalProviderRuntimeError(
+                "MOONSHINE_RUNTIME_MISSING",
+                "Moonshine Voice no está instalado en este runtime.",
+            ) from exc
+        config = self._config()
+        try:
+            model_arch = int(config.get("modelArch", 2))
+            self._update_interval = max(
+                0.2, min(1.0, float(config.get("updateInterval", 0.45)))
+            )
+            self._transcriber = Transcriber(
+                str(self.model_path),
+                model_arch,
+                update_interval=self._update_interval,
+                options={"return_audio_data": False},
+            )
+        except Exception as exc:
+            raise OptionalProviderRuntimeError(
+                "MOONSHINE_MODEL_LOAD",
+                "Moonshine no pudo abrir el modelo seleccionado.",
+            ) from exc
+        return self._transcriber
 
     @staticmethod
     def _text_from_result(result: Any) -> str:
@@ -46,6 +111,106 @@ class MoonshineResultAsr(MoonshineAsr):
             if value:
                 output.append(value)
         return " ".join(output).strip()
+
+    def _close_stream(self) -> None:
+        stream = self._stream
+        self._stream = None
+        self._stream_samples = 0
+        if stream is None:
+            return
+        stop = getattr(stream, "stop", None)
+        if callable(stop):
+            try:
+                stop()
+            except Exception:
+                pass
+        close = getattr(stream, "close", None)
+        if callable(close):
+            try:
+                close()
+            except Exception:
+                pass
+
+    def _ensure_stream(self, sample_count: int):
+        # Las ventanas de una utterance son acumulativas. Una ventana más corta
+        # indica que el segmentador ya inició una utterance distinta.
+        if self._stream is not None and sample_count < self._stream_samples:
+            self._close_stream()
+        if self._stream is None:
+            transcriber = self._load()
+            create_stream = getattr(transcriber, "create_stream", None)
+            if not callable(create_stream):
+                raise OptionalProviderRuntimeError(
+                    "MOONSHINE_STREAMING_UNAVAILABLE",
+                    "El runtime Moonshine instalado no ofrece streaming realtime.",
+                )
+            try:
+                self._stream = create_stream(update_interval=self._update_interval)
+                self._stream.start()
+            except Exception as exc:
+                self._stream = None
+                raise OptionalProviderRuntimeError(
+                    "MOONSHINE_STREAM_START",
+                    "Moonshine no pudo iniciar el stream realtime.",
+                ) from exc
+        return self._stream
+
+    def transcribe(
+        self, samples: Sequence[float], source_language: str
+    ) -> list[AsrSegment]:
+        normalized = [float(value) for value in samples]
+        if not normalized:
+            return []
+        stream = self._ensure_stream(len(normalized))
+        delta = normalized[self._stream_samples :]
+        if delta:
+            try:
+                stream.add_audio(delta, 16000)
+            except TypeError:
+                stream.add_audio(delta, sample_rate=16000)
+            except Exception as exc:
+                self._close_stream()
+                raise OptionalProviderRuntimeError(
+                    "MOONSHINE_STREAM_AUDIO",
+                    "Moonshine no pudo recibir el audio realtime.",
+                ) from exc
+            self._stream_samples = len(normalized)
+        try:
+            result = stream.update_transcription()
+        except Exception as exc:
+            self._close_stream()
+            raise OptionalProviderRuntimeError(
+                "MOONSHINE_STREAM_DECODE",
+                "Moonshine no pudo actualizar la transcripción realtime.",
+            ) from exc
+        text = self._text_from_result(result)
+        if not text:
+            return []
+        language = "en" if source_language == "auto" else source_language
+        return [
+            AsrSegment(
+                start=0.0,
+                end=len(normalized) / 16000.0,
+                text=text,
+                language=language,
+            )
+        ]
+
+    def finish_utterance(self) -> None:
+        """Cierra solo el stream; mantiene el modelo residente para la siguiente frase."""
+
+        self._close_stream()
+
+    def warm_up(self, _source_language: str = "en") -> None:
+        self._load()
+
+    def unload(self) -> None:
+        self._close_stream()
+        transcriber = self._transcriber
+        self._transcriber = None
+        close = getattr(transcriber, "close", None)
+        if callable(close):
+            close()
 
 
 class WhisperCppBridgeAsr(AsrProvider):
