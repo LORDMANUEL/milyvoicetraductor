@@ -28,6 +28,7 @@ class MoonshineModelLayoutTests(unittest.TestCase):
         "streaming_config.json",
         "tokenizer.bin",
     }
+    STREAMING_ATTENTION = "decoder_kv_with_attention.ort"
     NON_STREAMING_REQUIRED = {
         "encoder_model.ort",
         "decoder_model_merged.ort",
@@ -37,6 +38,18 @@ class MoonshineModelLayoutTests(unittest.TestCase):
     def test_tiny_streaming_uses_the_current_official_layout(self):
         required = set(_moonshine_required_files(FakeArch("TINY_STREAMING", 2)))
         self.assertEqual(required, self.STREAMING_REQUIRED)
+
+    def test_word_timestamps_add_only_the_streaming_attention_decoder(self):
+        required = set(
+            _moonshine_required_files(
+                FakeArch("TINY_STREAMING", 2),
+                include_word_timestamps=True,
+            )
+        )
+        self.assertEqual(
+            required,
+            self.STREAMING_REQUIRED | {self.STREAMING_ATTENTION},
+        )
 
     def test_non_streaming_arch_keeps_the_legacy_three_file_layout(self):
         required = set(_moonshine_required_files(FakeArch("TINY", 0)))
@@ -48,7 +61,8 @@ class MoonshineModelLayoutTests(unittest.TestCase):
             source = root / "source"
             target = root / "target"
             source.mkdir()
-            for name in self.STREAMING_REQUIRED:
+            expected = self.STREAMING_REQUIRED | {self.STREAMING_ATTENTION}
+            for name in expected:
                 (source / name).write_bytes(name.encode("utf-8"))
             (source / "spelling_cnn.ort").write_bytes(b"optional")
             (source / "spelling_cnn_meta.json").write_text("{}", encoding="utf-8")
@@ -57,12 +71,13 @@ class MoonshineModelLayoutTests(unittest.TestCase):
                 source,
                 target,
                 FakeArch("TINY_STREAMING", 2),
+                include_word_timestamps=True,
             )
 
-            self.assertEqual(set(copied), self.STREAMING_REQUIRED)
+            self.assertEqual(set(copied), expected)
             self.assertEqual(
                 {path.name for path in target.iterdir()},
-                self.STREAMING_REQUIRED,
+                expected,
             )
             self.assertFalse((target / "spelling_cnn.ort").exists())
 
