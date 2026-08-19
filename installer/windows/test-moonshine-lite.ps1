@@ -42,6 +42,34 @@ try {
         install fast-moonshine-en-es --download-only | Out-Host
     if ($LASTEXITCODE -ne 0) { throw 'No se pudo preparar fast-moonshine-en-es.' }
 
+    $MoonshineAsr = Join-Path $ModelsRoot 'packs\fast-moonshine-en-es\1.0.0\components\asr'
+    $RequiredStreaming = @(
+        'frontend.ort',
+        'encoder.ort',
+        'adapter.ort',
+        'cross_kv.ort',
+        'decoder_kv.ort',
+        'streaming_config.json',
+        'tokenizer.bin',
+        'decoder_kv_with_attention.ort',
+        'moonshine-config.json'
+    )
+    foreach ($name in $RequiredStreaming) {
+        if (-not (Test-Path (Join-Path $MoonshineAsr $name) -PathType Leaf)) {
+            throw "El pack Moonshine streaming no contiene $name."
+        }
+    }
+    foreach ($unused in @('spelling_cnn.ort','spelling_cnn_meta.json','encoder_model.ort','decoder_model_merged.ort')) {
+        if (Test-Path (Join-Path $MoonshineAsr $unused)) {
+            throw "El pack Moonshine Lite incluyó un asset innecesario: $unused"
+        }
+    }
+    $MoonshineConfig = Get-Content (Join-Path $MoonshineAsr 'moonshine-config.json') -Raw | ConvertFrom-Json
+    if (-not $MoonshineConfig.wordTimestampsAvailable) {
+        throw 'El pack Moonshine Lite no preparó el decodificador opcional de timestamps.'
+    }
+    Write-Host 'MOONSHINE_STREAMING_LAYOUT_OK'
+
     & $Python $EngineMain models `
         --data-dir $AppRoot `
         --config-dir $ConfigRoot `
