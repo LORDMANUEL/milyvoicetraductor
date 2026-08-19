@@ -3,19 +3,19 @@ import unittest
 from pathlib import Path
 
 from mily_ai.cpu_budget import detect_cpu_budget
-from mily_ai.provider_factory import (
-    ProviderConfigurationError,
-    build_asr_provider,
-    build_translation_provider,
-)
-from mily_ai.providers import (
+from mily_ai.optional_providers import (
     CTranslate2MarianTranslator,
-    FasterWhisperAsr,
     GoogleChirpAsr,
     MoonshineAsr,
     SherpaOnnxAsr,
     WhisperCppAsr,
 )
+from mily_ai.provider_factory import (
+    ProviderConfigurationError,
+    build_asr_provider,
+    build_translation_provider,
+)
+from mily_ai.providers import FasterWhisperAsr
 
 
 class ProviderFactoryTests(unittest.TestCase):
