@@ -77,7 +77,7 @@ class BetaAlphaPipelineTests(unittest.TestCase):
             commercial_use=True,
         )
         translator = _Translator()
-        recorder = SessionRecorder(root / "sessions", persist=False)
+        recorder = SessionRecorder(root / "sessions", persist_transcripts=False)
         patches = (
             patch("mily_ai.pipeline.build_asr_provider", return_value=_Asr()),
             patch("mily_ai.pipeline.build_translation_provider", return_value=translator),
