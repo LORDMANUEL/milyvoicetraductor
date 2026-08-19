@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import importlib.util
 import os
-import shutil
 from dataclasses import dataclass
 
 
@@ -34,10 +33,9 @@ def discover_runtime_inventory() -> RuntimeInventory:
         runtimes.add("moonshine")
     if _module_available("sherpa_onnx"):
         runtimes.add("sherpa-onnx")
+    if _module_available("vosk"):
+        runtimes.add("vosk")
 
-    # El CLI tradicional recarga el modelo por cada archivo y no es válido para
-    # el hot path realtime. Solo se anuncia whisper.cpp cuando existe el bridge
-    # persistente autorizado que conserva el modelo residente entre segmentos.
     whisper_bridge = os.environ.get("MILY_WHISPER_CPP_BRIDGE", "").strip()
     if whisper_bridge and os.path.isfile(whisper_bridge):
         runtimes.add("whisper-cpp")

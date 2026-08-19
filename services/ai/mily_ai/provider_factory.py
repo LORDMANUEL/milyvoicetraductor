@@ -6,12 +6,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
 
+from .cloud_providers import GoogleChirpV2Asr
 from .cpu_budget import CpuBudget
-from .optional_providers import (
-    CTranslate2MarianTranslator,
-    GoogleChirpAsr,
-    SherpaOnnxAsr,
-)
+from .optional_providers import CTranslate2MarianTranslator, SherpaOnnxAsr
 from .providers import (
     AsrProvider,
     FasterWhisperAsr,
@@ -21,6 +18,7 @@ from .providers import (
     Translator,
 )
 from .safe_optional_providers import MoonshineResultAsr, WhisperCppBridgeAsr
+from .vosk_provider import VoskAsr
 
 
 @dataclass(slots=True)
@@ -72,7 +70,8 @@ ASR_BUILDERS: dict[str, AsrBuilder] = {
     "moonshine": _optional_asr(MoonshineResultAsr),
     "sherpa-onnx": _optional_asr(SherpaOnnxAsr),
     "whisper-cpp": _optional_asr(WhisperCppBridgeAsr),
-    "google-chirp": _optional_asr(GoogleChirpAsr),
+    "vosk": _optional_asr(VoskAsr),
+    "google-chirp": _optional_asr(GoogleChirpV2Asr),
 }
 
 
