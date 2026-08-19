@@ -12,7 +12,9 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
-_WORD_RE = re.compile(r"[\w]+(?:['’][\w]+)?", re.UNICODE)
+# Han se tokeniza carácter por carácter para que el prefijo incremental chino no
+# parezca una única palabra distinta en cada decode. La alternativa Han va primero.
+_WORD_RE = re.compile(r"[\u4e00-\u9fff]|[^\W_]+(?:['’][^\W_]+)?", re.UNICODE)
 _DANGLING_ENGLISH = {
     "a",
     "an",
@@ -71,22 +73,29 @@ def _words(text: str) -> list[str]:
     return _WORD_RE.findall(text)
 
 
-def _contains_han(text: str) -> bool:
-    return any("\u4e00" <= character <= "\u9fff" for character in text)
+def _is_han_unit(value: str) -> bool:
+    return len(value) == 1 and "\u4e00" <= value <= "\u9fff"
+
+
+def _contains_han_units(words: list[str]) -> bool:
+    return any(_is_han_unit(word) for word in words)
+
+
+def _join_units(words: list[str]) -> str:
+    if _contains_han_units(words):
+        # Para mandarín mantenemos escritura continua; números/latín dentro del
+        # prefijo siguen siendo legibles y no introducimos espacios artificiales.
+        return "".join(words)
+    return " ".join(words)
 
 
 def _prefix_ready(words: list[str]) -> bool:
-    """Evita disparar MT con prefijos ingleses demasiado cortos o colgantes.
-
-    El mandarín no usa espacios como frontera léxica de la misma forma; para Han
-    permitimos el prefijo repetido inmediatamente y conservamos su baja latencia.
-    """
+    """Evita disparar MT con prefijos ingleses demasiado cortos o colgantes."""
 
     if not words:
         return False
-    text = " ".join(words)
-    if _contains_han(text):
-        return len(text) >= 2
+    if _contains_han_units(words):
+        return len(words) >= 2
     if len(words) < 3:
         return False
     last = words[-1].casefold()
@@ -124,7 +133,7 @@ class HypothesisStabilizer:
         self._previous_text = partial
         return HypothesisState(
             partial=partial,
-            stable=" ".join(self._stable_words),
+            stable=_join_units(self._stable_words),
             stable_advanced=len(self._stable_words) > previous_stable_len,
         )
 
