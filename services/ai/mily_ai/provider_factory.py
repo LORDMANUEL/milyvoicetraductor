@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
 
+from .bilingual_marian import CTranslate2BilingualMarianRouter
 from .cloud_providers import GoogleChirpV2Asr
 from .cpu_budget import CpuBudget
 from .marian_cascade import CTranslate2MarianCascadeTranslator
@@ -175,6 +176,43 @@ def _marian_cascade(
     )
 
 
+def _marian_bilingual(
+    component: dict[str, Any],
+    model_path: Path,
+    compute_profile: str,
+    cpu_budget: CpuBudget,
+) -> Translator:
+    stages = component.get("stages")
+    if not isinstance(stages, list) or len(stages) != 2:
+        raise ProviderConfigurationError(
+            "MARIAN_BILINGUAL_STAGES_REQUIRED",
+            "El router bilingüe BetaAlpha requiere ZH→EN y EN→ES.",
+        )
+    first, second = stages
+    if not isinstance(first, dict) or not isinstance(second, dict):
+        raise ProviderConfigurationError(
+            "MARIAN_BILINGUAL_STAGES_INVALID",
+            "Las etapas del router bilingüe no son válidas.",
+        )
+    if (
+        str(first.get("sourceLanguage", "")).lower() != "zh"
+        or str(first.get("targetLanguage", "")).lower() != "en"
+        or str(second.get("sourceLanguage", "")).lower() != "en"
+        or str(second.get("targetLanguage", "")).lower() != "es"
+    ):
+        raise ProviderConfigurationError(
+            "MARIAN_BILINGUAL_ROUTE_INVALID",
+            "El router bilingüe debe compartir las rutas ZH→EN y EN→ES.",
+        )
+    return CTranslate2BilingualMarianRouter(
+        model_path,
+        compute_profile,
+        cpu_budget,
+        target_language="es",
+        auto_tune_compute_type=bool(component.get("betaAlphaTuneComputeType", False)),
+    )
+
+
 def _qwen(
     _component: dict[str, Any],
     model_path: Path,
@@ -197,6 +235,7 @@ TRANSLATION_BUILDERS: dict[str, TranslationBuilder] = {
     "m2m100-ct2": _m2m100,
     "marian-ct2": _marian,
     "marian-cascade-ct2": _marian_cascade,
+    "marian-bilingual-router-ct2": _marian_bilingual,
     "qwen": _qwen,
     "nllb": _nllb,
 }
