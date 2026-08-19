@@ -35,9 +35,15 @@ def discover_runtime_inventory() -> RuntimeInventory:
     if _module_available("sherpa_onnx"):
         runtimes.add("sherpa-onnx")
 
-    whisper_cpp = os.environ.get("MILY_WHISPER_CPP", "").strip()
-    if (whisper_cpp and os.path.isfile(whisper_cpp)) or shutil.which("whisper-cli"):
+    # El CLI tradicional recarga el modelo por cada archivo y no es válido para
+    # el hot path realtime. Solo se anuncia whisper.cpp cuando existe el bridge
+    # persistente autorizado que conserva el modelo residente entre segmentos.
+    whisper_bridge = os.environ.get("MILY_WHISPER_CPP_BRIDGE", "").strip()
+    if whisper_bridge and os.path.isfile(whisper_bridge):
         runtimes.add("whisper-cpp")
+        details["whisperCppBridge"] = whisper_bridge
+    else:
+        details["whisperCppBridge"] = ""
 
     if _module_available("google.cloud.speech_v2") and os.environ.get(
         "GOOGLE_APPLICATION_CREDENTIALS"
