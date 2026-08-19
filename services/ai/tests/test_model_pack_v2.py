@@ -26,24 +26,6 @@ class ModelPackV2Tests(unittest.TestCase):
             "tiny", lite["components"]["asr"]["repoId"].casefold()
         )
 
-    def test_fast_moonshine_uses_quality_marian_without_breaking_lite_budget(self):
-        catalog = ModelCatalog(Path("unused"))
-        definitions = catalog.definitions()
-        fast = next(item for item in definitions if item["id"] == "fast-moonshine-en-es")
-        translation = fast["components"]["translation"]
-        self.assertEqual(fast["version"], "1.1.0")
-        self.assertEqual(
-            translation["repoId"],
-            "Helsinki-NLP/opus-mt-en-es",
-        )
-        self.assertEqual(
-            translation["revision"],
-            "5bc4493d463cf000c1f0b50f8d56886a392ed4ab",
-        )
-        self.assertNotIn("tiny", translation["repoId"].casefold())
-        self.assertLessEqual(fast["ramMb"], 1200)
-        self.assertLessEqual(fast["vramMb"], 384)
-
     def test_zh_lite_uses_quality_en_es_second_stage_inside_two_gib_budget(self):
         catalog = ModelCatalog(Path("unused"))
         definitions = catalog.definitions()

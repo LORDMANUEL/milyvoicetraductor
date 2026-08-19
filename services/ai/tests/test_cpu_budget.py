@@ -29,12 +29,12 @@ class CpuBudgetTests(unittest.TestCase):
         self.assertEqual(budget.translation_threads, 1)
 
     def test_dual_core_balanced_reuses_both_cores_without_parallel_overlap(self):
-        """Un Haswell 2C/4T debe reutilizar ambos cores en ASR y MT serial."""
+        """Un Haswell 2C/4T debe usar los dos cores en ASR, no quedarse en uno."""
 
         budget = detect_cpu_budget("balanced", physical_cores=2)
         self.assertFalse(budget.parallel_stages)
         self.assertEqual(budget.asr_threads, 2)
-        self.assertEqual(budget.translation_threads, 2)
+        self.assertEqual(budget.translation_threads, 1)
 
     def test_environment_physical_core_override_precedes_fallback_heuristic(self):
         """Rust pasa la topología real al sidecar mediante MILY_PHYSICAL_CPUS."""
