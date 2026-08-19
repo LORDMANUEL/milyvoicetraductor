@@ -99,6 +99,7 @@ from mily_ai.models import ModelCatalog
 from mily_ai.process_memory import process_tree_memory_snapshot_mb
 from mily_ai.provider_factory import build_translation_provider
 from mily_ai.providers import FasterWhisperAsr
+from mily_ai.translation_quality import analyze_translation_quality
 
 catalog = ModelCatalog(models_root)
 pack = catalog.active_pack()
@@ -152,8 +153,14 @@ phrases = [
     '麦克风已连接，声音很清楚。',
     '请明天早上发送技术报告。',
 ]
+semantic_requirements = {
+    phrases[0]: (('9', 'nueve'),),
+    phrases[1]: (('1038',), (' no ', 'nunca', 'sin cancelar', 'no cancele', 'no cancelar')),
+    phrases[5]: (('mañana',), ('informe', 'reporte')),
+}
 latencies = []
 outputs = []
+quality_reports = []
 for _ in range(4):
     for phrase in phrases:
         started = time.perf_counter()
@@ -161,6 +168,23 @@ for _ in range(4):
         latencies.append((time.perf_counter() - started) * 1000.0)
         if not translated.strip() or translated.strip() == phrase.strip():
             raise SystemExit(f'ZH_ES_TRANSLATION_INVALID: {translated!r}')
+
+        quality = analyze_translation_quality(translated)
+        quality_reports.append(quality.as_dict())
+        if not quality.passed:
+            raise SystemExit(
+                'ZH_ES_TRANSLATION_REPETITION: '
+                f'{quality.reason} ratio={quality.repeated_ngram_ratio} '
+                f'max={quality.max_ngram_occurrences} output={translated!r}'
+            )
+
+        folded = f' {translated.casefold()} '
+        for alternatives in semantic_requirements.get(phrase, ()):
+            if not any(value.casefold() in folded for value in alternatives):
+                raise SystemExit(
+                    f'ZH_ES_SEMANTIC_INVARIANT: source={phrase!r} '
+                    f'alternatives={alternatives!r} output={translated!r}'
+                )
         outputs.append(translated)
 
 summary = summarize_latencies(latencies)
@@ -168,23 +192,42 @@ memory_snapshot = process_tree_memory_snapshot_mb(os.getpid())
 engine_mb = float(memory_snapshot.peak_mb)
 product_reserve_mb = 320.0
 total_product_mb = engine_mb + product_reserve_mb
+max_repeat_ratio = max(
+    float(item['repeated_ngram_ratio']) for item in quality_reports
+)
+max_ngram_occurrences = max(
+    int(item['max_ngram_occurrences']) for item in quality_reports
+)
 report = {
-    'schemaVersion': 1,
+    'schemaVersion': 2,
     'productVersion': '2.0.1',
     'modelPack': f'{pack.id}@{pack.version}',
     'route': 'zh-es',
     'asrWarmupMs': round(asr_warmup_ms, 3),
     'mandarinSpeechFixtureExecuted': speech_executed,
     'recognizedPreview': recognized[:240],
-    'translation': {**summary, 'preview': outputs[-1][:240]},
+    'translation': {
+        **summary,
+        'preview': outputs[-1][:240],
+        'qualityChecks': len(quality_reports),
+        'maxRepeatedNgramRatio': round(max_repeat_ratio, 6),
+        'maxNgramOccurrences': max_ngram_occurrences,
+        'semanticInvariantsPassed': True,
+    },
     'engineWorkingSetMb': round(engine_mb, 3),
     'productReserveMb': product_reserve_mb,
     'totalProductWorkingSetMb': round(total_product_mb, 3),
     'declaredPackRamMb': definition['ramMb'],
-    'passed': total_product_mb <= 1536.0 and float(summary['p95Ms']) <= 1200.0,
+    'passed': (
+        total_product_mb <= 1536.0
+        and float(summary['p95Ms']) <= 1200.0
+        and max_repeat_ratio <= 0.25
+        and max_ngram_occurrences <= 2
+    ),
     'notes': [
         'La traducción ZH→ES usa una cascada local ZH→EN→ES hasta promover un estudiante directo.',
         'El ASR Whisper Tiny multilingüe siempre ejecuta warm-up mandarín real del modelo.',
+        'El gate rechaza repetición patológica y exige conservar hora, número 1038, negación y términos técnicos.',
         'mandarinSpeechFixtureExecuted solo es true cuando el runner Windows dispone de una voz SAPI zh-*.'
     ],
 }
@@ -193,11 +236,15 @@ report_path.write_text(json.dumps(report, ensure_ascii=False, indent=2), encodin
 print('ZH_ES_LITE_ASR_WARMUP_MS', report['asrWarmupMs'])
 print('ZH_ES_LITE_MT_P95_MS', summary['p95Ms'])
 print('ZH_ES_LITE_TOTAL_PRODUCT_MB', report['totalProductWorkingSetMb'])
+print('ZH_ES_LITE_MAX_REPEAT_RATIO', report['translation']['maxRepeatedNgramRatio'])
+print('ZH_ES_LITE_MAX_NGRAM_OCCURRENCES', report['translation']['maxNgramOccurrences'])
 print('ZH_ES_LITE_SPEECH_FIXTURE', speech_executed)
 if total_product_mb > 1536.0:
     raise SystemExit('ZH_ES_LITE_PRODUCT_MEMORY_LIMIT')
 if float(summary['p95Ms']) > 1200.0:
     raise SystemExit('ZH_ES_LITE_TRANSLATION_LATENCY_LIMIT')
+if not report['passed']:
+    raise SystemExit('ZH_ES_LITE_QUALITY_LIMIT')
 print('ZH_ES_LITE_GATE_OK')
 translator.unload()
 asr.unload()
@@ -205,7 +252,7 @@ asr.unload()
 
     $WaveArg = if ($SpeechFixture) { $MandarinWave } else { '' }
     & $Python $Probe $EngineApp $ModelsRoot $ReportPath $WaveArg
-    if ($LASTEXITCODE -ne 0) { throw 'ZH→ES Lite no pasó benchmark de memoria/traducción.' }
+    if ($LASTEXITCODE -ne 0) { throw 'ZH→ES Lite no pasó benchmark de memoria/traducción/calidad.' }
     if (-not (Test-Path $ReportPath -PathType Leaf)) { throw 'ZH→ES Lite no produjo reporte JSON.' }
 
     Write-Host "ZH→ES LITE OK: $ReportPath" -ForegroundColor Green
