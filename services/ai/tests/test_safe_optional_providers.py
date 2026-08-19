@@ -120,6 +120,22 @@ class SafeOptionalProviderTests(unittest.TestCase):
             self.assertEqual(first_stream.closed, 1)
             self.assertEqual(second_stream.audio, [0.4, 0.5])
 
+    def test_moonshine_resets_when_new_utterance_is_longer_than_previous(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            transcriber = FakeMoonshineTranscriber()
+            provider = MoonshineResultAsr(Path(tmp), "cpu")
+            provider._transcriber = transcriber
+
+            provider.transcribe([0.1, 0.2], "en")
+            provider.transcribe([0.9, 0.8, 0.7, 0.6], "en")
+
+            self.assertEqual(len(transcriber.streams), 2)
+            first_stream = transcriber.streams[0][1]
+            second_stream = transcriber.streams[1][1]
+            self.assertEqual(first_stream.stopped, 1)
+            self.assertEqual(first_stream.closed, 1)
+            self.assertEqual(second_stream.audio, [0.9, 0.8, 0.7, 0.6])
+
     def test_whisper_cpp_bridge_is_persistent_between_segments(self):
         with tempfile.TemporaryDirectory() as tmp:
             transport = FakeBridgeTransport()
