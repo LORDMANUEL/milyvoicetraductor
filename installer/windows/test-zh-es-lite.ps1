@@ -95,8 +95,8 @@ sys.path.insert(0, str(engine_app))
 
 from mily_ai.benchmarking import summarize_latencies
 from mily_ai.cpu_budget import detect_cpu_budget
-from mily_ai.engine_benchmark import _process_tree_working_set_mb
 from mily_ai.models import ModelCatalog
+from mily_ai.process_memory import _process_tree_private_working_set_mb
 from mily_ai.provider_factory import build_translation_provider
 from mily_ai.providers import FasterWhisperAsr
 
@@ -164,7 +164,7 @@ for _ in range(4):
         outputs.append(translated)
 
 summary = summarize_latencies(latencies)
-engine_mb = float(_process_tree_working_set_mb(os.getpid()))
+engine_mb = float(_process_tree_private_working_set_mb(os.getpid()))
 product_reserve_mb = 320.0
 total_product_mb = engine_mb + product_reserve_mb
 report = {
