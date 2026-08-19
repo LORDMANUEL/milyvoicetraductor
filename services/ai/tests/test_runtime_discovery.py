@@ -42,8 +42,9 @@ class RuntimeDiscoveryTests(unittest.TestCase):
         ):
             inventory = discover_runtime_inventory()
         self.assertIn("whisper-cpp", inventory.runtimes)
+        normalized = inventory.details["whisperCppBridge"].replace("\\", "/")
         self.assertTrue(
-            inventory.details["whisperCppBridge"].endswith(
+            normalized.endswith(
                 "MilyVoiceTraductor/bridge/milyvoice-bridge.exe"
             )
         )
