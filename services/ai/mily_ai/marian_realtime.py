@@ -30,7 +30,10 @@ class CTranslate2RealtimeMarianTranslator(_BaseMarianTranslator):
 
     def __init__(self, *args, auto_tune_compute_type: bool = False, **kwargs):
         super().__init__(*args, **kwargs)
-        self.auto_tune_compute_type = bool(auto_tune_compute_type)
+        self.auto_tune_compute_type = bool(
+            auto_tune_compute_type
+            or "betaalpha-" in str(self.model_path).replace("\\", "/").lower()
+        )
         self.selected_compute_type: str | None = None
         self.compute_tuning_cached = False
 
@@ -50,8 +53,6 @@ class CTranslate2RealtimeMarianTranslator(_BaseMarianTranslator):
                 "El runtime local no contiene CTranslate2/SentencePiece para OPUS-MT.",
             ) from exc
 
-        # Si Auto dispone de CUDA, conserva el router histórico. El tuner BetaAlpha
-        # solo compara kernels CPU y jamás debe desviar una GPU ya verificada.
         cuda_count = 0
         if self.compute_profile == "auto":
             try:
@@ -91,7 +92,6 @@ class CTranslate2RealtimeMarianTranslator(_BaseMarianTranslator):
             )
 
         def benchmark(translator, tokens) -> float:
-            # Primer pase prepara kernels/páginas; el segundo mide trabajo estable.
             translator.translate_batch(
                 [list(tokens)],
                 beam_size=1,
