@@ -12,7 +12,15 @@ const FALLBACK_MESSAGES: Record<string, string> = {
   MODEL_RUNTIME_ERROR: 'El motor local no está preparado correctamente. Usa Reparar instalación y vuelve a intentarlo.',
   MODEL_PERMISSION_ERROR: 'Windows bloqueó la escritura en la carpeta local de modelos. Revisa permisos y vuelve a intentarlo.',
   MODEL_CONVERSION_ERROR: 'El modelo se descargó, pero la optimización INT8 no pudo terminar. Pulsa Reintentar; si continúa, usa Reparar instalación.',
-  MODEL_LICENSE_BLOCKED: 'Este pack no está permitido para el perfil de uso seleccionado.'
+  MODEL_LICENSE_BLOCKED: 'Este pack no está permitido para el perfil de uso seleccionado.',
+  MODEL_EXTERNAL_UNSAFE: 'El pack externo contiene archivos, rutas o tamaños que MilyVoice no permite por seguridad.',
+  MODEL_EXTERNAL_MANIFEST: 'El manifiesto externo está incompleto o declara un motor, proveedor, licencia o presupuesto no permitido.',
+  MODEL_EXTERNAL_INVALID: 'El archivo externo no es un .mmpack válido o no contiene los componentes declarados.',
+  MODEL_EXTERNAL_SOURCE: 'Solo se permiten enlaces HTTPS de GitHub o Hugging Face que apunten a un archivo .mmpack.',
+  MODEL_EXTERNAL_TOO_LARGE: 'El repositorio externo supera el límite máximo permitido para una descarga de modelos.',
+  PROCESS_MEMORY_LIMIT: 'Este modelo superaría el máximo de 2 GB asignado a todo MilyVoice. Usa un perfil Lite o ejecuta Optimizar automáticamente.',
+  VRAM_LIMIT: 'Este modelo necesita más de los 384 MB de VRAM reservados por MilyVoice en una GPU de 512 MB.',
+  NO_COMPATIBLE_ENGINE: 'Ningún motor instalado pasó simultáneamente las pruebas de velocidad, estabilidad y memoria.'
 };
 
 /**

@@ -5,6 +5,7 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review]
 
 permissions:
   contents: read
@@ -51,7 +52,7 @@ jobs:
       - name: Unit and local server tests
         env:
           PYTHONPATH: services/ai
-        run: python -m unittest discover -s services/ai/tests -v
+        run: python scripts/run_ai_tests.py --timeout 120
       - name: Realtime stress and MegaBench contracts
         env:
           PYTHONPATH: services/ai
@@ -118,10 +119,19 @@ jobs:
       - name: Core Clippy
         if: success()
         run: cargo clippy --workspace --all-targets --exclude milyvoicetraductor-desktop -- -D warnings
+      - name: Upload Rust diagnostics
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: MilyVoiceTraductor-Rust-Diagnostics-${{ github.sha }}
+          path: rustfmt.log
+          retention-days: 14
+          if-no-files-found: ignore
 
   windows-smoke:
     name: Windows release smoke
-    runs-on: windows-latest
+    if: github.event_name == 'push' || github.event.action == 'ready_for_review'
+    runs-on: windows-2022
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
@@ -145,15 +155,10 @@ jobs:
         id: windows_ai
         shell: pwsh
         run: |
-          Push-Location services/ai
-          try {
-            $output = & python -m unittest discover -s tests -v 2>&1
-            $code = $LASTEXITCODE
-            $output | Tee-Object -FilePath ../../ai-windows.log
-            if ($code -ne 0) { exit $code }
-          } finally {
-            Pop-Location
-          }
+          $output = & python scripts/run_ai_tests.py --timeout 120 2>&1
+          $code = $LASTEXITCODE
+          $output | Tee-Object -FilePath ai-windows.log
+          if ($code -ne 0) { exit $code }
       - name: Offline bootstrap policy
         if: success()
         shell: pwsh
@@ -173,10 +178,26 @@ jobs:
         if: success()
         shell: pwsh
         run: .\installer\windows\test-installed-flow.ps1
-      - name: MegaBench real model EN/ZH to ES
+      - name: Engine Hub target-machine simulation
         if: success()
         shell: pwsh
-        run: .\installer\windows\test-realtime-model.ps1
+        run: .\installer\windows\test-engine-hub-target-machine.ps1
+      - name: Quality pack policy under 2 GiB
+        if: success()
+        shell: pwsh
+        run: .\installer\windows\test-quality-pack-policy.ps1
+      - name: Moonshine Lite real EN to ES benchmark
+        if: success()
+        shell: pwsh
+        run: .\installer\windows\test-moonshine-lite.ps1
+      - name: Whisper Tiny Lite real EN to ES benchmark
+        if: success()
+        shell: pwsh
+        run: .\installer\windows\test-whisper-tiny-lite.ps1
+      - name: Mandarin Lite real ZH to ES benchmark
+        if: success()
+        shell: pwsh
+        run: .\installer\windows\test-zh-es-lite.ps1
       - name: Rust tests
         if: success()
         run: cargo test --workspace
@@ -208,16 +229,57 @@ jobs:
           $installer = Get-ChildItem "target/release/bundle/nsis/*-setup.exe" | Select-Object -First 1
           if (-not $installer) { throw "No se encontró el instalador NSIS generado." }
           $extension = Get-Item "dist/MilyVoiceTraductor-Chromium-Extension.zip"
-          $megaBench = Get-Item "dist/performance/MilyVoiceTraductor-2.0.1-MegaBench.json"
+          $targetSimulation = Get-Item "dist/performance/MilyVoiceTraductor-2.0.1-TargetMachineSimulation.json"
+          $moonshineBench = Get-Item "dist/performance/MilyVoiceTraductor-2.0.1-MoonshineLiteBench.json"
+          $whisperTinyBench = Get-Item "dist/performance/MilyVoiceTraductor-2.0.1-WhisperTinyLiteBench.json"
+          $zhEsBench = Get-Item "dist/performance/MilyVoiceTraductor-2.0.1-ZhEsLiteBench.json"
           Copy-Item $installer.FullName "dist/release/$($installer.Name)"
           Copy-Item $extension.FullName "dist/release/$($extension.Name)"
-          Copy-Item $megaBench.FullName "dist/release/$($megaBench.Name)"
+          Copy-Item $targetSimulation.FullName "dist/release/$($targetSimulation.Name)"
+          Copy-Item $moonshineBench.FullName "dist/release/$($moonshineBench.Name)"
+          Copy-Item $whisperTinyBench.FullName "dist/release/$($whisperTinyBench.Name)"
+          Copy-Item $zhEsBench.FullName "dist/release/$($zhEsBench.Name)"
           $lines = foreach ($file in Get-ChildItem "dist/release" -File) {
             $hash = (Get-FileHash $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
             "$hash *$($file.Name)"
           }
           $lines | Set-Content -Encoding ascii "dist/release/SHA256SUMS.txt"
-      - name: Upload verified Windows installer, extension and MegaBench
+      - name: Collect sanitized diagnostics
+        if: always()
+        shell: pwsh
+        run: |
+          $diagnostics = "dist/diagnostics"
+          New-Item -ItemType Directory -Force $diagnostics | Out-Null
+          if (Test-Path "ai-windows.log") { Copy-Item "ai-windows.log" "$diagnostics/ai-windows.log" -Force }
+          if (Test-Path "dist/performance") { Copy-Item "dist/performance" "$diagnostics/performance" -Recurse -Force }
+          if (Test-Path "dist/runtime/runtime-manifest.json") { Copy-Item "dist/runtime/runtime-manifest.json" "$diagnostics/runtime-manifest.json" -Force }
+          $appRoot = Join-Path $env:LOCALAPPDATA "MilyVoiceTraductor"
+          $status = Join-Path $appRoot "bootstrap/status.json"
+          if (Test-Path $status) { Copy-Item $status "$diagnostics/bootstrap-status.json" -Force }
+          $logs = Join-Path $appRoot "logs"
+          if (Test-Path $logs) {
+            Get-ChildItem $logs -File -ErrorAction SilentlyContinue |
+              Where-Object { $_.Name -match '^(milyvoice|ai-engine|repair-history)' } |
+              ForEach-Object { Copy-Item $_.FullName (Join-Path $diagnostics $_.Name) -Force }
+          }
+          [ordered]@{
+            schemaVersion = 1
+            sha = $env:GITHUB_SHA
+            runId = $env:GITHUB_RUN_ID
+            runAttempt = $env:GITHUB_RUN_ATTEMPT
+            workflow = $env:GITHUB_WORKFLOW
+            job = $env:GITHUB_JOB
+          } | ConvertTo-Json | Set-Content "$diagnostics/run-context.json" -Encoding UTF8
+      - name: Upload diagnostic evidence even on failure
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: MilyVoiceTraductor-Diagnostics-${{ github.sha }}
+          path: dist/diagnostics/*
+          retention-days: 14
+          compression-level: 6
+          if-no-files-found: warn
+      - name: Upload verified Windows installer, extension and Lite benchmark evidence
         if: success()
         uses: actions/upload-artifact@v6
         with:

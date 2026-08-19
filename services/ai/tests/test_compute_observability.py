@@ -15,10 +15,19 @@ class _FakeProvider:
 
 
 class ComputeObservabilityTests(unittest.TestCase):
-    def test_pipeline_reports_actual_asr_and_translation_devices(self):
+    @staticmethod
+    def _pipeline(asr, translator, resource_mode: str = "healthy"):
         pipeline = RealtimePipeline.__new__(RealtimePipeline)
-        pipeline.asr = _FakeProvider("cpu", True, "RuntimeError")
-        pipeline._translator_provider = _FakeProvider("cuda", False)
+        pipeline.asr = asr
+        pipeline._translator_provider = translator
+        pipeline._resource_mode = resource_mode
+        return pipeline
+
+    def test_pipeline_reports_actual_asr_and_translation_devices(self):
+        pipeline = self._pipeline(
+            _FakeProvider("cpu", True, "RuntimeError"),
+            _FakeProvider("cuda", False),
+        )
 
         status = pipeline.compute_status
 
@@ -29,17 +38,17 @@ class ComputeObservabilityTests(unittest.TestCase):
         self.assertFalse(status["translationFallbackUsed"])
         self.assertEqual(status["asrFallbackReason"], "RuntimeError")
         self.assertEqual(status["translationFallbackReason"], "")
+        self.assertEqual(status["resourceMode"], "healthy")
 
     def test_unknown_provider_is_reported_without_claiming_gpu(self):
-        pipeline = RealtimePipeline.__new__(RealtimePipeline)
-        pipeline.asr = object()
-        pipeline._translator_provider = object()
+        pipeline = self._pipeline(object(), object(), resource_mode="rescue")
 
         status = pipeline.compute_status
 
         self.assertEqual(status["asrDevice"], "unknown")
         self.assertEqual(status["translationDevice"], "unknown")
         self.assertFalse(status["fallbackUsed"])
+        self.assertEqual(status["resourceMode"], "rescue")
 
 
 if __name__ == "__main__":

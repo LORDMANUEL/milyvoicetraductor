@@ -2,12 +2,16 @@
 
 mod bootstrap;
 mod commands;
+mod diagnostics;
 mod local_session;
+mod model_commands;
 mod repair;
 
 use bootstrap::AppState;
 use commands::*;
+use diagnostics::*;
 use local_session::*;
+use model_commands::*;
 
 pub fn run() {
     let state = match AppState::initialize() {
@@ -18,8 +22,6 @@ pub fn run() {
         }
     };
 
-    // El autoarranque es opt-in y nunca impide abrir la interfaz si el motor
-    // no está instalado o tiene un problema recuperable.
     if let Ok(config) = state.config.load_or_default()
         && config.auto_start_engine
     {
@@ -31,6 +33,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             get_app_status,
             get_onboarding_status,
+            get_repair_history,
             repair_installation,
             get_system_info,
             get_hardware_advisor,
@@ -44,6 +47,10 @@ pub fn run() {
             get_local_engine_session,
             get_model_catalog,
             install_model,
+            activate_model,
+            optimize_models,
+            import_model_pack,
+            import_model_pack_url,
             verify_model,
             remove_model,
             rollback_model,

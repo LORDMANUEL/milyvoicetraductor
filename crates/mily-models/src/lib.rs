@@ -1,18 +1,25 @@
 //! Inventario y operaciones administrativas de packs de IA.
 //!
-//! Este crate es el límite entre el Desktop Rust y la CLI del motor local.
-//! Conserva códigos de error públicos estructurados sin exponer stderr crudo a la UI.
+//! Este crate separa descarga, activación, importación y selección automática.
+//! Ningún stderr crudo ni ruta privada llega a la UI.
 
 use mily_config::AppPaths;
 use mily_core::{ComponentState, ModelPackInfo};
 use mily_engine::LaunchSpec;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::fs;
+use std::path::Path;
 use std::process::Stdio;
 use thiserror::Error;
 
 const MODEL_CATALOG: &str = include_str!("../../../resources/model-packs.json");
 const FALLBACK_MODEL_MESSAGE: &str = "La operación sobre modelos no terminó correctamente.";
+const PROCESS_LIMIT_MB: u64 = 2048;
+const VRAM_LIMIT_MB: u64 = 384;
+const DESKTOP_RESERVE_MB: u64 = 256;
+const BRIDGE_RESERVE_MB: u64 = 64;
+const PRODUCT_RESERVE_MB: u64 = DESKTOP_RESERVE_MB + BRIDGE_RESERVE_MB;
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -20,8 +27,8 @@ struct Catalog {
     packs: Vec<CatalogPack>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
 struct CatalogPack {
     id: String,
     version: String,
@@ -29,6 +36,89 @@ struct CatalogPack {
     recommended_ram_gb: u64,
     commercial_use: bool,
     license_note: String,
+    tier: String,
+    routes: Vec<String>,
+    ram_mb: u64,
+    vram_mb: u64,
+    shared_gpu_mb: u64,
+    engine: String,
+    supported_backends: Vec<String>,
+    external_allowed: bool,
+}
+
+impl CatalogPack {
+    fn estimated_total_product_mb(&self) -> u64 {
+        self.ram_mb
+            .saturating_add(self.shared_gpu_mb)
+            .saturating_add(PRODUCT_RESERVE_MB)
+    }
+
+    fn resource_allowed(&self) -> bool {
+        self.estimated_total_product_mb() <= PROCESS_LIMIT_MB && self.vram_mb <= VRAM_LIMIT_MB
+    }
+
+    fn resource_reason(&self) -> String {
+        if self.estimated_total_product_mb() > PROCESS_LIMIT_MB {
+            "PROCESS_MEMORY_LIMIT".into()
+        } else if self.vram_mb > VRAM_LIMIT_MB {
+            "VRAM_LIMIT".into()
+        } else {
+            "OK".into()
+        }
+    }
+
+    fn into_info(self, installed: bool, active: bool) -> ModelPackInfo {
+        let resource_allowed = self.resource_allowed();
+        let resource_reason = self.resource_reason();
+        let estimated_total_product_mb = self.estimated_total_product_mb();
+        ModelPackInfo {
+            id: self.id,
+            version: self.version,
+            title: self.title,
+            installed,
+            active,
+            recommended_ram_gb: self.recommended_ram_gb,
+            commercial_use: self.commercial_use,
+            license_note: self.license_note,
+            tier: self.tier,
+            routes: self.routes,
+            ram_mb: self.ram_mb,
+            vram_mb: self.vram_mb,
+            shared_gpu_mb: self.shared_gpu_mb,
+            product_reserve_mb: PRODUCT_RESERVE_MB,
+            estimated_total_product_mb,
+            engine: self.engine,
+            supported_backends: self.supported_backends,
+            resource_allowed,
+            resource_reason,
+            external_allowed: self.external_allowed,
+        }
+    }
+
+    fn from_external_manifest(
+        path: &Path,
+        expected_id: &str,
+        expected_version: &str,
+    ) -> Option<Self> {
+        let text = fs::read_to_string(path).ok()?;
+        let mut pack = serde_json::from_str::<Self>(&text).ok()?;
+        if pack.id != expected_id || pack.version != expected_version {
+            return None;
+        }
+        if pack.title.trim().is_empty()
+            || pack.tier.trim().is_empty()
+            || pack.routes.is_empty()
+            || pack.engine.trim().is_empty()
+            || pack.ram_mb == 0
+            || !pack.external_allowed
+        {
+            return None;
+        }
+        if pack.supported_backends.is_empty() {
+            pack.supported_backends.push("cpu".into());
+        }
+        Some(pack)
+    }
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -36,6 +126,25 @@ struct ModelCliErrorPayload {
     ok: bool,
     code: String,
     message: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct ModelCliPackPayload {
+    ok: bool,
+    id: String,
+    version: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AutoSelectionResult {
+    pub selected: String,
+    pub backend: String,
+    pub score: f64,
+    #[serde(default)]
+    pub rejected: serde_json::Value,
+    #[serde(default)]
+    pub benchmarks: serde_json::Value,
 }
 
 fn parse_model_cli_error(bytes: &[u8]) -> Option<ModelError> {
@@ -50,13 +159,20 @@ fn parse_model_cli_error(bytes: &[u8]) -> Option<ModelError> {
         if payload.ok || !valid_public_model_code(&payload.code) {
             continue;
         }
-        let message = sanitize_public_message(&payload.message);
         return Some(ModelError::Structured {
             code: payload.code,
-            message,
+            message: sanitize_public_message(&payload.message),
         });
     }
     None
+}
+
+fn parse_model_cli_pack(bytes: &[u8]) -> Option<ModelCliPackPayload> {
+    let payload = serde_json::from_slice::<ModelCliPackPayload>(bytes).ok()?;
+    if !payload.ok || payload.id.trim().is_empty() || payload.version.trim().is_empty() {
+        return None;
+    }
+    Some(payload)
 }
 
 fn valid_public_model_code(code: &str) -> bool {
@@ -71,6 +187,15 @@ fn valid_public_model_code(code: &str) -> bool {
             | "MODEL_PERMISSION_ERROR"
             | "MODEL_CONVERSION_ERROR"
             | "MODEL_LICENSE_BLOCKED"
+            | "MODEL_STATE_RESTORE"
+            | "MODEL_EXTERNAL_UNSAFE"
+            | "MODEL_EXTERNAL_MANIFEST"
+            | "MODEL_EXTERNAL_INVALID"
+            | "MODEL_EXTERNAL_SOURCE"
+            | "MODEL_EXTERNAL_TOO_LARGE"
+            | "PROCESS_MEMORY_LIMIT"
+            | "VRAM_LIMIT"
+            | "NO_COMPATIBLE_ENGINE"
     )
 }
 
@@ -99,6 +224,86 @@ impl ModelManagerService {
         Self { paths }
     }
 
+    fn definitions(&self) -> Vec<CatalogPack> {
+        serde_json::from_str::<Catalog>(MODEL_CATALOG)
+            .map(|catalog| catalog.packs)
+            .unwrap_or_default()
+    }
+
+    fn active_ref(&self) -> Option<String> {
+        fs::read_to_string(self.paths.models_dir.join("current.json"))
+            .ok()
+            .and_then(|text| serde_json::from_str::<serde_json::Value>(&text).ok())
+            .and_then(|value| {
+                value
+                    .get("active")
+                    .and_then(|item| item.as_str())
+                    .map(str::to_owned)
+            })
+    }
+
+    fn installed_entries(&self) -> Vec<(CatalogPack, bool)> {
+        let active = self.active_ref();
+        let definitions: HashMap<String, CatalogPack> = self
+            .definitions()
+            .into_iter()
+            .map(|item| (item.id.clone(), item))
+            .collect();
+        let packs_root = self.paths.models_dir.join("packs");
+        let Ok(pack_ids) = fs::read_dir(packs_root) else {
+            return Vec::new();
+        };
+        let mut output = Vec::new();
+        for pack_id_entry in pack_ids.flatten() {
+            let Ok(kind) = pack_id_entry.file_type() else {
+                continue;
+            };
+            if !kind.is_dir() {
+                continue;
+            }
+            let pack_id = pack_id_entry.file_name().to_string_lossy().into_owned();
+            let Ok(versions) = fs::read_dir(pack_id_entry.path()) else {
+                continue;
+            };
+            for version_entry in versions.flatten() {
+                let Ok(version_kind) = version_entry.file_type() else {
+                    continue;
+                };
+                if !version_kind.is_dir() {
+                    continue;
+                }
+                let version = version_entry.file_name().to_string_lossy().into_owned();
+                if !version_entry.path().join("pack.json").is_file() {
+                    continue;
+                }
+                let definition = definitions.get(&pack_id).cloned().or_else(|| {
+                    CatalogPack::from_external_manifest(
+                        &version_entry.path().join("manifest.json"),
+                        &pack_id,
+                        &version,
+                    )
+                });
+                let Some(definition) = definition else {
+                    continue;
+                };
+                let is_active = active.as_deref() == Some(&format!("{pack_id}@{version}"));
+                output.push((definition, is_active));
+            }
+        }
+        output.sort_by(|left, right| {
+            (&left.0.id, &left.0.version).cmp(&(&right.0.id, &right.0.version))
+        });
+        output
+    }
+
+    fn pack_from_cli_bytes(&self, bytes: &[u8]) -> Result<ModelPackInfo, ModelError> {
+        let payload = parse_model_cli_pack(bytes).ok_or(ModelError::InstallFailed)?;
+        self.installed()
+            .into_iter()
+            .find(|pack| pack.id == payload.id && pack.version == payload.version)
+            .ok_or(ModelError::InstallFailed)
+    }
+
     pub fn status(&self) -> ComponentState {
         if self.installed().iter().any(|pack| pack.active) {
             ComponentState::Ready
@@ -112,77 +317,79 @@ impl ModelManagerService {
     }
 
     pub fn catalog(&self) -> Vec<ModelPackInfo> {
-        let parsed: Catalog =
-            serde_json::from_str(MODEL_CATALOG).unwrap_or(Catalog { packs: vec![] });
         let installed = self.installed();
-        parsed
-            .packs
+        let mut output: Vec<ModelPackInfo> = self
+            .definitions()
             .into_iter()
             .map(|definition| {
-                let match_installed = installed.iter().find(|item| item.id == definition.id);
-                ModelPackInfo {
-                    id: definition.id,
-                    version: definition.version,
-                    title: definition.title,
-                    installed: match_installed.is_some(),
-                    active: match_installed.map(|item| item.active).unwrap_or(false),
-                    recommended_ram_gb: definition.recommended_ram_gb,
-                    commercial_use: definition.commercial_use,
-                    license_note: definition.license_note,
-                }
+                let local = installed
+                    .iter()
+                    .find(|item| item.id == definition.id && item.version == definition.version);
+                let is_installed = local.is_some();
+                let active = local.map(|item| item.active).unwrap_or(false);
+                definition.into_info(is_installed, active)
             })
-            .collect()
-    }
-
-    pub fn installed(&self) -> Vec<ModelPackInfo> {
-        let state = fs::read_to_string(self.paths.models_dir.join("current.json"))
-            .ok()
-            .and_then(|text| serde_json::from_str::<serde_json::Value>(&text).ok())
-            .and_then(|value| {
-                value
-                    .get("active")
-                    .and_then(|item| item.as_str())
-                    .map(str::to_owned)
-            });
-        let parsed: Catalog =
-            serde_json::from_str(MODEL_CATALOG).unwrap_or(Catalog { packs: vec![] });
-        let mut output = Vec::new();
-        for definition in parsed.packs {
-            let metadata = self
-                .paths
-                .models_dir
-                .join("packs")
-                .join(&definition.id)
-                .join(&definition.version)
-                .join("pack.json");
-            if !metadata.is_file() {
-                continue;
+            .collect();
+        for pack in installed {
+            if !output
+                .iter()
+                .any(|item| item.id == pack.id && item.version == pack.version)
+            {
+                output.push(pack);
             }
-            output.push(ModelPackInfo {
-                active: state.as_deref()
-                    == Some(&format!("{}@{}", definition.id, definition.version)),
-                installed: true,
-                id: definition.id,
-                version: definition.version,
-                title: definition.title,
-                recommended_ram_gb: definition.recommended_ram_gb,
-                commercial_use: definition.commercial_use,
-                license_note: definition.license_note,
-            });
         }
+        output.sort_by(|left, right| (&left.id, &left.version).cmp(&(&right.id, &right.version)));
         output
     }
 
+    pub fn installed(&self) -> Vec<ModelPackInfo> {
+        self.installed_entries()
+            .into_iter()
+            .map(|(definition, active)| definition.into_info(true, active))
+            .collect()
+    }
+
     pub fn install(&self, pack_id: &str) -> Result<ModelPackInfo, ModelError> {
-        self.run_engine_cli(["install", pack_id])?;
+        self.run_engine_cli(&["install".into(), pack_id.into(), "--download-only".into()])?;
         self.catalog()
             .into_iter()
             .find(|pack| pack.id == pack_id && pack.installed)
             .ok_or(ModelError::InstallFailed)
     }
 
+    pub fn activate(&self, pack_id: &str, version: &str) -> Result<ModelPackInfo, ModelError> {
+        self.run_engine_cli(&["activate".into(), pack_id.into(), version.into()])?;
+        self.catalog()
+            .into_iter()
+            .find(|pack| pack.id == pack_id && pack.version == version && pack.active)
+            .ok_or(ModelError::InstallFailed)
+    }
+
+    pub fn import_pack(&self, path: &Path) -> Result<ModelPackInfo, ModelError> {
+        let bytes = self.run_engine_cli(&["import".into(), path.to_string_lossy().into_owned()])?;
+        self.pack_from_cli_bytes(&bytes)
+    }
+
+    pub fn import_pack_url(&self, url: &str) -> Result<ModelPackInfo, ModelError> {
+        let bytes = self.run_engine_cli(&["import-url".into(), url.into()])?;
+        self.pack_from_cli_bytes(&bytes)
+    }
+
+    pub fn auto_select(
+        &self,
+        route: &str,
+        force_benchmark: bool,
+    ) -> Result<AutoSelectionResult, ModelError> {
+        let mut args = vec!["auto-select".into(), "--route".into(), route.into()];
+        if force_benchmark {
+            args.push("--force-benchmark".into());
+        }
+        let bytes = self.run_engine_cli(&args)?;
+        serde_json::from_slice(&bytes).map_err(|_| ModelError::InstallFailed)
+    }
+
     pub fn rollback(&self) -> Result<ModelPackInfo, ModelError> {
-        self.run_engine_cli(["rollback"])?;
+        self.run_engine_cli(&["rollback".into()])?;
         self.installed()
             .into_iter()
             .find(|pack| pack.active)
@@ -190,18 +397,19 @@ impl ModelManagerService {
     }
 
     pub fn verify(&self, pack_id: &str, version: &str) -> Result<bool, ModelError> {
-        match self.run_engine_cli(["verify", pack_id, version]) {
-            Ok(()) => Ok(true),
+        match self.run_engine_cli(&["verify".into(), pack_id.into(), version.into()]) {
+            Ok(_) => Ok(true),
             Err(ModelError::InstallFailed) => Ok(false),
             Err(error) => Err(error),
         }
     }
 
     pub fn remove(&self, pack_id: &str, version: &str) -> Result<(), ModelError> {
-        self.run_engine_cli(["remove", pack_id, version])
+        self.run_engine_cli(&["remove".into(), pack_id.into(), version.into()])?;
+        Ok(())
     }
 
-    fn run_engine_cli<const N: usize>(&self, args: [&str; N]) -> Result<(), ModelError> {
+    fn run_engine_cli(&self, args: &[String]) -> Result<Vec<u8>, ModelError> {
         let spec = LaunchSpec::discover(&self.paths).ok_or(ModelError::EngineMissing)?;
         let mut command = spec.command();
         command
@@ -226,7 +434,7 @@ impl ModelManagerService {
 
         let output = command.output()?;
         if output.status.success() {
-            return Ok(());
+            return Ok(output.stdout);
         }
         if let Some(error) =
             parse_model_cli_error(&output.stderr).or_else(|| parse_model_cli_error(&output.stdout))
@@ -274,11 +482,35 @@ mod tests {
     use super::*;
 
     #[test]
-    fn embedded_catalog_contains_supported_profiles() {
+    fn embedded_catalog_contains_lite_and_quality_profiles() {
         let parsed: Catalog = serde_json::from_str(MODEL_CATALOG).unwrap();
-        assert!(parsed.packs.iter().any(|pack| pack.id == "realtime-m2m100"));
-        assert!(parsed.packs.iter().any(|pack| pack.id == "lite-nllb"));
-        assert!(parsed.packs.iter().any(|pack| pack.id == "business-qwen"));
+        let lite = parsed
+            .packs
+            .iter()
+            .find(|pack| pack.id == "lite-en-es")
+            .expect("lite profile");
+        assert!(lite.resource_allowed());
+        assert_eq!(
+            lite.estimated_total_product_mb(),
+            lite.ram_mb + PRODUCT_RESERVE_MB
+        );
+        let quality = parsed
+            .packs
+            .iter()
+            .find(|pack| pack.id == "realtime-m2m100")
+            .expect("quality profile");
+        assert!(!quality.resource_allowed());
+    }
+
+    #[test]
+    fn product_reserve_rejects_model_that_only_fits_in_isolation() {
+        let pack = CatalogPack {
+            ram_mb: 1800,
+            ..CatalogPack::default()
+        };
+        assert_eq!(pack.estimated_total_product_mb(), 2120);
+        assert!(!pack.resource_allowed());
+        assert_eq!(pack.resource_reason(), "PROCESS_MEMORY_LIMIT");
     }
 
     #[test]
@@ -293,13 +525,31 @@ mod tests {
     }
 
     #[test]
-    fn conversion_error_is_safe_for_ui() {
+    fn import_payload_is_not_required_to_be_active() {
+        let payload =
+            parse_model_cli_pack(br#"{"ok":true,"id":"partner-fast-en-es","version":"1.0.0"}"#)
+                .expect("pack payload");
+        assert_eq!(payload.id, "partner-fast-en-es");
+        assert_eq!(payload.version, "1.0.0");
+    }
+
+    #[test]
+    fn external_source_error_is_safe_for_ui() {
         let error = parse_model_cli_error(
-            r#"{"ok":false,"code":"MODEL_CONVERSION_ERROR","message":"No se pudo optimizar el modelo para este equipo."}"#
+            br#"{"ok":false,"code":"MODEL_EXTERNAL_SOURCE","message":"URL externa no permitida."}"#,
+        )
+        .expect("structured source error");
+        assert_eq!(error.public_code(), "MODEL_EXTERNAL_SOURCE");
+    }
+
+    #[test]
+    fn memory_limit_is_safe_for_ui() {
+        let error = parse_model_cli_error(
+            r#"{"ok":false,"code":"PROCESS_MEMORY_LIMIT","message":"El modelo no cabe."}"#
                 .as_bytes(),
         )
         .expect("structured error");
-        assert_eq!(error.public_code(), "MODEL_CONVERSION_ERROR");
+        assert_eq!(error.public_code(), "PROCESS_MEMORY_LIMIT");
     }
 
     #[test]

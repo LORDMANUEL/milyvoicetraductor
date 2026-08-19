@@ -12,6 +12,40 @@ from .compute_router import BackendLoadError, load_backend_with_fallback
 from .cpu_budget import CpuBudget, detect_cpu_budget
 
 
+def _release_ctranslate2_model(value) -> None:
+    """Libera pesos nativos de CTranslate2 antes de soltar referencias Python."""
+
+    if value is None:
+        return
+    candidates = (value, getattr(value, "model", None))
+    seen: set[int] = set()
+    for candidate in candidates:
+        if candidate is None or id(candidate) in seen:
+            continue
+        seen.add(id(candidate))
+        unload = getattr(candidate, "unload_model", None)
+        if not callable(unload):
+            continue
+        try:
+            unload(to_cpu=False)
+        except TypeError:
+            unload()
+        except Exception:
+            # La referencia se elimina igualmente; no se debe bloquear el cierre.
+            pass
+
+
+def _release_torch_cuda_cache(device: str) -> None:
+    if device != "cuda":
+        return
+    try:
+        import torch
+
+        torch.cuda.empty_cache()
+    except (ImportError, RuntimeError, AttributeError):
+        pass
+
+
 @dataclass(frozen=True, slots=True)
 class AsrWord:
     start: float
@@ -70,6 +104,12 @@ class CachedTranslator(Translator):
         while len(self._cache) > self.max_entries:
             self._cache.popitem(last=False)
         return value
+
+    def unload(self) -> None:
+        self._cache.clear()
+        unload = getattr(self.inner, "unload", None)
+        if callable(unload):
+            unload()
 
 
 class FasterWhisperAsr(AsrProvider):
@@ -213,6 +253,15 @@ class FasterWhisperAsr(AsrProvider):
             )
         return output
 
+    def unload(self) -> None:
+        _release_ctranslate2_model(self._model)
+        self._model = None
+        self._locked_language = None
+        self._warmed = False
+        self.selected_device = None
+        self.fallback_used = False
+        self.fallback_reason = ""
+
 
 class M2M100CTranslate2Translator(Translator):
     """M2M100 CTranslate2 INT8; CUDA se usa solo si carga realmente."""
@@ -308,6 +357,15 @@ class M2M100CTranslate2Translator(Translator):
         token_ids = self._tokenizer.convert_tokens_to_ids(target)
         return self._tokenizer.decode(token_ids, skip_special_tokens=True).strip()
 
+    def unload(self) -> None:
+        _release_ctranslate2_model(self._translator)
+        self._translator = None
+        self._tokenizer = None
+        self._warmed = False
+        self.selected_device = None
+        self.fallback_used = False
+        self.fallback_reason = ""
+
 
 class NllbTranslator(Translator):
     """NLLB local. Pack marcado como no comercial por la licencia del modelo."""
@@ -367,6 +425,13 @@ class NllbTranslator(Translator):
         return self._tokenizer.batch_decode(
             generated, skip_special_tokens=True
         )[0].strip()
+
+    def unload(self) -> None:
+        device = self._device
+        self._model = None
+        self._tokenizer = None
+        self._device = "cpu"
+        _release_torch_cuda_cache(device)
 
 
 class QwenTranslator(Translator):
@@ -440,3 +505,10 @@ class QwenTranslator(Translator):
             )
         new_tokens = output[0][inputs["input_ids"].shape[1] :]
         return self._tokenizer.decode(new_tokens, skip_special_tokens=True).strip()
+
+    def unload(self) -> None:
+        device = self._device
+        self._model = None
+        self._tokenizer = None
+        self._device = "cpu"
+        _release_torch_cuda_cache(device)

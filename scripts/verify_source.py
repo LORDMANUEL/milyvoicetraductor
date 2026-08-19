@@ -38,8 +38,45 @@ if catalog_a != catalog_b:
 commit_sha = re.compile(r"^[0-9a-f]{40}$")
 for pack in catalog_a.get("packs", []):
     for component_name, component in pack.get("components", {}).items():
-        if not commit_sha.fullmatch(str(component.get("revision", ""))):
-            fail(f"Modelo sin revisión SHA fijada: {pack.get('id')}/{component_name}")
+        repo_id = str(component.get("repoId", "")).strip()
+        provider = str(component.get("provider", "")).strip()
+        if repo_id:
+            if not commit_sha.fullmatch(str(component.get("revision", ""))):
+                fail(f"Modelo sin revisión SHA fijada: {pack.get('id')}/{component_name}")
+            continue
+        if provider == "moonshine":
+            if component.get("runtimeVersion") != "0.1.0":
+                fail(f"Moonshine sin runtime fijado: {pack.get('id')}/{component_name}")
+            if component.get("language") != "en" or component.get("modelArch") != 2:
+                fail(f"Moonshine sin arquitectura/lenguaje fijados: {pack.get('id')}/{component_name}")
+            continue
+        if provider == "marian-cascade-ct2":
+            stages = component.get("stages")
+            if not isinstance(stages, list) or len(stages) != 2:
+                fail(f"Cascada Marian inválida: {pack.get('id')}/{component_name}")
+                continue
+            previous_target = None
+            for index, stage in enumerate(stages, start=1):
+                label = f"{pack.get('id')}/{component_name}/stage-{index}"
+                if not isinstance(stage, dict):
+                    fail(f"Etapa Marian inválida: {label}")
+                    continue
+                if str(stage.get("provider", "")).strip() != "marian-ct2":
+                    fail(f"Proveedor de etapa Marian inválido: {label}")
+                stage_repo = str(stage.get("repoId", "")).strip()
+                if not stage_repo:
+                    fail(f"Etapa Marian sin repoId: {label}")
+                if not commit_sha.fullmatch(str(stage.get("revision", ""))):
+                    fail(f"Etapa Marian sin revisión SHA fijada: {label}")
+                source = str(stage.get("sourceLanguage", "")).strip().lower()
+                target = str(stage.get("targetLanguage", "")).strip().lower()
+                if not source or not target:
+                    fail(f"Etapa Marian sin dirección explícita: {label}")
+                if previous_target is not None and source != previous_target:
+                    fail(f"Cascada Marian discontinua: {label}")
+                previous_target = target
+            continue
+        fail(f"Componente sin procedencia reproducible: {pack.get('id')}/{component_name}")
 
 version = (ROOT / "VERSION").read_text(encoding="utf-8").strip()
 package_version = json.loads((ROOT / "package.json").read_text(encoding="utf-8")).get("version")
@@ -49,8 +86,6 @@ tauri_version = tauri_config.get("version")
 if package_version != version or tauri_version != version:
     fail(f"Versiones divergentes: VERSION={version}, package={package_version}, tauri={tauri_version}")
 
-# Los recursos generados viven solo en la configuración Windows para que Linux
-# no dependa de un runtime/bridge que se fabrica durante el job Windows.
 resources = windows_config.get("bundle", {}).get("resources", {})
 expected_resources = {
     "../../../services/ai/": "bootstrap/ai/",
@@ -165,7 +200,7 @@ for path in ROOT.rglob("*"):
     if path.is_file() and path.stat().st_size > 25 * 1024 * 1024:
         fail(f"Archivo >25MB no permitido en fuente: {path.relative_to(ROOT)}")
 
-run("AI unit tests", [sys.executable, "-m", "unittest", "discover", "-s", "tests", "-p", "test_*.py"], ROOT / "services/ai")
+run("AI unit tests", [sys.executable, "scripts/run_ai_tests.py", "--timeout", "120"])
 run("Extension guard", [sys.executable, "scripts/test_extension.py"])
 run("Site smoke", [sys.executable, "scripts/test_site.py"])
 run("Privacy scan", [sys.executable, "scripts/privacy_scan.py", "."])

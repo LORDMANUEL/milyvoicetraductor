@@ -7,15 +7,24 @@ import secrets
 import time
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from .audio import decode_pcm16_base64, decode_pcm16_bytes
 from .event_payloads import pipeline_event_fields
 from .logging_safe import build_logger, close_logger
+from .model_advisor import ModelAdvisor
+from .model_operations import download_pack
 from .models import HuggingFacePackInstaller, ModelCatalog, ModelOperationError
 from .pipeline import RealtimePipeline
 from .protocol import ClientMessage, ProtocolError, event
-from .queueing import enqueue_translation, serial_translation_action
+from .queueing import (
+    CoalescingTranslationQueue,
+    enqueue_translation,
+    serial_translation_action,
+)
+from .resource_governor import ResourceGovernor, ResourceLimits
 from .runtime import EngineSettings, RuntimePaths, parent_process_alive
+from .runtime_discovery import discover_runtime_inventory
 from .security import EphemeralCredentialService, PairingTokenService
 from .sessions import SessionRecorder
 from .system_loopback import LoopbackError, WasapiLoopbackSource
@@ -31,7 +40,6 @@ SERIAL_DEFER_STEP_SECONDS = 0.02
 
 
 def websocket_origin_allowed(origin: str) -> bool:
-    """Solo la extensión fijada o vistas loopback del propio producto pueden entrar."""
     if not origin:
         return True
     normalized = origin.rstrip("/")
@@ -43,7 +51,6 @@ def websocket_origin_allowed(origin: str) -> bool:
 
 
 def create_app(paths: RuntimePaths, port: int = 8765, parent_pid: int | None = None):
-    """Crea FastAPI de forma diferida para que CLI/tests básicos sigan ligeros."""
     try:
         from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
         from fastapi.responses import JSONResponse
@@ -60,6 +67,8 @@ def create_app(paths: RuntimePaths, port: int = 8765, parent_pid: int | None = N
     )
     catalog = ModelCatalog(paths.models_dir)
     installer = HuggingFacePackInstaller(catalog)
+    governor = ResourceGovernor(ResourceLimits())
+    advisor = ModelAdvisor(catalog, installer, governor=governor)
     heartbeat_path = paths.data_dir / "extension-heartbeat.json"
 
     @asynccontextmanager
@@ -101,6 +110,30 @@ def create_app(paths: RuntimePaths, port: int = 8765, parent_pid: int | None = N
         if not valid_token(candidate):
             raise HTTPException(status_code=401, detail="No autorizado")
 
+    def definition_for(pack_id: str) -> dict:
+        return catalog.definition(pack_id)
+
+    def pack_resource_decision(pack_id: str):
+        definition = definition_for(pack_id)
+        return governor.preflight_model(
+            model_ram_mb=float(definition.get("ramMb", 0)),
+            dedicated_vram_mb=float(definition.get("vramMb", 0)),
+            shared_gpu_mb=float(definition.get("sharedGpuMb", 0)),
+        )
+
+    def resource_limits_payload() -> dict[str, int]:
+        limits = governor.limits
+        return {
+            "processMb": limits.hard_process_mb,
+            "desktopReserveMb": limits.desktop_reserve_mb,
+            "bridgeReserveMb": limits.bridge_reserve_mb,
+            "productReserveMb": limits.product_reserve_mb,
+            "liteSteadyMb": limits.lite_steady_mb,
+            "litePeakMb": limits.lite_peak_mb,
+            "rescueMb": limits.rescue_mb,
+            "vramMb": limits.vram_budget_mb,
+        }
+
     @app.get("/health")
     async def health():
         active = catalog.active_pack()
@@ -109,6 +142,10 @@ def create_app(paths: RuntimePaths, port: int = 8765, parent_pid: int | None = N
             "version": "2.0.1",
             "protocol": 1,
             "modelPack": f"{active.id}@{active.version}" if active else None,
+            "backend": catalog.active_backend(),
+            "resourceLimits": resource_limits_payload(),
+            "resourceLimitMb": governor.limits.hard_process_mb,
+            "vramLimitMb": governor.limits.vram_budget_mb,
             "extensionConnected": heartbeat_path.exists()
             and time.time() - heartbeat_path.stat().st_mtime < 30,
         }
@@ -116,8 +153,9 @@ def create_app(paths: RuntimePaths, port: int = 8765, parent_pid: int | None = N
     @app.get("/v1/models")
     async def models(request: Request):
         authenticated(request)
+        inventory = discover_runtime_inventory()
         return {
-            "definitions": catalog.definitions(),
+            "definitions": advisor.describe_catalog(),
             "installed": [
                 {
                     "id": p.id,
@@ -128,6 +166,33 @@ def create_app(paths: RuntimePaths, port: int = 8765, parent_pid: int | None = N
                 }
                 for p in catalog.installed()
             ],
+            "runtimes": sorted(inventory.runtimes),
+            "backends": sorted(inventory.backends),
+            "activeBackend": catalog.active_backend(),
+            "limits": resource_limits_payload(),
+        }
+
+    @app.get("/v1/engines")
+    async def engines(request: Request):
+        authenticated(request)
+        inventory = discover_runtime_inventory()
+        return {
+            "engines": [
+                {
+                    "id": item.id,
+                    "kind": item.kind,
+                    "title": item.title,
+                    "routes": list(item.routes),
+                    "runtime": item.runtime,
+                    "cloud": item.cloud,
+                    "commercialUse": item.commercial_use,
+                    "available": item.runtime in inventory.runtimes,
+                }
+                for item in advisor.registry.descriptors
+            ],
+            "runtimes": sorted(inventory.runtimes),
+            "backends": sorted(inventory.backends),
+            "details": inventory.details,
         }
 
     @app.post("/v1/models/install/{pack_id}")
@@ -135,12 +200,34 @@ def create_app(paths: RuntimePaths, port: int = 8765, parent_pid: int | None = N
         authenticated(request)
         loop = asyncio.get_running_loop()
         try:
-            pack = await loop.run_in_executor(None, installer.install, pack_id)
+            decision = pack_resource_decision(pack_id)
+            if not decision.allowed:
+                return JSONResponse(
+                    status_code=409,
+                    content={
+                        "ok": False,
+                        "code": decision.reason,
+                        "message": "Este modelo excede el presupuesto total del producto.",
+                    },
+                )
+            pack = await loop.run_in_executor(
+                None, download_pack, installer, catalog, pack_id
+            )
         except ModelOperationError as exc:
             logger.warning("Fallo de instalación de modelo: %s", exc.code)
             return JSONResponse(
                 status_code=400,
                 content={"ok": False, "code": exc.code, "message": exc.message},
+            )
+        except (KeyError, ValueError) as exc:
+            logger.warning("Definición de modelo inválida: %s", exc.__class__.__name__)
+            return JSONResponse(
+                status_code=404,
+                content={
+                    "ok": False,
+                    "code": "MODEL_NOT_FOUND",
+                    "message": "El modelo solicitado no existe en el catálogo.",
+                },
             )
         except Exception as exc:
             logger.warning("Fallo de instalación de modelo: %s", exc.__class__.__name__)
@@ -152,7 +239,107 @@ def create_app(paths: RuntimePaths, port: int = 8765, parent_pid: int | None = N
                     "message": "El proveedor de modelos no pudo completar la operación.",
                 },
             )
-        return {"ok": True, "id": pack.id, "version": pack.version}
+        return {
+            "ok": True,
+            "id": pack.id,
+            "version": pack.version,
+            "active": pack.active,
+        }
+
+    @app.post("/v1/models/activate/{pack_id}/{version}")
+    async def activate_model(pack_id: str, version: str, request: Request):
+        authenticated(request)
+        try:
+            decision = pack_resource_decision(pack_id)
+            if not decision.allowed:
+                raise ModelOperationError(
+                    decision.reason,
+                    "El modelo supera el límite total de memoria o VRAM.",
+                )
+            installer.activate(pack_id, version)
+        except (ModelOperationError, FileNotFoundError, KeyError) as exc:
+            code = getattr(exc, "code", "MODEL_NOT_INSTALLED")
+            message = getattr(exc, "message", "El modelo no está instalado.")
+            return JSONResponse(
+                status_code=409,
+                content={"ok": False, "code": code, "message": message},
+            )
+        return {"ok": True, "id": pack_id, "version": version}
+
+    @app.delete("/v1/models/{pack_id}/{version}")
+    async def remove_model(pack_id: str, version: str, request: Request):
+        authenticated(request)
+        try:
+            installer.remove(pack_id, version)
+        except (RuntimeError, FileNotFoundError, OSError) as exc:
+            logger.warning("No se pudo eliminar el pack: %s", exc.__class__.__name__)
+            return JSONResponse(
+                status_code=409,
+                content={
+                    "ok": False,
+                    "code": "MODEL_REMOVE_FAILED",
+                    "message": "No se pudo eliminar el pack local. Verifica que no esté activo.",
+                },
+            )
+        return {"ok": True}
+
+    @app.post("/v1/models/import")
+    async def import_model(request: Request):
+        authenticated(request)
+        payload = await request.json()
+        archive = Path(str(payload.get("path", ""))).expanduser()
+        loop = asyncio.get_running_loop()
+        try:
+            pack = await loop.run_in_executor(None, installer.import_pack, archive)
+        except (ModelOperationError, FileNotFoundError) as exc:
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "ok": False,
+                    "code": getattr(exc, "code", "MODEL_EXTERNAL_INVALID"),
+                    "message": getattr(exc, "message", "No se pudo importar el pack."),
+                },
+            )
+        return {
+            "ok": True,
+            "id": pack.id,
+            "version": pack.version,
+            "active": pack.active,
+        }
+
+    @app.post("/v1/models/select-auto")
+    async def select_auto(request: Request):
+        authenticated(request)
+        payload = await request.json()
+        route = str(payload.get("route", "en-es")).lower()
+        allow_cloud = bool(payload.get("allowCloud", False))
+        force = bool(payload.get("forceBenchmark", False))
+        loop = asyncio.get_running_loop()
+        try:
+            selection, reports = await loop.run_in_executor(
+                None,
+                lambda: advisor.optimize(
+                    route, allow_cloud=allow_cloud, force_benchmark=force
+                ),
+            )
+        except Exception as exc:
+            logger.warning("Selección automática falló: %s", exc.__class__.__name__)
+            return JSONResponse(
+                status_code=409,
+                content={
+                    "ok": False,
+                    "code": "NO_COMPATIBLE_ENGINE",
+                    "message": "No existe un modelo instalado que pase velocidad y memoria.",
+                },
+            )
+        return {
+            "ok": True,
+            "selected": selection.candidate.id,
+            "backend": selection.backend,
+            "score": round(selection.score, 4),
+            "rejected": selection.rejected,
+            "benchmarks": reports,
+        }
 
     @app.websocket("/ws")
     async def websocket_endpoint(websocket: WebSocket):
@@ -169,7 +356,7 @@ def create_app(paths: RuntimePaths, port: int = 8765, parent_pid: int | None = N
         recorder: SessionRecorder | None = None
         binary_pcm_enabled = False
         audio_queue: asyncio.Queue = asyncio.Queue(maxsize=AUDIO_QUEUE_MAX)
-        translation_queue: asyncio.Queue = asyncio.Queue(maxsize=TRANSLATION_QUEUE_MAX)
+        translation_queue = CoalescingTranslationQueue(maxsize=TRANSLATION_QUEUE_MAX)
         asr_executor: ThreadPoolExecutor | None = None
         translation_executor: ThreadPoolExecutor | None = None
         audio_task: asyncio.Task | None = None
@@ -195,6 +382,7 @@ def create_app(paths: RuntimePaths, port: int = 8765, parent_pid: int | None = N
                 await safe_send(event(item.type, **pipeline_event_fields(item)))
 
         def telemetry_snapshot(current: RealtimePipeline):
+            queue_age_ms = translation_queue.oldest_age_seconds() * 1000.0
             snapshot = current.telemetry.snapshot(
                 audio_queue_ms=audio_queue.qsize() * AUDIO_CHUNK_MS,
                 translation_queue_depth=translation_queue.qsize(),
@@ -203,8 +391,10 @@ def create_app(paths: RuntimePaths, port: int = 8765, parent_pid: int | None = N
                 snapshot.audio_queue_ms,
                 snapshot.translation_queue_depth,
                 snapshot.real_time_factor,
+                translation_queue_age_ms=queue_age_ms,
             )
-            return snapshot, pressure
+            current.set_resource_mode(pressure)
+            return snapshot, pressure, queue_age_ms
 
         async def emit_realtime_status(current: RealtimePipeline) -> None:
             nonlocal last_telemetry_emit
@@ -213,7 +403,11 @@ def create_app(paths: RuntimePaths, port: int = 8765, parent_pid: int | None = N
                 return
             last_telemetry_emit = now
             level = current.audio_level
-            snapshot, pressure = telemetry_snapshot(current)
+            snapshot, pressure, queue_age_ms = telemetry_snapshot(current)
+            process_memory_mb = latency_controller.last_process_memory_mb
+            memory_headroom_mb = max(
+                0.0, governor.limits.hard_process_mb - process_memory_mb
+            )
             await safe_send(
                 event(
                     "audio.level",
@@ -233,7 +427,11 @@ def create_app(paths: RuntimePaths, port: int = 8765, parent_pid: int | None = N
                     realTimeFactor=round(snapshot.real_time_factor, 3),
                     audioQueueMs=snapshot.audio_queue_ms,
                     translationQueueDepth=translation_queue.qsize(),
+                    translationQueueAgeMs=round(queue_age_ms, 1),
+                    processMemoryMb=round(process_memory_mb, 1),
+                    memoryHeadroomMb=round(memory_headroom_mb, 1),
                     pressure=pressure,
+                    resourceMode=current.resource_mode,
                     cpuProfile=current.cpu_budget.profile,
                     physicalCores=current.cpu_budget.physical_cores,
                     asrThreads=current.cpu_budget.asr_threads,
@@ -246,7 +444,7 @@ def create_app(paths: RuntimePaths, port: int = 8765, parent_pid: int | None = N
             current = pipeline
             for request in requests:
                 if not request.final and current is not None:
-                    _snapshot, pressure = telemetry_snapshot(current)
+                    _snapshot, pressure, _age = telemetry_snapshot(current)
                     if not latency_controller.allow_partial_translation(pressure):
                         logger.debug(
                             "Parcial omitido por presión realtime: %s", pressure
@@ -268,10 +466,17 @@ def create_app(paths: RuntimePaths, port: int = 8765, parent_pid: int | None = N
                     executor = asr_executor
                     if current is None or executor is None:
                         continue
-                    _snapshot, pressure = telemetry_snapshot(current)
+                    _snapshot, pressure, _age = telemetry_snapshot(current)
                     current.segmenter.set_partial_decoding(
                         latency_controller.allow_partial_asr(pressure)
                     )
+                    if pressure in {"catch_up", "rescue"}:
+                        removed = await translation_queue.drop_partials()
+                        if removed:
+                            logger.debug(
+                                "Parciales MT retirados para recuperar tiempo real: %s",
+                                removed,
+                            )
                     try:
                         events, requests = await loop.run_in_executor(
                             executor, current.ingest, samples
@@ -302,14 +507,13 @@ def create_app(paths: RuntimePaths, port: int = 8765, parent_pid: int | None = N
             loop = asyncio.get_running_loop()
             while True:
                 request = await translation_queue.get()
+                if request is None:
+                    return
                 try:
-                    if request is None:
-                        return
                     current = pipeline
                     executor = translation_executor
                     if current is None or executor is None:
                         continue
-
                     if not current.cpu_budget.parallel_stages:
                         action = serial_translation_action(
                             request, audio_pending=not audio_queue.empty()
@@ -323,7 +527,6 @@ def create_app(paths: RuntimePaths, port: int = 8765, parent_pid: int | None = N
                             deadline = time.monotonic() + SERIAL_FINAL_DEFER_SECONDS
                             while not audio_queue.empty() and time.monotonic() < deadline:
                                 await asyncio.sleep(SERIAL_DEFER_STEP_SECONDS)
-
                     try:
                         translated = await loop.run_in_executor(
                             executor, current.execute_translation, request
@@ -370,19 +573,29 @@ def create_app(paths: RuntimePaths, port: int = 8765, parent_pid: int | None = N
                 await safe_send(event("engine.error", code=exc.code, message=exc.message))
             except Exception as exc:
                 logger.warning("WASAPI loopback terminó: %s", exc.__class__.__name__)
-                await safe_send(event("engine.error", code="LOOPBACK_CAPTURE", message="Se perdió la captura del audio reproducido por Windows."))
+                await safe_send(
+                    event(
+                        "engine.error",
+                        code="LOOPBACK_CAPTURE",
+                        message="Se perdió la captura del audio reproducido por Windows.",
+                    )
+                )
 
         async def start_loopback() -> tuple[bool, str | None]:
             nonlocal loopback_source, loopback_task
             source = WasapiLoopbackSource()
             try:
-                info = await asyncio.get_running_loop().run_in_executor(None, source.open_default)
+                info = await asyncio.get_running_loop().run_in_executor(
+                    None, source.open_default
+                )
             except LoopbackError as exc:
                 source.close()
                 await safe_send(event("engine.error", code=exc.code, message=exc.message))
                 return False, None
             loopback_source = source
-            loopback_task = asyncio.create_task(loopback_worker(source), name="mily-wasapi-loopback")
+            loopback_task = asyncio.create_task(
+                loopback_worker(source), name="mily-wasapi-loopback"
+            )
             return True, info.name
 
         async def stop_loopback() -> None:
@@ -402,7 +615,10 @@ def create_app(paths: RuntimePaths, port: int = 8765, parent_pid: int | None = N
             if pipeline is None:
                 return
             audio_queue = asyncio.Queue(maxsize=AUDIO_QUEUE_MAX)
-            translation_queue = asyncio.Queue(maxsize=TRANSLATION_QUEUE_MAX)
+            translation_queue = CoalescingTranslationQueue(
+                maxsize=TRANSLATION_QUEUE_MAX,
+                partial_ttl_seconds=0.75,
+            )
             asr_executor = ThreadPoolExecutor(
                 max_workers=1, thread_name_prefix="mily-asr"
             )
@@ -446,8 +662,9 @@ def create_app(paths: RuntimePaths, port: int = 8765, parent_pid: int | None = N
             current = pipeline
             executor = asr_executor
             if audio_task is None and translation_task is None:
+                if current is not None:
+                    current.unload()
                 return
-
             if flush and current is not None and executor is not None:
                 await audio_queue.join()
                 try:
@@ -461,9 +678,8 @@ def create_app(paths: RuntimePaths, port: int = 8765, parent_pid: int | None = N
                         "No se pudo finalizar buffer ASR: %s", exc.__class__.__name__
                     )
                 await translation_queue.join()
-
             await audio_queue.put(None)
-            await translation_queue.put(None)
+            await translation_queue.close()
             await asyncio.gather(
                 *(task for task in (audio_task, translation_task) if task is not None),
                 return_exceptions=True,
@@ -471,6 +687,8 @@ def create_app(paths: RuntimePaths, port: int = 8765, parent_pid: int | None = N
             audio_task = None
             translation_task = None
             shutdown_executors(wait=True)
+            if current is not None:
+                current.unload()
 
         async def abort_workers() -> None:
             nonlocal audio_task, translation_task
@@ -485,6 +703,8 @@ def create_app(paths: RuntimePaths, port: int = 8765, parent_pid: int | None = N
             audio_task = None
             translation_task = None
             shutdown_executors(wait=False)
+            if pipeline is not None:
+                pipeline.unload()
 
         try:
             await safe_send(event("engine.ready", version="2.0.1", protocolVersion=1))
@@ -492,7 +712,6 @@ def create_app(paths: RuntimePaths, port: int = 8765, parent_pid: int | None = N
                 packet = await websocket.receive()
                 if packet.get("type") == "websocket.disconnect":
                     raise WebSocketDisconnect(packet.get("code", 1000))
-
                 raw_bytes = packet.get("bytes")
                 if raw_bytes is not None:
                     if not binary_pcm_enabled:
@@ -517,7 +736,6 @@ def create_app(paths: RuntimePaths, port: int = 8765, parent_pid: int | None = N
                         continue
                     await enqueue_audio(samples)
                     continue
-
                 raw = packet.get("text")
                 if raw is None:
                     continue
@@ -528,29 +746,38 @@ def create_app(paths: RuntimePaths, port: int = 8765, parent_pid: int | None = N
                         event("engine.error", code="PROTOCOL", message="Mensaje no válido.")
                     )
                     continue
-
                 if message.type == "ping":
                     await safe_send(event("pong"))
                     continue
-
                 if message.type == "speaker.focus":
                     if pipeline is None:
-                        await safe_send(event("engine.error", code="SESSION_NOT_STARTED", message="Inicia una sesión antes de cambiar el hablante."))
+                        await safe_send(
+                            event(
+                                "engine.error",
+                                code="SESSION_NOT_STARTED",
+                                message="Inicia una sesión antes de cambiar el hablante.",
+                            )
+                        )
                     else:
-                        pipeline.set_speaker_focus(message.speaker_focus_mode, message.speaker_id)
-                        await safe_send(event("speaker.changed", speakerId=message.speaker_id, focusMode=message.speaker_focus_mode))
+                        pipeline.set_speaker_focus(
+                            message.speaker_focus_mode, message.speaker_id
+                        )
+                        await safe_send(
+                            event(
+                                "speaker.changed",
+                                speakerId=message.speaker_id,
+                                focusMode=message.speaker_focus_mode,
+                            )
+                        )
                     continue
-
                 if message.type == "tts.started":
                     if pipeline is not None and message.tts_text:
                         pipeline.register_tts(message.tts_text)
                     await safe_send(event("tts.started", speakerId=message.speaker_id))
                     continue
-
                 if message.type == "tts.finished":
                     await safe_send(event("tts.finished", speakerId=message.speaker_id))
                     continue
-
                 if message.type == "client.hello":
                     if pipeline is not None:
                         await finish_workers(flush=True)
@@ -565,10 +792,29 @@ def create_app(paths: RuntimePaths, port: int = 8765, parent_pid: int | None = N
                             event(
                                 "engine.error",
                                 code="MODEL_NOT_INSTALLED",
-                                message="El modelo se está preparando en MilyVoiceTraductor.",
+                                message="Descarga el modelo Lite desde MilyVoiceTraductor.",
                             )
                         )
                         continue
+                    try:
+                        resource = pack_resource_decision(active.id)
+                    except (KeyError, ValueError):
+                        resource = None
+                    if resource is None or not resource.allowed:
+                        await safe_send(
+                            event(
+                                "engine.error",
+                                code=(resource.reason if resource else "MODEL_CATALOG_INVALID"),
+                                message="El modelo activo excede el presupuesto. Ejecuta Optimizar automáticamente.",
+                            )
+                        )
+                        continue
+                    selected_backend = catalog.active_backend()
+                    session_compute_profile = (
+                        selected_backend
+                        if selected_backend != "auto"
+                        else settings.compute_profile
+                    )
                     recorder = SessionRecorder(
                         paths.sessions_dir,
                         message.persist_transcript or settings.persist_transcripts,
@@ -580,6 +826,7 @@ def create_app(paths: RuntimePaths, port: int = 8765, parent_pid: int | None = N
                         event(
                             "engine.loading",
                             modelPack=f"{active.id}@{active.version}",
+                            backend=selected_backend,
                             phase="warming",
                         )
                     )
@@ -587,7 +834,7 @@ def create_app(paths: RuntimePaths, port: int = 8765, parent_pid: int | None = N
                         pipeline = RealtimePipeline(
                             active,
                             message.source_language,
-                            settings.compute_profile,
+                            session_compute_profile,
                             recorder,
                             session_mode=message.session_mode,
                             speaker_detection=message.speaker_detection,
@@ -608,6 +855,7 @@ def create_app(paths: RuntimePaths, port: int = 8765, parent_pid: int | None = N
                         pipeline = None
                         recorder = None
                         continue
+                    latency_controller = LatencyController()
                     await start_workers()
                     try:
                         await warm_up_workers()
@@ -626,10 +874,29 @@ def create_app(paths: RuntimePaths, port: int = 8765, parent_pid: int | None = N
                             )
                         )
                         continue
-
+                    _initial_snapshot, initial_pressure, _initial_age = telemetry_snapshot(
+                        pipeline
+                    )
+                    if (
+                        latency_controller.last_process_memory_mb
+                        > governor.limits.hard_process_mb
+                    ):
+                        await finish_workers(flush=False)
+                        pipeline = None
+                        recorder = None
+                        await safe_send(
+                            event(
+                                "engine.error",
+                                code="PROCESS_MEMORY_LIMIT",
+                                message="El modelo superó 2 GB al cargarse. Ejecuta Optimizar automáticamente.",
+                            )
+                        )
+                        continue
+                    pipeline.set_resource_mode(initial_pressure)
                     loopback_device = None
                     native_loopback = (
-                        message.source_mode == "system_loopback" and not message.external_pcm
+                        message.source_mode == "system_loopback"
+                        and not message.external_pcm
                     )
                     if native_loopback:
                         loopback_ready, loopback_device = await start_loopback()
@@ -638,7 +905,6 @@ def create_app(paths: RuntimePaths, port: int = 8765, parent_pid: int | None = N
                             pipeline = None
                             recorder = None
                             continue
-
                     last_telemetry_emit = 0.0
                     last_speaker_event = None
                     binary_pcm_enabled = message.binary_pcm
@@ -650,13 +916,21 @@ def create_app(paths: RuntimePaths, port: int = 8765, parent_pid: int | None = N
                             sourceMode=message.source_mode,
                             nativeLoopback=native_loopback,
                             loopbackDevice=loopback_device,
-                            speakerDetection=message.speaker_detection,
+                            speakerDetection=pipeline.speaker_detection_enabled,
                             binaryPcm=binary_pcm_enabled,
                             parallelStages=pipeline.cpu_budget.parallel_stages,
+                            pressure=initial_pressure,
+                            processMemoryMb=round(
+                                latency_controller.last_process_memory_mb, 1
+                            ),
+                            selectedBackend=selected_backend,
+                            asrDevice=pipeline.compute_status["asrDevice"],
+                            translationDevice=pipeline.compute_status[
+                                "translationDevice"
+                            ],
                         )
                     )
                     continue
-
                 if message.type == "audio.chunk":
                     try:
                         samples = decode_pcm16_base64(message.audio_base64 or "")
@@ -671,7 +945,6 @@ def create_app(paths: RuntimePaths, port: int = 8765, parent_pid: int | None = N
                         continue
                     await enqueue_audio(samples)
                     continue
-
                 if message.type == "audio.stop":
                     await finish_workers(flush=True)
                     result = recorder.finish() if recorder is not None else None

@@ -12,15 +12,8 @@ from .cpu_budget import detect_cpu_budget
 from .echo_guard import EchoGuard
 from .hypothesis import HypothesisStabilizer
 from .models import InstalledPack
-from .providers import (
-    AsrWord,
-    CachedTranslator,
-    FasterWhisperAsr,
-    M2M100CTranslate2Translator,
-    NllbTranslator,
-    QwenTranslator,
-    Translator,
-)
+from .provider_factory import build_asr_provider, build_translation_provider
+from .providers import AsrWord, CachedTranslator, Translator
 from .sessions import SessionRecorder, TranscriptSegment, TranscriptWord
 from .speakers import SpeakerClusterer
 from .streaming import AdaptiveSpeechSegmenter, AudioLevel, StreamingEvent
@@ -48,7 +41,11 @@ class PipelineEvent:
 
 @dataclass(frozen=True, slots=True)
 class TranslationRequest:
-    """Trabajo de traducción desacoplado del worker ASR."""
+    """Trabajo de traducción desacoplado del worker ASR.
+
+    `utterance_id` permite reemplazar parciales obsoletos de la misma frase.
+    `created_at` permite medir edad real de cola, no solamente profundidad.
+    """
 
     type: Literal["translation.partial", "translation.final"]
     start: float
@@ -57,10 +54,30 @@ class TranslationRequest:
     language: str
     words: tuple[AsrWord, ...] = ()
     speaker_id: str | None = None
+    utterance_id: str = ""
+    created_at: float = 0.0
 
     @property
     def final(self) -> bool:
         return self.type == "translation.final"
+
+
+def partial_translation_ready(text: str, language: str) -> bool:
+    """Decide si un prefijo estabilizado ya es útil para MT parcial.
+
+    El estabilizador ya filtra fragmentos ingleses colgantes. Aquí evitamos
+    reintroducir una regla basada en espacios que bloqueaba mandarín: los
+    prefijos Han se conservan sin espacios deliberadamente, por lo que
+    ``split()`` siempre devolvía una sola unidad y la UI solo veía traducción al
+    cierre de la frase.
+    """
+
+    normalized = " ".join(str(text).split())
+    if not normalized:
+        return False
+    if str(language).strip().lower() == "zh":
+        return sum(1 for char in normalized if "\u4e00" <= char <= "\u9fff") >= 2
+    return len(normalized.split()) >= 3
 
 
 class RealtimePipeline:
@@ -80,9 +97,11 @@ class RealtimePipeline:
         )
         components = metadata["components"]
         self.source_language = source_language
-        self.session_mode = session_mode if session_mode in {
-            "meeting", "education", "karaoke", "compact"
-        } else "meeting"
+        self.session_mode = (
+            session_mode
+            if session_mode in {"meeting", "education", "karaoke", "compact"}
+            else "meeting"
+        )
         self.sample_rate = 16000
         if self.session_mode == "karaoke":
             self.segmenter = AdaptiveSpeechSegmenter(
@@ -99,11 +118,16 @@ class RealtimePipeline:
         self.telemetry = RealtimeTelemetry()
         self.recorder = recorder
         self.echo_guard = EchoGuard()
+        self._speaker_detection_requested = bool(speaker_detection)
+        self._word_timestamps_requested = self.session_mode == "karaoke"
+        self._resource_mode = "healthy"
         self.speaker_clusterer = (
             SpeakerClusterer(sample_rate=self.sample_rate) if speaker_detection else None
         )
         self.speaker_focus_mode = (
-            speaker_focus_mode if speaker_focus_mode in {"all", "dominant", "fixed"} else "all"
+            speaker_focus_mode
+            if speaker_focus_mode in {"all", "dominant", "fixed"}
+            else "all"
         )
         self.fixed_speaker_id = fixed_speaker_id
         self._recent_originals: deque[str] = deque(maxlen=8)
@@ -111,25 +135,19 @@ class RealtimePipeline:
 
         cpu_profile = os.environ.get("MILY_CPU_PROFILE", "balanced")
         self.cpu_budget = detect_cpu_budget(cpu_profile)
-        self.asr = FasterWhisperAsr(
+        self.asr = build_asr_provider(
+            components["asr"],
             pack.path / "components" / "asr",
             compute_profile,
-            cpu_budget=self.cpu_budget,
-            word_timestamps=self.session_mode == "karaoke",
+            self.cpu_budget,
+            self._word_timestamps_requested,
         )
-        provider = components["translation"]["provider"]
-        translation_path = pack.path / "components" / "translation"
-        translator: Translator
-        if provider == "m2m100-ct2":
-            translator = M2M100CTranslate2Translator(
-                translation_path,
-                compute_profile,
-                cpu_budget=self.cpu_budget,
-            )
-        elif provider == "qwen":
-            translator = QwenTranslator(translation_path, compute_profile)
-        else:
-            translator = NllbTranslator(translation_path, compute_profile)
+        translator: Translator = build_translation_provider(
+            components["translation"],
+            pack.path / "components" / "translation",
+            compute_profile,
+            self.cpu_budget,
+        )
         self._translator_provider = translator
         self.translator = CachedTranslator(translator)
 
@@ -138,16 +156,34 @@ class RealtimePipeline:
         return self.segmenter.level
 
     @property
+    def resource_mode(self) -> str:
+        return self._resource_mode
+
+    @property
+    def speaker_detection_enabled(self) -> bool:
+        return self._speaker_detection_requested and self._resource_mode == "healthy"
+
+    @property
     def known_speakers(self) -> tuple[str, ...]:
+        if not self.speaker_detection_enabled:
+            return ()
         return self.speaker_clusterer.speaker_ids if self.speaker_clusterer else ()
 
     @property
     def compute_status(self) -> dict[str, str | bool]:
-        """Expone únicamente el backend real y motivos de fallback ya sanitizados."""
+        """Expone únicamente el backend real y motivos de fallback sanitizados."""
 
         def provider_state(provider) -> tuple[str, bool, str]:
             device = str(getattr(provider, "selected_device", "") or "unknown").lower()
-            if device not in {"cpu", "cuda", "directml", "openvino", "vulkan", "windowsml"}:
+            if device not in {
+                "cpu",
+                "cuda",
+                "directml",
+                "openvino",
+                "vulkan",
+                "windowsml",
+                "cloud",
+            }:
                 device = "unknown"
             fallback = bool(getattr(provider, "fallback_used", False))
             reason = str(getattr(provider, "fallback_reason", "") or "")
@@ -165,7 +201,20 @@ class RealtimePipeline:
             "translationFallbackUsed": mt_fallback,
             "asrFallbackReason": asr_reason,
             "translationFallbackReason": mt_reason,
+            "resourceMode": self._resource_mode,
         }
+
+    def set_resource_mode(self, mode: str) -> None:
+        """Activa/desactiva funciones costosas sin perder frases finales."""
+
+        normalized = str(mode).strip().lower()
+        if normalized not in {"healthy", "pressure", "catch_up", "rescue"}:
+            normalized = "rescue"
+        self._resource_mode = normalized
+        if hasattr(self.asr, "word_timestamps"):
+            self.asr.word_timestamps = bool(
+                self._word_timestamps_requested and normalized == "healthy"
+            )
 
     def set_speaker_focus(self, mode: str, speaker_id: str | None = None) -> None:
         self.speaker_focus_mode = mode if mode in {"all", "dominant", "fixed"} else "all"
@@ -184,6 +233,14 @@ class RealtimePipeline:
         if callable(warm_up):
             warm_up()
 
+    def unload(self) -> None:
+        """Libera explícitamente el ASR y MT antes de cambiar de pack."""
+
+        for provider in (self.asr, self.translator):
+            unload = getattr(provider, "unload", None)
+            if callable(unload):
+                unload()
+
     @staticmethod
     def _normalize(text: str) -> str:
         return " ".join(text.split())
@@ -196,7 +253,13 @@ class RealtimePipeline:
             return configured
         return "zh" if any("\u4e00" <= char <= "\u9fff" for char in text) else "en"
 
+    @staticmethod
+    def _utterance_id(window: StreamingEvent) -> str:
+        return f"u-{window.start_sample}"
+
     def _speaker_for_window(self, window: StreamingEvent) -> str | None:
+        if not self.speaker_detection_enabled:
+            return None
         clusterer = self.speaker_clusterer
         if clusterer is None:
             return None
@@ -233,7 +296,7 @@ class RealtimePipeline:
         return events, requests
 
     def execute_translation(self, request: TranslationRequest) -> PipelineEvent:
-        """Ejecuta un trabajo M2M100 y persiste únicamente frases finales."""
+        """Ejecuta el proveedor activo y persiste únicamente frases finales."""
 
         started = time.perf_counter()
         translated = self.translator.translate(request.original, request.language)
@@ -323,6 +386,8 @@ class RealtimePipeline:
             return [], []
         start = window.start_sample / self.sample_rate
         end = window.end_sample / self.sample_rate
+        utterance_id = self._utterance_id(window)
+        created_at = time.monotonic()
 
         if window.kind == "partial":
             if not original:
@@ -342,7 +407,7 @@ class RealtimePipeline:
             requests: list[TranslationRequest] = []
             if (
                 state.stable_advanced
-                and len(state.stable.split()) >= 2
+                and partial_translation_ready(state.stable, detected)
                 and state.stable.casefold()
                 != self._last_partial_translation.casefold()
             ):
@@ -356,6 +421,8 @@ class RealtimePipeline:
                         language=detected,
                         words=words,
                         speaker_id=speaker_id,
+                        utterance_id=utterance_id,
+                        created_at=created_at,
                     )
                 )
             return events, requests
@@ -387,5 +454,7 @@ class RealtimePipeline:
                 language=detected,
                 words=words,
                 speaker_id=speaker_id,
+                utterance_id=utterance_id,
+                created_at=created_at,
             )
         ]

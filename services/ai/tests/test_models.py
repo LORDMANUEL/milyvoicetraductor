@@ -4,12 +4,14 @@ import sys
 import tempfile
 import types
 import unittest
+import zipfile
 from pathlib import Path
 from unittest.mock import patch
 
 from mily_ai.models import (
     HuggingFacePackInstaller,
     ModelCatalog,
+    ModelOperationError,
     classify_model_exception,
 )
 
@@ -84,6 +86,74 @@ class ModelManagerTests(unittest.TestCase):
             restored = installer.rollback()
             self.assertEqual(restored.id, "business-qwen")
             self.assertTrue(restored.active)
+
+    @staticmethod
+    def external_manifest():
+        return {
+            "schemaVersion": 2,
+            "id": "partner-fast-en-es",
+            "version": "1.0.0",
+            "title": "Partner Fast EN-ES",
+            "recommendedRamGb": 2,
+            "commercialUse": True,
+            "licenseNote": "Licencia comercial aprobada.",
+            "tier": "lite",
+            "routes": ["en-es"],
+            "ramMb": 700,
+            "vramMb": 0,
+            "sharedGpuMb": 0,
+            "engine": "local-ct2-lite",
+            "supportedBackends": ["cpu"],
+            "externalAllowed": True,
+            "components": {
+                "asr": {"provider": "faster-whisper"},
+                "translation": {
+                    "provider": "marian-ct2",
+                    "sourceLanguage": "en",
+                    "targetLanguage": "es",
+                },
+            },
+        }
+
+    def test_external_pack_is_imported_verified_and_not_auto_activated(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            archive = root / "partner.mmpack"
+            with zipfile.ZipFile(archive, "w", zipfile.ZIP_DEFLATED) as bundle:
+                bundle.writestr(
+                    "manifest.json",
+                    json.dumps(self.external_manifest(), ensure_ascii=False),
+                )
+                bundle.writestr("components/asr/model.bin", b"asr")
+                bundle.writestr("components/translation/model.bin", b"mt")
+                bundle.writestr("LICENSE", "commercial")
+            catalog = ModelCatalog(root / "models")
+            installer = HuggingFacePackInstaller(catalog)
+            pack = installer.import_pack(archive)
+            self.assertFalse(pack.active)
+            self.assertIsNone(catalog.active_pack())
+            self.assertTrue(installer.verify(pack.id, pack.version))
+            definition = catalog.definition(pack.id)
+            self.assertEqual(definition["engine"], "local-ct2-lite")
+            self.assertEqual(definition["ramMb"], 700)
+            self.assertTrue((pack.path / "manifest.json").is_file())
+
+    def test_external_zip_bomb_metadata_is_rejected_before_extract(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            archive = root / "oversized.mmpack"
+            with zipfile.ZipFile(archive, "w", zipfile.ZIP_STORED) as bundle:
+                bundle.writestr(
+                    "manifest.json",
+                    json.dumps(self.external_manifest(), ensure_ascii=False),
+                )
+                bundle.writestr("model.bin", b"x")
+            catalog = ModelCatalog(root / "models")
+            installer = HuggingFacePackInstaller(catalog)
+            with patch("mily_ai.models._external_archive_size_allowed", return_value=False):
+                with self.assertRaises(ModelOperationError) as captured:
+                    installer.import_pack(archive)
+            self.assertEqual(captured.exception.code, "MODEL_EXTERNAL_UNSAFE")
 
     def test_disk_full_has_specific_public_code(self):
         error = classify_model_exception(OSError(errno.ENOSPC, "disk full"))
