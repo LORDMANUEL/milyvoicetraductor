@@ -17,6 +17,7 @@ concurrency:
 jobs:
   repository-guards:
     name: Privacy, extension and site guards
+    if: github.event_name == 'push' || github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -41,6 +42,7 @@ jobs:
 
   ai-engine:
     name: Local AI engine
+    if: github.event_name == 'push' || github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -67,6 +69,7 @@ jobs:
 
   frontend:
     name: Frontend
+    if: github.event_name == 'push' || github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -86,6 +89,7 @@ jobs:
 
   rust:
     name: Rust core Linux
+    if: github.event_name == 'push' || github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
