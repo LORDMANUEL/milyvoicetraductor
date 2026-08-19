@@ -2,12 +2,14 @@
 
 mod bootstrap;
 mod commands;
+mod diagnostics;
 mod local_session;
 mod model_commands;
 mod repair;
 
 use bootstrap::AppState;
 use commands::*;
+use diagnostics::*;
 use local_session::*;
 use model_commands::*;
 
@@ -31,6 +33,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             get_app_status,
             get_onboarding_status,
+            get_repair_history,
             repair_installation,
             get_system_info,
             get_hardware_advisor,
