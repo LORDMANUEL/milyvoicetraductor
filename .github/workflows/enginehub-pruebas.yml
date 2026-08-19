@@ -39,7 +39,7 @@ jobs:
         env:
           PYTHONPATH: services/ai
         run: python -m unittest discover -s services/ai/tests -p "test_runtime_discovery.py" -v
-      - name: Verify resource and pressure contracts
+      - name: Verify resource, pressure and deterministic unload contracts
         env:
           PYTHONPATH: services/ai
         run: |
@@ -47,6 +47,7 @@ jobs:
           python -m unittest discover -s services/ai/tests -p "test_realtime_telemetry.py" -v
           python -m unittest discover -s services/ai/tests -p "test_coalescing_queue.py" -v
           python -m unittest discover -s services/ai/tests -p "test_model_advisor_total_product_memory.py" -v
+          python -m unittest discover -s services/ai/tests -p "test_provider_unload.py" -v
 
   windows-native-bridge:
     name: whisper.cpp persistent bridge / Windows MSVC
