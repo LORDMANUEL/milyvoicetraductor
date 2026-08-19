@@ -143,11 +143,7 @@ def cmd_models(args) -> int:
             pack = download_pack(installer, catalog, args.pack_id)
             if not args.download_only:
                 installer.activate(pack.id, pack.version)
-                pack = next(
-                    item
-                    for item in catalog.installed()
-                    if item.id == pack.id and item.version == pack.version
-                )
+                pack.active = True
             _emit_pack(pack)
             return 0
         if args.model_action == "activate":
