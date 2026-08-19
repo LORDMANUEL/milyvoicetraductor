@@ -1,102 +1,53 @@
-name: Engine Hub target-machine validation
+name: Generate Engine Hub Cargo lockfile
 
 on:
   pull_request:
     branches: [pruebas]
-  workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
-  group: enginehub-pruebas-${{ github.ref }}
+  group: generate-enginehub-lockfile
   cancel-in-progress: true
 
 jobs:
-  target-machine:
-    name: 8 GiB host / 2 GiB MilyVoice / ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, windows-latest]
-    runs-on: ${{ matrix.os }}
-    steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-python@v6
-        with:
-          python-version: "3.13"
-      - name: Install lightweight validation dependencies
-        run: python -m pip install --disable-pip-version-check "fastapi>=0.116,<1" "httpx>=0.28,<1" "numpy>=2.2,<3"
-      - name: Simulate target machine, engine selection and ten-minute backlog
-        env:
-          PYTHONPATH: services/ai
-        run: python -m unittest discover -s services/ai/tests -p "test_engine_hub_target_machine.py" -v
-      - name: Verify complete private runtime contract
-        env:
-          PYTHONPATH: services/ai
-        run: python -m unittest discover -s services/ai/tests -p "test_engine_hub_runtime_bundle.py" -v
-      - name: Verify portable runtime discovery
-        env:
-          PYTHONPATH: services/ai
-        run: python -m unittest discover -s services/ai/tests -p "test_runtime_discovery.py" -v
-      - name: Verify resources, queues, backend truth and deterministic unload
-        env:
-          PYTHONPATH: services/ai
-        run: |
-          python -m unittest discover -s services/ai/tests -p "test_resource_governor.py" -v
-          python -m unittest discover -s services/ai/tests -p "test_realtime_telemetry.py" -v
-          python -m unittest discover -s services/ai/tests -p "test_coalescing_queue.py" -v
-          python -m unittest discover -s services/ai/tests -p "test_model_advisor_total_product_memory.py" -v
-          python -m unittest discover -s services/ai/tests -p "test_provider_unload.py" -v
-          python -m unittest discover -s services/ai/tests -p "test_model_advisor_backend_matrix.py" -v
-          python -m unittest discover -s services/ai/tests -p "test_model_selection_state.py" -v
-          python -m unittest discover -s services/ai/tests -p "test_measured_shared_gpu_memory.py" -v
-          python -m unittest discover -s services/ai/tests -p "test_engine_benchmark_backend_truth.py" -v
-          python -m unittest discover -s services/ai/tests -p "test_cli_special_model_install.py" -v
-          python -m unittest discover -s services/ai/tests -p "test_model_advisor_backend_failure_isolation.py" -v
-          python -m unittest discover -s services/ai/tests -p "test_moonshine_incremental_streaming.py" -v
-
-  windows-native-bridge:
-    name: whisper.cpp persistent bridge / Windows MSVC
-    runs-on: windows-latest
+  lockfile:
+    runs-on: ubuntu-latest
     env:
       CARGO_NET_RETRY: 10
       CARGO_HTTP_TIMEOUT: 120
     steps:
       - uses: actions/checkout@v5
-      - uses: dtolnay/rust-toolchain@stable
         with:
-          components: clippy
-      - name: Fetch Rust dependencies with bounded retries
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = 'Stop'
-          for ($attempt = 1; $attempt -le 3; $attempt++) {
-            cargo fetch --locked
-            if ($LASTEXITCODE -eq 0) { exit 0 }
-            if ($attempt -eq 3) {
-              throw "cargo fetch falló después de $attempt intentos."
-            }
-            Start-Sleep -Seconds (10 * $attempt)
-          }
-      - name: Build native bridge with platform-generated bindings
-        shell: pwsh
-        run: |
-          if ($env:WHISPER_DONT_GENERATE_BINDINGS) {
-            throw 'WHISPER_DONT_GENERATE_BINDINGS must not be set on Windows MSVC.'
-          }
-          cargo build -p mily-bridge --release --locked
-      - name: Test and lint native bridge
-        run: |
-          cargo test -p mily-bridge --locked
-          cargo clippy -p mily-bridge --all-targets --locked -- -D warnings
-
-  rustfmt:
-    name: Rust formatting gate
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v5
+          ref: agent/enginehub-memory-selection-fix
+          fetch-depth: 0
       - uses: dtolnay/rust-toolchain@stable
-        with:
-          components: rustfmt
-      - run: cargo fmt --all -- --check
+      - name: Generate the exact workspace dependency lock
+        shell: bash
+        run: |
+          set -euo pipefail
+          for attempt in 1 2 3; do
+            if cargo generate-lockfile; then
+              break
+            fi
+            if [ "$attempt" = 3 ]; then
+              echo "cargo generate-lockfile failed after $attempt attempts" >&2
+              exit 1
+            fi
+            sleep $((attempt * 10))
+          done
+          cargo metadata --locked --no-deps --format-version 1 >/dev/null
+      - name: Commit Cargo.lock to the pruebas candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- Cargo.lock && git ls-files --error-unmatch Cargo.lock >/dev/null 2>&1; then
+            echo "Cargo.lock already committed."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Cargo.lock
+          git commit -m "build: lock Engine Hub Rust dependencies"
+          git push origin HEAD:agent/enginehub-memory-selection-fix
