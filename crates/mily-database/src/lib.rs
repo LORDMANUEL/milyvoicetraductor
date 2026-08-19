@@ -147,4 +147,23 @@ mod tests {
         db.apply_migrations().unwrap();
         assert_eq!(db.migration_version().unwrap(), 2);
     }
+
+    #[test]
+    fn corrupt_database_is_quarantined_and_recreated() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("milyvoice.db");
+        fs::write(&path, b"this is not a sqlite database").unwrap();
+
+        let db = DatabaseService::open(&path)
+            .expect("una base SQLite corrupta anterior no debe impedir el arranque");
+
+        assert_eq!(db.migration_version().unwrap(), 2);
+        assert!(path.is_file());
+        let quarantine = dir.path().join("milyvoice.db.corrupt");
+        assert!(quarantine.is_file());
+        assert_eq!(
+            fs::read(quarantine).unwrap(),
+            b"this is not a sqlite database"
+        );
+    }
 }
