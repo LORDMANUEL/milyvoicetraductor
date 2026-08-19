@@ -23,11 +23,13 @@ from .providers import AsrProvider, AsrSegment
 class MoonshineResultAsr(MoonshineAsr):
     """Moonshine streaming residente compatible con `Transcript.lines`.
 
-    El segmentador de MilyVoice entrega ventanas acumulativas para una misma
-    utterance. Este adapter conserva un único stream Moonshine y le agrega solo
-    el delta nuevo; así evita redecodificar desde cero los primeros 0.9–2.4 s
-    en cada hipótesis parcial.
+    Las ventanas de MilyVoice son acumulativas dentro de una utterance. Este
+    adapter mantiene el modelo y el stream residentes, alimenta solo el delta
+    nuevo y usa una huella corta del comienzo del audio para detectar una nueva
+    frase aunque sea más larga que la anterior.
     """
+
+    _PREFIX_SAMPLES = 256
 
     def __init__(
         self,
@@ -39,6 +41,7 @@ class MoonshineResultAsr(MoonshineAsr):
         super().__init__(model_path, compute_profile, cpu_budget, word_timestamps)
         self._stream: Any | None = None
         self._stream_samples = 0
+        self._utterance_prefix: tuple[float, ...] = ()
         self._update_interval = 0.45
 
     def _config(self) -> dict[str, Any]:
@@ -75,11 +78,14 @@ class MoonshineResultAsr(MoonshineAsr):
             self._update_interval = max(
                 0.2, min(1.0, float(config.get("updateInterval", 0.45)))
             )
+            options = {"return_audio_data": "false"}
+            if self.word_timestamps:
+                options["word_timestamps"] = "true"
             self._transcriber = Transcriber(
                 str(self.model_path),
                 model_arch,
                 update_interval=self._update_interval,
-                options={"return_audio_data": False},
+                options=options,
             )
         except Exception as exc:
             raise OptionalProviderRuntimeError(
@@ -116,6 +122,7 @@ class MoonshineResultAsr(MoonshineAsr):
         stream = self._stream
         self._stream = None
         self._stream_samples = 0
+        self._utterance_prefix = ()
         if stream is None:
             return
         stop = getattr(stream, "stop", None)
@@ -131,10 +138,18 @@ class MoonshineResultAsr(MoonshineAsr):
             except Exception:
                 pass
 
-    def _ensure_stream(self, sample_count: int):
-        # Las ventanas de una utterance son acumulativas. Una ventana más corta
-        # indica que el segmentador ya inició una utterance distinta.
-        if self._stream is not None and sample_count < self._stream_samples:
+    def _starts_new_utterance(self, samples: Sequence[float]) -> bool:
+        if self._stream is None or self._stream_samples <= 0 or not self._utterance_prefix:
+            return False
+        if len(samples) < self._stream_samples:
+            return True
+        prefix_len = min(len(samples), len(self._utterance_prefix))
+        if prefix_len == 0:
+            return False
+        return tuple(float(value) for value in samples[:prefix_len]) != self._utterance_prefix[:prefix_len]
+
+    def _ensure_stream(self, samples: Sequence[float]):
+        if self._starts_new_utterance(samples):
             self._close_stream()
         if self._stream is None:
             transcriber = self._load()
@@ -147,8 +162,12 @@ class MoonshineResultAsr(MoonshineAsr):
             try:
                 self._stream = create_stream(update_interval=self._update_interval)
                 self._stream.start()
+                self._utterance_prefix = tuple(
+                    float(value) for value in samples[: self._PREFIX_SAMPLES]
+                )
             except Exception as exc:
                 self._stream = None
+                self._utterance_prefix = ()
                 raise OptionalProviderRuntimeError(
                     "MOONSHINE_STREAM_START",
                     "Moonshine no pudo iniciar el stream realtime.",
@@ -161,7 +180,7 @@ class MoonshineResultAsr(MoonshineAsr):
         normalized = [float(value) for value in samples]
         if not normalized:
             return []
-        stream = self._ensure_stream(len(normalized))
+        stream = self._ensure_stream(normalized)
         delta = normalized[self._stream_samples :]
         if delta:
             try:
@@ -197,8 +216,6 @@ class MoonshineResultAsr(MoonshineAsr):
         ]
 
     def finish_utterance(self) -> None:
-        """Cierra solo el stream; mantiene el modelo residente para la siguiente frase."""
-
         self._close_stream()
 
     def warm_up(self, _source_language: str = "en") -> None:
@@ -372,9 +389,7 @@ class WhisperCppBridgeAsr(AsrProvider):
             },
             separators=(",", ":"),
         ).encode("utf-8")
-        pcm = struct.pack(
-            f"<{len(samples)}f", *[float(value) for value in samples]
-        )
+        pcm = struct.pack(f"<{len(samples)}f", *[float(value) for value in samples])
         with self._lock:
             try:
                 transport.stdin.write(struct.pack("<II", len(metadata), len(pcm)))
