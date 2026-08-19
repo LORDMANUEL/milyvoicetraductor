@@ -15,7 +15,11 @@ from .engine_registry import (
     load_engine_descriptors,
 )
 from .models import HuggingFacePackInstaller, InstalledPack, ModelCatalog
-from .resource_governor import ResourceGovernor, ResourceLimits, RuntimeFootprint
+from .resource_governor import (
+    ResourceGovernor,
+    ResourceLimits,
+    RuntimeFootprint,
+)
 from .runtime_discovery import RuntimeInventory, discover_runtime_inventory
 
 BenchmarkFunction = Callable[[InstalledPack, dict[str, Any]], dict[str, Any]]
@@ -33,7 +37,10 @@ def _finite_non_negative(value: object, default: float) -> float:
         parsed = float(value)
     except (TypeError, ValueError):
         return default
-    if parsed < 0 or parsed != parsed or parsed in {float("inf"), float("-inf")}:
+    if parsed < 0 or parsed != parsed or parsed in {
+        float("inf"),
+        float("-inf"),
+    }:
         return default
     return parsed
 
@@ -57,18 +64,72 @@ class ModelAdvisor:
             self.governor, descriptors=load_engine_descriptors()
         )
 
+    @staticmethod
+    def _declared_engine_ram(definition: dict[str, Any]) -> float:
+        return _finite_non_negative(definition.get("ramMb", 0), 0.0)
+
+    @staticmethod
+    def _engine_ram_from_report(report: dict[str, Any]) -> float:
+        return _finite_non_negative(
+            report.get(
+                "enginePeakWorkingSetMb",
+                report.get(
+                    "peakWorkingSetMb",
+                    report.get("workingSetMb", 0.0),
+                ),
+            ),
+            0.0,
+        )
+
+    def _declared_decision(self, definition: dict[str, Any]):
+        return self.governor.preflight_model(
+            model_ram_mb=self._declared_engine_ram(definition),
+            shared_gpu_mb=_finite_non_negative(
+                definition.get("sharedGpuMb", 0), 0.0
+            ),
+            dedicated_vram_mb=_finite_non_negative(
+                definition.get("vramMb", 0), 0.0
+            ),
+        )
+
+    def _measured_decision(
+        self,
+        definition: dict[str, Any],
+        report: dict[str, Any],
+    ):
+        total_product = _finite_non_negative(
+            report.get("totalProductWorkingSetMb", 0.0), 0.0
+        )
+        dedicated_vram = _finite_non_negative(
+            definition.get("vramMb", 0), 0.0
+        )
+        if total_product > 0:
+            return self.governor.evaluate(
+                RuntimeFootprint(
+                    process_mb=total_product,
+                    dedicated_vram_mb=dedicated_vram,
+                )
+            )
+        return self.governor.preflight_model(
+            model_ram_mb=max(
+                self._declared_engine_ram(definition),
+                self._engine_ram_from_report(report),
+            ),
+            shared_gpu_mb=_finite_non_negative(
+                definition.get("sharedGpuMb", 0), 0.0
+            ),
+            dedicated_vram_mb=dedicated_vram,
+        )
+
     def describe_catalog(self) -> list[dict[str, Any]]:
         installed = {
-            f"{item.id}@{item.version}": item for item in self.catalog.installed()
+            f"{item.id}@{item.version}": item
+            for item in self.catalog.installed()
         }
         output: list[dict[str, Any]] = []
         for definition in self.catalog.definitions():
             ref = f"{definition['id']}@{definition['version']}"
-            footprint = RuntimeFootprint(
-                process_mb=float(definition.get("ramMb", 0)),
-                dedicated_vram_mb=float(definition.get("vramMb", 0)),
-            )
-            decision = self.governor.evaluate(footprint)
+            decision = self._declared_decision(definition)
             item = dict(definition)
             current = installed.get(ref)
             item["installed"] = current is not None
@@ -76,24 +137,28 @@ class ModelAdvisor:
             item["resourceAllowed"] = decision.allowed
             item["resourceMode"] = decision.mode
             item["resourceReason"] = decision.reason
+            item["estimatedTotalProductMb"] = round(
+                decision.effective_process_mb, 1
+            )
+            item["productReserveMb"] = self.governor.limits.product_reserve_mb
             if current is not None:
                 report = self._load_report(current)
                 item["benchmark"] = report
                 if report is not None:
-                    measured = _finite_non_negative(
-                        report.get(
-                            "peakWorkingSetMb",
-                            report.get("workingSetMb", 0.0),
-                        ),
-                        0.0,
+                    measured_engine = self._engine_ram_from_report(report)
+                    measured_total = _finite_non_negative(
+                        report.get("totalProductWorkingSetMb", 0.0), 0.0
                     )
-                    item["measuredRamMb"] = measured
-                    measured_decision = self.governor.evaluate(
-                        RuntimeFootprint(
-                            process_mb=max(float(definition.get("ramMb", 0)), measured),
-                            dedicated_vram_mb=float(definition.get("vramMb", 0)),
-                        )
+                    measured_decision = self._measured_decision(
+                        definition, report
                     )
+                    if measured_total <= 0:
+                        measured_total = measured_decision.effective_process_mb
+                    item["measuredEngineRamMb"] = measured_engine
+                    item["measuredTotalProductMb"] = measured_total
+                    # Compatibilidad de UI: measuredRamMb ahora representa el
+                    # producto completo, no únicamente el Python padre.
+                    item["measuredRamMb"] = measured_total
                     item["resourceAllowed"] = measured_decision.allowed
                     item["resourceMode"] = measured_decision.mode
                     item["resourceReason"] = measured_decision.reason
@@ -118,17 +183,18 @@ class ModelAdvisor:
         report: dict[str, Any],
     ) -> EngineCandidate:
         tier = str(definition.get("tier", "experimental"))
-        declared_ram = _finite_non_negative(definition.get("ramMb", 0), 0.0)
-        measured_ram = _finite_non_negative(
-            report.get("peakWorkingSetMb", report.get("workingSetMb", 0.0)),
-            0.0,
-        )
+        declared_ram = self._declared_engine_ram(definition)
+        measured_ram = self._engine_ram_from_report(report)
         combined_rtf = _finite_non_negative(
-            report.get("combinedRtfP95", report.get("asrRtfP95", 99.0)),
+            report.get(
+                "combinedRtfP95", report.get("asrRtfP95", 99.0)
+            ),
             99.0,
         )
         end_to_end_p50 = _finite_non_negative(
-            report.get("endToEndP50Ms", report.get("translationP50Ms", 0.0)),
+            report.get(
+                "endToEndP50Ms", report.get("translationP50Ms", 0.0)
+            ),
             0.0,
         )
         end_to_end_p95 = _finite_non_negative(
@@ -142,7 +208,9 @@ class ModelAdvisor:
             id=pack.id,
             engine_id=str(definition.get("engine", "")),
             ram_mb=max(declared_ram, measured_ram),
-            vram_mb=_finite_non_negative(definition.get("vramMb", 0), 0.0),
+            vram_mb=_finite_non_negative(
+                definition.get("vramMb", 0), 0.0
+            ),
             shared_gpu_mb=_finite_non_negative(
                 definition.get("sharedGpuMb", 0), 0.0
             ),
@@ -155,7 +223,9 @@ class ModelAdvisor:
             ),
             backends=tuple(
                 str(item)
-                for item in definition.get("supportedBackends", ("cpu",))
+                for item in definition.get(
+                    "supportedBackends", ("cpu",)
+                )
             ),
         )
 
