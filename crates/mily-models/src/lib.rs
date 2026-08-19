@@ -190,9 +190,9 @@ impl ModelManagerService {
         self.definitions()
             .into_iter()
             .map(|definition| {
-                let local = installed.iter().find(|item| {
-                    item.id == definition.id && item.version == definition.version
-                });
+                let local = installed
+                    .iter()
+                    .find(|item| item.id == definition.id && item.version == definition.version);
                 let is_installed = local.is_some();
                 let active = local.map(|item| item.active).unwrap_or(false);
                 definition.into_info(is_installed, active)
@@ -222,19 +222,15 @@ impl ModelManagerService {
             if !metadata.is_file() {
                 continue;
             }
-            let is_active = active.as_deref()
-                == Some(&format!("{}@{}", definition.id, definition.version));
+            let is_active =
+                active.as_deref() == Some(&format!("{}@{}", definition.id, definition.version));
             output.push(definition.into_info(true, is_active));
         }
         output
     }
 
     pub fn install(&self, pack_id: &str) -> Result<ModelPackInfo, ModelError> {
-        self.run_engine_cli(&[
-            "install".into(),
-            pack_id.into(),
-            "--download-only".into(),
-        ])?;
+        self.run_engine_cli(&["install".into(), pack_id.into(), "--download-only".into()])?;
         self.catalog()
             .into_iter()
             .find(|pack| pack.id == pack_id && pack.installed)
