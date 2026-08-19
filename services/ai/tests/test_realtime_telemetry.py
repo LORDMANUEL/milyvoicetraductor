@@ -24,7 +24,11 @@ class RealtimeTelemetryTests(unittest.TestCase):
         self.assertLess(snapshot.real_time_factor, 1.0)
         self.assertGreaterEqual(
             snapshot.real_time_factor_p95,
+            snapshot.real_time_factor_p50,
+        )
+        self.assertEqual(
             snapshot.real_time_factor,
+            snapshot.real_time_factor_p95,
         )
         self.assertAlmostEqual(snapshot.real_time_factor_p95, 0.8)
 
@@ -33,14 +37,15 @@ class RealtimeTelemetryTests(unittest.TestCase):
         for elapsed_ms in (300.0, 320.0, 340.0, 360.0, 1800.0):
             telemetry.record_asr(elapsed_ms, audio_ms=1000.0)
         snapshot = telemetry.snapshot(audio_queue_ms=0, translation_queue_depth=0)
-        self.assertLess(snapshot.real_time_factor, 0.85)
+        self.assertLess(snapshot.real_time_factor_p50, 0.85)
         self.assertGreaterEqual(snapshot.real_time_factor_p95, 1.8)
+        self.assertEqual(snapshot.real_time_factor, snapshot.real_time_factor_p95)
         controller = LatencyController()
         self.assertEqual(
             controller.classify(
                 0,
                 0,
-                snapshot.real_time_factor_p95,
+                snapshot.real_time_factor,
                 process_memory_mb=900.0,
             ),
             "rescue",
