@@ -6,9 +6,7 @@ from mily_ai.cpu_budget import detect_cpu_budget
 from mily_ai.optional_providers import (
     CTranslate2MarianTranslator,
     GoogleChirpAsr,
-    MoonshineAsr,
     SherpaOnnxAsr,
-    WhisperCppAsr,
 )
 from mily_ai.provider_factory import (
     ProviderConfigurationError,
@@ -16,6 +14,7 @@ from mily_ai.provider_factory import (
     build_translation_provider,
 )
 from mily_ai.providers import FasterWhisperAsr
+from mily_ai.safe_optional_providers import MoonshineResultAsr, WhisperCppBridgeAsr
 
 
 class ProviderFactoryTests(unittest.TestCase):
@@ -30,9 +29,9 @@ class ProviderFactoryTests(unittest.TestCase):
     def test_all_asr_engines_have_registered_adapters(self):
         expected = {
             "faster-whisper": FasterWhisperAsr,
-            "moonshine": MoonshineAsr,
+            "moonshine": MoonshineResultAsr,
             "sherpa-onnx": SherpaOnnxAsr,
-            "whisper-cpp": WhisperCppAsr,
+            "whisper-cpp": WhisperCppBridgeAsr,
             "google-chirp": GoogleChirpAsr,
         }
         for provider, expected_type in expected.items():
