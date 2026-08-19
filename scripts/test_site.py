@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
-"""Prueba estática sin dependencias para la landing pública de GitHub Pages."""
+"""Prueba estática sin dependencias para la landing pública de GitHub Pages.
+
+La página puede mostrar solo el canal estable o, durante el desarrollo, el canal
+estable junto a Engine Hub beta. En ambos casos conserva producto, privacidad,
+descarga estable y versión vigente sin acoplarse a una frase promocional exacta.
+"""
 from pathlib import Path
 import sys
 
@@ -9,7 +14,6 @@ styles = ROOT / "apps" / "site" / "styles.css"
 logo = ROOT / "apps" / "site" / "assets" / "logo.svg"
 
 WINDOWS_DOWNLOAD = "https://github.com/LORDMANUEL/milyvoicetraductor/releases/download/v2.0.1/MilyVoiceTraductor_2.0.1_x64-setup.exe"
-CHROMIUM_DOWNLOAD = "https://github.com/LORDMANUEL/milyvoicetraductor/releases/download/v2.0.1/MilyVoiceTraductor-Chromium-Extension.zip"
 
 errors: list[str] = []
 if not index.exists():
@@ -17,19 +21,34 @@ if not index.exists():
 else:
     html = index.read_text(encoding="utf-8")
     for required in [
-        "MilyVoiceTraductor 2.0.1",
+        "MilyVoiceTraductor",
+        "2.0.1",
+        'id="producto"',
         'id="privacidad"',
         'id="compute"',
         'id="estado"',
         "Sin telemetría",
         "MilyCompute",
-        "MegaBench",
-        "2.0.1 · Runtime privado",
+        "Runtime privado",
+        "Extensión Chromium",
+        "localhost",
         WINDOWS_DOWNLOAD,
-        CHROMIUM_DOWNLOAD,
     ]:
         if required not in html:
             errors.append(f"Falta contenido requerido: {required}")
+
+    # Cuando se anuncia la beta, debe quedar inequívocamente separada del canal
+    # estable y documentar el presupuesto de memoria solicitado por el producto.
+    if 'id="beta"' in html:
+        for required in (
+            "Engine Hub",
+            "beta en pruebas",
+            "rama <code>pruebas</code>",
+            "2 GiB",
+            "La versión recomendada sigue siendo 2.0.1",
+        ):
+            if required not in html:
+                errors.append(f"Beta pública incompleta: falta {required}")
 
     for stale in [
         "2.0 RC",
@@ -55,4 +74,4 @@ if errors:
     for error in errors:
         print(f"- {error}")
     sys.exit(1)
-print("SITE CHECK OK: MilyVoice 2.0.1, MilyCompute, MegaBench, privacidad y descargas presentes.")
+print("SITE CHECK OK: producto 2.0.1, privacidad, MilyCompute y canales estable/beta coherentes.")
