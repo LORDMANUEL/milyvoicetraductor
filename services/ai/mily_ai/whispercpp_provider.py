@@ -12,6 +12,33 @@ from .safe_optional_providers import WhisperCppBridgeAsr
 class BundledWhisperCppBridgeAsr(WhisperCppBridgeAsr):
     """Usa el bridge del instalador sin exigir variables manuales al usuario."""
 
+    def __init__(
+        self,
+        model_path: Path,
+        compute_profile: str = "auto",
+        cpu_budget=None,
+        word_timestamps: bool = False,
+        **kwargs,
+    ):
+        requested = str(compute_profile or "auto").strip().lower()
+        if requested == "gpu":
+            requested = "vulkan"
+        parent_profile = (
+            "gpu"
+            if requested in {"cuda", "vulkan", "openvino"}
+            else requested
+        )
+        super().__init__(
+            model_path,
+            parent_profile,
+            cpu_budget=cpu_budget,
+            word_timestamps=word_timestamps,
+            **kwargs,
+        )
+        if requested in {"cpu", "cuda", "vulkan", "openvino"}:
+            self.backend = requested
+            self.selected_device = requested
+
     def _bridge(self) -> Path:
         configured = os.environ.get("MILY_WHISPER_CPP_BRIDGE", "").strip()
         local_app_data = os.environ.get("LOCALAPPDATA", "").strip()
