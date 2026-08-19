@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterable
 
-from .resource_governor import ResourceGovernor, RuntimeFootprint
+from .resource_governor import ResourceGovernor
 
 
 @dataclass(frozen=True, slots=True)
@@ -20,8 +20,13 @@ class BenchmarkSample:
 
     def __post_init__(self) -> None:
         values = (self.rtf, self.p95_ms, self.p50_ms)
-        if not all(math.isfinite(float(value)) and float(value) >= 0 for value in values):
-            raise ValueError("Las métricas de benchmark deben ser finitas y no negativas")
+        if not all(
+            math.isfinite(float(value)) and float(value) >= 0
+            for value in values
+        ):
+            raise ValueError(
+                "Las métricas de benchmark deben ser finitas y no negativas"
+            )
 
 
 @dataclass(frozen=True, slots=True)
@@ -50,9 +55,15 @@ class EngineCandidate:
         if not self.id or not self.engine_id:
             raise ValueError("El candidato debe tener id y engine_id")
         memory = (self.ram_mb, self.vram_mb, self.shared_gpu_mb)
-        if not all(math.isfinite(float(value)) and float(value) >= 0 for value in memory):
+        if not all(
+            math.isfinite(float(value)) and float(value) >= 0
+            for value in memory
+        ):
             raise ValueError("La memoria del candidato debe ser finita y no negativa")
-        if not math.isfinite(float(self.quality_score)) or not 0 <= float(self.quality_score) <= 1:
+        if (
+            not math.isfinite(float(self.quality_score))
+            or not 0 <= float(self.quality_score) <= 1
+        ):
             raise ValueError("quality_score debe estar entre cero y uno")
 
 
@@ -64,10 +75,14 @@ class EngineSelection:
     rejected: dict[str, str] = field(default_factory=dict)
 
 
-def load_engine_descriptors(path: Path | None = None) -> tuple[EngineDescriptor, ...]:
+def load_engine_descriptors(
+    path: Path | None = None,
+) -> tuple[EngineDescriptor, ...]:
     catalog_path = path or Path(__file__).with_name("engine-families.json")
     payload = json.loads(catalog_path.read_text(encoding="utf-8"))
-    if payload.get("schemaVersion") != 1 or not isinstance(payload.get("engines"), list):
+    if payload.get("schemaVersion") != 1 or not isinstance(
+        payload.get("engines"), list
+    ):
         raise ValueError("Catálogo de motores inválido")
     output: list[EngineDescriptor] = []
     seen: set[str] = set()
@@ -112,14 +127,18 @@ class EngineRegistry:
     def descriptors(self) -> tuple[EngineDescriptor, ...]:
         return tuple(self._descriptors.values())
 
-    @staticmethod
-    def _score(candidate: EngineCandidate) -> float:
+    def _score(self, candidate: EngineCandidate) -> float:
         benchmark = candidate.benchmark
         if not benchmark.stable:
             return float("-inf")
         speed = max(0.0, 1.5 - float(benchmark.rtf)) / 1.5
         latency = 1.0 / (1.0 + float(benchmark.p95_ms) / 1000.0)
-        memory = 1.0 / (1.0 + float(candidate.ram_mb) / 1024.0)
+        total_ram_mb = (
+            float(candidate.ram_mb)
+            + float(candidate.shared_gpu_mb)
+            + float(self.resource_governor.limits.product_reserve_mb)
+        )
+        memory = 1.0 / (1.0 + total_ram_mb / 1024.0)
         return (
             0.42 * speed
             + 0.30 * latency
@@ -165,12 +184,10 @@ class EngineRegistry:
             if commercial_required and not descriptor.commercial_use:
                 rejected[candidate.id] = "NON_COMMERCIAL"
                 continue
-            resource = self.resource_governor.evaluate(
-                RuntimeFootprint(
-                    process_mb=candidate.ram_mb,
-                    shared_gpu_mb=candidate.shared_gpu_mb,
-                    dedicated_vram_mb=candidate.vram_mb,
-                )
+            resource = self.resource_governor.preflight_model(
+                model_ram_mb=candidate.ram_mb,
+                shared_gpu_mb=candidate.shared_gpu_mb,
+                dedicated_vram_mb=candidate.vram_mb,
             )
             if not resource.allowed:
                 rejected[candidate.id] = resource.reason
@@ -178,7 +195,9 @@ class EngineRegistry:
             requested_backends = candidate.backends or (
                 ("cloud",) if descriptor.cloud else ("cpu",)
             )
-            backend = next((item for item in requested_backends if item in available), None)
+            backend = next(
+                (item for item in requested_backends if item in available), None
+            )
             if backend is None:
                 rejected[candidate.id] = "BACKEND_UNAVAILABLE"
                 continue
@@ -191,7 +210,11 @@ class EngineRegistry:
             raise RuntimeError("No existe un motor compatible con esta ruta y equipo")
         score, candidate, backend = max(
             accepted,
-            key=lambda item: (item[0], -item[1].benchmark.p95_ms, item[1].id),
+            key=lambda item: (
+                item[0],
+                -item[1].benchmark.p95_ms,
+                item[1].id,
+            ),
         )
         return EngineSelection(
             candidate=candidate,
