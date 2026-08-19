@@ -50,6 +50,32 @@ for pack in catalog_a.get("packs", []):
             if component.get("language") != "en" or component.get("modelArch") != 2:
                 fail(f"Moonshine sin arquitectura/lenguaje fijados: {pack.get('id')}/{component_name}")
             continue
+        if provider == "marian-cascade-ct2":
+            stages = component.get("stages")
+            if not isinstance(stages, list) or len(stages) != 2:
+                fail(f"Cascada Marian inválida: {pack.get('id')}/{component_name}")
+                continue
+            previous_target = None
+            for index, stage in enumerate(stages, start=1):
+                label = f"{pack.get('id')}/{component_name}/stage-{index}"
+                if not isinstance(stage, dict):
+                    fail(f"Etapa Marian inválida: {label}")
+                    continue
+                if str(stage.get("provider", "")).strip() != "marian-ct2":
+                    fail(f"Proveedor de etapa Marian inválido: {label}")
+                stage_repo = str(stage.get("repoId", "")).strip()
+                if not stage_repo:
+                    fail(f"Etapa Marian sin repoId: {label}")
+                if not commit_sha.fullmatch(str(stage.get("revision", ""))):
+                    fail(f"Etapa Marian sin revisión SHA fijada: {label}")
+                source = str(stage.get("sourceLanguage", "")).strip().lower()
+                target = str(stage.get("targetLanguage", "")).strip().lower()
+                if not source or not target:
+                    fail(f"Etapa Marian sin dirección explícita: {label}")
+                if previous_target is not None and source != previous_target:
+                    fail(f"Cascada Marian discontinua: {label}")
+                previous_target = target
+            continue
         fail(f"Componente sin procedencia reproducible: {pack.get('id')}/{component_name}")
 
 version = (ROOT / "VERSION").read_text(encoding="utf-8").strip()
