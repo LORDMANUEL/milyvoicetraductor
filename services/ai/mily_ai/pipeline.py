@@ -141,6 +141,32 @@ class RealtimePipeline:
     def known_speakers(self) -> tuple[str, ...]:
         return self.speaker_clusterer.speaker_ids if self.speaker_clusterer else ()
 
+    @property
+    def compute_status(self) -> dict[str, str | bool]:
+        """Expone únicamente el backend real y motivos de fallback ya sanitizados."""
+
+        def provider_state(provider) -> tuple[str, bool, str]:
+            device = str(getattr(provider, "selected_device", "") or "unknown").lower()
+            if device not in {"cpu", "cuda", "directml", "openvino", "vulkan", "windowsml"}:
+                device = "unknown"
+            fallback = bool(getattr(provider, "fallback_used", False))
+            reason = str(getattr(provider, "fallback_reason", "") or "")
+            if len(reason) > 80:
+                reason = reason[:80]
+            return device, fallback, reason
+
+        asr_device, asr_fallback, asr_reason = provider_state(self.asr)
+        mt_device, mt_fallback, mt_reason = provider_state(self._translator_provider)
+        return {
+            "asrDevice": asr_device,
+            "translationDevice": mt_device,
+            "fallbackUsed": asr_fallback or mt_fallback,
+            "asrFallbackUsed": asr_fallback,
+            "translationFallbackUsed": mt_fallback,
+            "asrFallbackReason": asr_reason,
+            "translationFallbackReason": mt_reason,
+        }
+
     def set_speaker_focus(self, mode: str, speaker_id: str | None = None) -> None:
         self.speaker_focus_mode = mode if mode in {"all", "dominant", "fixed"} else "all"
         self.fixed_speaker_id = speaker_id if self.speaker_focus_mode == "fixed" else None
