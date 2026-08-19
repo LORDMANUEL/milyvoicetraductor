@@ -59,22 +59,37 @@ jobs:
   windows-native-bridge:
     name: whisper.cpp persistent bridge / Windows MSVC
     runs-on: windows-latest
+    env:
+      CARGO_NET_RETRY: 10
+      CARGO_HTTP_TIMEOUT: 120
     steps:
       - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy
+      - name: Fetch Rust dependencies with bounded retries
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          for ($attempt = 1; $attempt -le 3; $attempt++) {
+            cargo fetch --locked
+            if ($LASTEXITCODE -eq 0) { exit 0 }
+            if ($attempt -eq 3) {
+              throw "cargo fetch falló después de $attempt intentos."
+            }
+            Start-Sleep -Seconds (10 * $attempt)
+          }
       - name: Build native bridge with platform-generated bindings
         shell: pwsh
         run: |
           if ($env:WHISPER_DONT_GENERATE_BINDINGS) {
             throw 'WHISPER_DONT_GENERATE_BINDINGS must not be set on Windows MSVC.'
           }
-          cargo build -p mily-bridge --release
+          cargo build -p mily-bridge --release --locked
       - name: Test and lint native bridge
         run: |
-          cargo test -p mily-bridge
-          cargo clippy -p mily-bridge --all-targets -- -D warnings
+          cargo test -p mily-bridge --locked
+          cargo clippy -p mily-bridge --all-targets --locked -- -D warnings
 
   rustfmt:
     name: Rust formatting gate
