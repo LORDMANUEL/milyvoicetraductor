@@ -100,6 +100,9 @@ class RealtimePipeline:
         self.telemetry = RealtimeTelemetry()
         self.recorder = recorder
         self.echo_guard = EchoGuard()
+        self._speaker_detection_requested = bool(speaker_detection)
+        self._word_timestamps_requested = self.session_mode == "karaoke"
+        self._resource_mode = "healthy"
         self.speaker_clusterer = (
             SpeakerClusterer(sample_rate=self.sample_rate) if speaker_detection else None
         )
@@ -119,7 +122,7 @@ class RealtimePipeline:
             pack.path / "components" / "asr",
             compute_profile,
             self.cpu_budget,
-            self.session_mode == "karaoke",
+            self._word_timestamps_requested,
         )
         translator: Translator = build_translation_provider(
             components["translation"],
@@ -135,7 +138,17 @@ class RealtimePipeline:
         return self.segmenter.level
 
     @property
+    def resource_mode(self) -> str:
+        return self._resource_mode
+
+    @property
+    def speaker_detection_enabled(self) -> bool:
+        return self._speaker_detection_requested and self._resource_mode == "healthy"
+
+    @property
     def known_speakers(self) -> tuple[str, ...]:
+        if not self.speaker_detection_enabled:
+            return ()
         return self.speaker_clusterer.speaker_ids if self.speaker_clusterer else ()
 
     @property
@@ -170,7 +183,20 @@ class RealtimePipeline:
             "translationFallbackUsed": mt_fallback,
             "asrFallbackReason": asr_reason,
             "translationFallbackReason": mt_reason,
+            "resourceMode": self._resource_mode,
         }
+
+    def set_resource_mode(self, mode: str) -> None:
+        """Activa/desactiva funciones costosas sin perder frases finales."""
+
+        normalized = str(mode).strip().lower()
+        if normalized not in {"healthy", "pressure", "catch_up", "rescue"}:
+            normalized = "rescue"
+        self._resource_mode = normalized
+        if hasattr(self.asr, "word_timestamps"):
+            self.asr.word_timestamps = bool(
+                self._word_timestamps_requested and normalized == "healthy"
+            )
 
     def set_speaker_focus(self, mode: str, speaker_id: str | None = None) -> None:
         self.speaker_focus_mode = mode if mode in {"all", "dominant", "fixed"} else "all"
@@ -214,6 +240,8 @@ class RealtimePipeline:
         return f"u-{window.start_sample}"
 
     def _speaker_for_window(self, window: StreamingEvent) -> str | None:
+        if not self.speaker_detection_enabled:
+            return None
         clusterer = self.speaker_clusterer
         if clusterer is None:
             return None
