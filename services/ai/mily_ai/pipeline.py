@@ -218,7 +218,7 @@ class RealtimePipeline:
     def unload(self) -> None:
         """Libera explícitamente el ASR y MT antes de cambiar de pack."""
 
-        for provider in (self.asr, self._translator_provider):
+        for provider in (self.asr, self.translator):
             unload = getattr(provider, "unload", None)
             if callable(unload):
                 unload()
