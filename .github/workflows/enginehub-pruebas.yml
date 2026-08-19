@@ -1,39 +1,85 @@
-name: Apply Engine Hub audit patch
+name: Engine Hub target-machine validation
 
 on:
   pull_request:
     branches: [pruebas]
+  workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
-  group: apply-enginehub-audit-${{ github.ref }}
+  group: enginehub-pruebas-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  patch:
-    if: ${{ !contains(github.event.pull_request.head.sha, '0000000') }}
+  target-machine:
+    name: 8 GiB host / 2 GiB MilyVoice / ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+      - name: Install lightweight validation dependencies
+        run: python -m pip install --disable-pip-version-check "fastapi>=0.116,<1" "httpx>=0.28,<1" "numpy>=2.2,<3"
+      - name: Simulate target machine, engine selection and ten-minute backlog
+        env:
+          PYTHONPATH: services/ai
+        run: python -m unittest discover -s services/ai/tests -p "test_engine_hub_target_machine.py" -v
+      - name: Verify complete private runtime contract
+        env:
+          PYTHONPATH: services/ai
+        run: python -m unittest discover -s services/ai/tests -p "test_engine_hub_runtime_bundle.py" -v
+      - name: Verify portable runtime discovery
+        env:
+          PYTHONPATH: services/ai
+        run: python -m unittest discover -s services/ai/tests -p "test_runtime_discovery.py" -v
+      - name: Verify resources, queues, backend truth and deterministic unload
+        env:
+          PYTHONPATH: services/ai
+        run: |
+          python -m unittest discover -s services/ai/tests -p "test_resource_governor.py" -v
+          python -m unittest discover -s services/ai/tests -p "test_realtime_telemetry.py" -v
+          python -m unittest discover -s services/ai/tests -p "test_coalescing_queue.py" -v
+          python -m unittest discover -s services/ai/tests -p "test_model_advisor_total_product_memory.py" -v
+          python -m unittest discover -s services/ai/tests -p "test_provider_unload.py" -v
+          python -m unittest discover -s services/ai/tests -p "test_model_advisor_backend_matrix.py" -v
+          python -m unittest discover -s services/ai/tests -p "test_model_selection_state.py" -v
+          python -m unittest discover -s services/ai/tests -p "test_measured_shared_gpu_memory.py" -v
+          python -m unittest discover -s services/ai/tests -p "test_engine_benchmark_backend_truth.py" -v
+          python -m unittest discover -s services/ai/tests -p "test_cli_special_model_install.py" -v
+
+  windows-native-bridge:
+    name: whisper.cpp persistent bridge / Windows MSVC
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - name: Build native bridge with platform-generated bindings
+        shell: pwsh
+        run: |
+          if ($env:WHISPER_DONT_GENERATE_BINDINGS) {
+            throw 'WHISPER_DONT_GENERATE_BINDINGS must not be set on Windows MSVC.'
+          }
+          cargo build -p mily-bridge --release
+      - name: Test and lint native bridge
+        run: |
+          cargo test -p mily-bridge
+          cargo clippy -p mily-bridge --all-targets -- -D warnings
+
+  rustfmt:
+    name: Rust formatting gate
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
         with:
-          ref: agent/enginehub-memory-selection-fix
-          fetch-depth: 0
-      - name: Apply audit corrections
-        run: python scripts/apply_enginehub_audit_fixes.py
-      - name: Commit patched sources
-        shell: bash
-        run: |
-          set -euo pipefail
-          if git diff --quiet; then
-            echo "Audit corrections already applied."
-            exit 0
-          fi
-          cargo fmt --all
-          git diff --check
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add services/ai/mily_ai crates .github/workflows/enginehub-pruebas.yml
-          git commit -m "fix: close Engine Hub audit gaps [enginehub audit applied]"
-          git push origin HEAD:agent/enginehub-memory-selection-fix
+          components: rustfmt
+      - run: cargo fmt --all -- --check
