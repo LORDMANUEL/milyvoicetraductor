@@ -1,9 +1,9 @@
 #[cfg(any(windows, test))]
 use serde::Deserialize;
-#[cfg(any(windows, test))]
-use std::path::{Path, PathBuf};
 #[cfg(windows)]
 use mily_logging::{LogService, RepairStatus};
+#[cfg(any(windows, test))]
+use std::path::{Path, PathBuf};
 #[cfg(windows)]
 use std::process::{Command, Stdio};
 use thiserror::Error;
@@ -12,8 +12,6 @@ use thiserror::Error;
 #[derive(Debug, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 struct BootstrapStatus {
-    #[serde(default)]
-    state: String,
     #[serde(default)]
     code: String,
     #[serde(default)]
@@ -253,7 +251,6 @@ mod tests {
         )
         .unwrap();
         let parsed = bootstrap_status_from_root(root.path()).unwrap();
-        assert_eq!(parsed.state, "failed");
         assert_eq!(parsed.code, "RUNTIME_IMPORT_FAILED");
         assert_eq!(parsed.stage, "RUNTIME_IMPORT");
         assert_eq!(parsed.message, "Falta ctranslate2");
