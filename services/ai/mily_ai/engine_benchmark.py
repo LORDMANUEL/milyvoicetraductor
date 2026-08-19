@@ -2,11 +2,9 @@
 
 from __future__ import annotations
 
-import ctypes
 import json
 import os
 import subprocess
-import sys
 import tempfile
 import time
 import wave
@@ -16,7 +14,13 @@ from typing import Any, Sequence
 from .benchmarking import percentile
 from .cpu_budget import detect_cpu_budget
 from .models import InstalledPack
+from .process_memory import process_tree_memory_snapshot_mb
 from .provider_factory import build_asr_provider, build_translation_provider
+from .resource_governor import (
+    ResourceGovernor,
+    ResourceLimits,
+    RuntimeFootprint,
+)
 
 
 class BenchmarkExecutionError(RuntimeError):
@@ -24,63 +28,10 @@ class BenchmarkExecutionError(RuntimeError):
 
 
 def process_memory_snapshot_mb() -> tuple[float, float]:
-    """Devuelve working set actual y pico del proceso en MiB."""
+    """Working set actual/pico del motor y todos sus sidecars descendientes."""
 
-    if os.name == "nt":
-        try:
-            from ctypes import wintypes
-
-            class ProcessMemoryCounters(ctypes.Structure):
-                _fields_ = [
-                    ("cb", wintypes.DWORD),
-                    ("PageFaultCount", wintypes.DWORD),
-                    ("PeakWorkingSetSize", ctypes.c_size_t),
-                    ("WorkingSetSize", ctypes.c_size_t),
-                    ("QuotaPeakPagedPoolUsage", ctypes.c_size_t),
-                    ("QuotaPagedPoolUsage", ctypes.c_size_t),
-                    ("QuotaPeakNonPagedPoolUsage", ctypes.c_size_t),
-                    ("QuotaNonPagedPoolUsage", ctypes.c_size_t),
-                    ("PagefileUsage", ctypes.c_size_t),
-                    ("PeakPagefileUsage", ctypes.c_size_t),
-                ]
-
-            counters = ProcessMemoryCounters()
-            counters.cb = ctypes.sizeof(counters)
-            get_current = ctypes.windll.kernel32.GetCurrentProcess
-            get_info = ctypes.windll.psapi.GetProcessMemoryInfo
-            if get_info(get_current(), ctypes.byref(counters), counters.cb):
-                divisor = 1024.0 * 1024.0
-                return (
-                    counters.WorkingSetSize / divisor,
-                    counters.PeakWorkingSetSize / divisor,
-                )
-        except (AttributeError, OSError, ValueError):
-            pass
-
-    status = Path("/proc/self/status")
-    if status.is_file():
-        try:
-            values: dict[str, float] = {}
-            for line in status.read_text(encoding="utf-8").splitlines():
-                if line.startswith(("VmRSS:", "VmHWM:")):
-                    name, raw = line.split(":", 1)
-                    values[name] = float(raw.strip().split()[0]) / 1024.0
-            current = values.get("VmRSS", 0.0)
-            peak = max(current, values.get("VmHWM", current))
-            return current, peak
-        except (OSError, ValueError, IndexError):
-            pass
-
-    try:
-        import resource
-
-        maximum = float(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss)
-        peak = maximum / (
-            1024.0 * 1024.0 if sys.platform == "darwin" else 1024.0
-        )
-        return peak, peak
-    except (ImportError, OSError, ValueError):
-        return 0.0, 0.0
+    snapshot = process_tree_memory_snapshot_mb()
+    return snapshot.current_mb, snapshot.peak_mb
 
 
 def process_working_set_mb() -> float:
@@ -99,34 +50,50 @@ def _read_wave_mono_16k(path: Path) -> list[float]:
     try:
         import numpy as np
     except ImportError as exc:
-        raise BenchmarkExecutionError("NumPy no está disponible para MegaBench") from exc
+        raise BenchmarkExecutionError(
+            "NumPy no está disponible para MegaBench"
+        ) from exc
     with wave.open(str(path), "rb") as source:
         channels = source.getnchannels()
         width = source.getsampwidth()
         rate = source.getframerate()
         raw = source.readframes(source.getnframes())
     if width == 1:
-        samples = (np.frombuffer(raw, dtype=np.uint8).astype(np.float32) - 128.0) / 128.0
+        samples = (
+            np.frombuffer(raw, dtype=np.uint8).astype(np.float32) - 128.0
+        ) / 128.0
     elif width == 2:
         samples = np.frombuffer(raw, dtype="<i2").astype(np.float32) / 32768.0
     elif width == 4:
-        samples = np.frombuffer(raw, dtype="<i4").astype(np.float32) / 2147483648.0
+        samples = (
+            np.frombuffer(raw, dtype="<i4").astype(np.float32) / 2147483648.0
+        )
     else:
-        raise BenchmarkExecutionError("El WAV de benchmark usa un ancho no soportado")
+        raise BenchmarkExecutionError(
+            "El WAV de benchmark usa un ancho no soportado"
+        )
     if channels > 1:
         usable = samples[: samples.size - (samples.size % channels)]
         samples = usable.reshape(-1, channels).mean(axis=1)
     if rate != 16000:
         target_length = max(1, round(samples.size * 16000 / rate))
-        source_positions = np.linspace(0.0, 1.0, num=samples.size, endpoint=False)
-        target_positions = np.linspace(0.0, 1.0, num=target_length, endpoint=False)
-        samples = np.interp(target_positions, source_positions, samples).astype(np.float32)
+        source_positions = np.linspace(
+            0.0, 1.0, num=samples.size, endpoint=False
+        )
+        target_positions = np.linspace(
+            0.0, 1.0, num=target_length, endpoint=False
+        )
+        samples = np.interp(
+            target_positions, source_positions, samples
+        ).astype(np.float32)
     return [float(value) for value in samples]
 
 
 def _windows_sapi_fixture() -> list[float]:
     if os.name != "nt":
-        raise BenchmarkExecutionError("El benchmark ASR requiere audio real o Windows SAPI")
+        raise BenchmarkExecutionError(
+            "El benchmark ASR requiere audio real o Windows SAPI"
+        )
     with tempfile.TemporaryDirectory(prefix="mily-benchmark-") as temp:
         root = Path(temp)
         wave_path = root / "benchmark-en.wav"
@@ -169,7 +136,9 @@ def _windows_sapi_fixture() -> list[float]:
                 "Windows SAPI no pudo generar el audio local de benchmark"
             ) from exc
         if not wave_path.is_file():
-            raise BenchmarkExecutionError("Windows SAPI no produjo el WAV esperado")
+            raise BenchmarkExecutionError(
+                "Windows SAPI no produjo el WAV esperado"
+            )
         return _read_wave_mono_16k(wave_path)
 
 
@@ -184,7 +153,11 @@ def benchmark_installed_pack(
     if repeats < 3:
         raise ValueError("El benchmark requiere al menos tres muestras")
     components = definition.get("components", {})
-    if not isinstance(components, dict) or "asr" not in components or "translation" not in components:
+    if (
+        not isinstance(components, dict)
+        or "asr" not in components
+        or "translation" not in components
+    ):
         raise BenchmarkExecutionError("El pack no declara ASR y traducción")
 
     routes = tuple(str(item) for item in definition.get("routes", ("en-es",)))
@@ -204,7 +177,11 @@ def benchmark_installed_pack(
         compute_profile,
         budget,
     )
-    audio = [float(value) for value in audio_samples] if audio_samples is not None else _windows_sapi_fixture()
+    audio = (
+        [float(value) for value in audio_samples]
+        if audio_samples is not None
+        else _windows_sapi_fixture()
+    )
     if len(audio) < 1600:
         raise BenchmarkExecutionError("El audio de benchmark es demasiado corto")
     audio_seconds = len(audio) / 16000.0
@@ -214,7 +191,7 @@ def benchmark_installed_pack(
     empty_asr = 0
     empty_translation = 0
     current, peak = process_memory_snapshot_mb()
-    peak_working_set = max(current, peak)
+    peak_engine_working_set = max(current, peak)
     try:
         warm_asr = getattr(asr, "warm_up", None)
         if callable(warm_asr):
@@ -226,7 +203,9 @@ def benchmark_installed_pack(
         if callable(warm_mt):
             warm_mt()
         current, measured_peak = process_memory_snapshot_mb()
-        peak_working_set = max(peak_working_set, current, measured_peak)
+        peak_engine_working_set = max(
+            peak_engine_working_set, current, measured_peak
+        )
 
         for _ in range(repeats):
             started = time.perf_counter()
@@ -243,22 +222,29 @@ def benchmark_installed_pack(
             if not original:
                 empty_asr += 1
             current, measured_peak = process_memory_snapshot_mb()
-            peak_working_set = max(peak_working_set, current, measured_peak)
+            peak_engine_working_set = max(
+                peak_engine_working_set, current, measured_peak
+            )
 
             started = time.perf_counter()
-            translated = translator.translate(original or fallback_text, source_language)
+            translated = translator.translate(
+                original or fallback_text, source_language
+            )
             mt_elapsed = (time.perf_counter() - started) * 1000.0
             if not str(translated).strip():
                 empty_translation += 1
             current, measured_peak = process_memory_snapshot_mb()
-            peak_working_set = max(peak_working_set, current, measured_peak)
+            peak_engine_working_set = max(
+                peak_engine_working_set, current, measured_peak
+            )
 
             asr_ms.append(asr_elapsed)
             mt_ms.append(mt_elapsed)
             e2e_ms.append(asr_elapsed + mt_elapsed)
     except Exception as exc:
         raise BenchmarkExecutionError(
-            f"El pack {pack.id} no completó su microbenchmark: {exc.__class__.__name__}"
+            f"El pack {pack.id} no completó su microbenchmark: "
+            f"{exc.__class__.__name__}"
         ) from exc
     finally:
         for provider in (translator, asr):
@@ -275,6 +261,25 @@ def benchmark_installed_pack(
     asr_rtf_p95 = asr_p95 / (audio_seconds * 1000.0)
     combined_rtf_p95 = e2e_p95 / (audio_seconds * 1000.0)
 
+    limits = ResourceLimits()
+    governor = ResourceGovernor(limits)
+    shared_gpu_mb = float(definition.get("sharedGpuMb", 0.0) or 0.0)
+    dedicated_vram_mb = float(definition.get("vramMb", 0.0) or 0.0)
+    product_footprint = RuntimeFootprint(
+        process_mb=peak_engine_working_set,
+        desktop_mb=limits.desktop_reserve_mb,
+        bridge_mb=limits.bridge_reserve_mb,
+        shared_gpu_mb=shared_gpu_mb,
+        dedicated_vram_mb=dedicated_vram_mb,
+    )
+    product_decision = governor.evaluate(product_footprint)
+    declared_decision = governor.preflight_model(
+        model_ram_mb=float(definition.get("ramMb", 0.0) or 0.0),
+        shared_gpu_mb=shared_gpu_mb,
+        dedicated_vram_mb=dedicated_vram_mb,
+    )
+    total_product_working_set = product_decision.effective_process_mb
+
     failures: list[str] = []
     if empty_asr:
         failures.append("EMPTY_ASR")
@@ -284,10 +289,23 @@ def benchmark_installed_pack(
         failures.append("ASR_RTF")
     if e2e_p95 > 1500.0:
         failures.append("E2E_LATENCY")
-    if peak_working_set > 2048.0:
-        failures.append("RAM_HARD_LIMIT")
-    if float(definition.get("ramMb", 0.0) or 0.0) > 2048.0:
-        failures.append("DECLARED_RAM_LIMIT")
+    if not product_decision.allowed:
+        failures.append(
+            "VRAM_HARD_LIMIT"
+            if product_decision.reason == "VRAM_LIMIT"
+            else "RAM_HARD_LIMIT"
+        )
+    if (
+        str(definition.get("tier", "")).lower() == "lite"
+        and total_product_working_set > limits.lite_peak_mb
+    ):
+        failures.append("LITE_PEAK_LIMIT")
+    if not declared_decision.allowed:
+        failures.append(
+            "DECLARED_VRAM_LIMIT"
+            if declared_decision.reason == "VRAM_LIMIT"
+            else "DECLARED_RAM_LIMIT"
+        )
 
     report = {
         "schemaVersion": 2,
@@ -305,11 +323,20 @@ def benchmark_installed_pack(
         "endToEndP50Ms": round(e2e_p50, 3),
         "endToEndP95Ms": round(e2e_p95, 3),
         "combinedRtfP95": round(combined_rtf_p95, 4),
-        "workingSetMb": round(peak_working_set, 1),
-        "peakWorkingSetMb": round(peak_working_set, 1),
+        # Compatibilidad: estas dos métricas siguen describiendo motor + sidecars.
+        "workingSetMb": round(peak_engine_working_set, 1),
+        "peakWorkingSetMb": round(peak_engine_working_set, 1),
+        "engineWorkingSetMb": round(peak_engine_working_set, 1),
+        "enginePeakWorkingSetMb": round(peak_engine_working_set, 1),
+        "productReserveMb": round(float(limits.product_reserve_mb), 1),
+        "sharedGpuMb": round(shared_gpu_mb, 1),
+        "dedicatedVramMb": round(dedicated_vram_mb, 1),
+        "totalProductWorkingSetMb": round(total_product_working_set, 1),
+        "productMemoryMode": product_decision.mode,
+        "productMemoryHeadroomMb": round(product_decision.process_headroom_mb, 1),
         "emptyAsrResults": empty_asr,
         "emptyTranslationResults": empty_translation,
-        "failures": failures,
+        "failures": list(dict.fromkeys(failures)),
         "passed": not failures,
     }
     output = pack.path / "benchmark.json"
