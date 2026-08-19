@@ -65,7 +65,8 @@ for marker in (
 ci = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
 for marker in (
     "MilyVoiceTraductor-Full-2.0.1-Windows-x64-${{ github.sha }}",
-    "MilyVoiceTraductor-2.0.1-MegaBench.json",
+    "MilyVoiceTraductor-2.0.1-MoonshineLiteBench.json",
+    "MilyVoiceTraductor-2.0.1-QualityPolicy.json",
 ):
     if marker not in ci:
         FAILURES.append(f"CI: falta {marker}")
