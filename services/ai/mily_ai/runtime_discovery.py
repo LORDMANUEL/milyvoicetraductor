@@ -5,6 +5,7 @@ from __future__ import annotations
 import importlib.util
 import os
 from dataclasses import dataclass
+from pathlib import Path
 
 
 @dataclass(frozen=True, slots=True)
@@ -19,6 +20,23 @@ def _module_available(name: str) -> bool:
         return importlib.util.find_spec(name) is not None
     except (ImportError, ValueError):
         return False
+
+
+def _whisper_bridge_path() -> str:
+    configured = os.environ.get("MILY_WHISPER_CPP_BRIDGE", "").strip()
+    if configured and os.path.isfile(configured):
+        return configured
+    local_app_data = os.environ.get("LOCALAPPDATA", "").strip()
+    if local_app_data:
+        bundled = (
+            Path(local_app_data)
+            / "MilyVoiceTraductor"
+            / "bridge"
+            / "milyvoice-bridge.exe"
+        )
+        if bundled.is_file():
+            return str(bundled)
+    return ""
 
 
 def discover_runtime_inventory() -> RuntimeInventory:
@@ -36,12 +54,10 @@ def discover_runtime_inventory() -> RuntimeInventory:
     if _module_available("vosk"):
         runtimes.add("vosk")
 
-    whisper_bridge = os.environ.get("MILY_WHISPER_CPP_BRIDGE", "").strip()
-    if whisper_bridge and os.path.isfile(whisper_bridge):
+    whisper_bridge = _whisper_bridge_path()
+    if whisper_bridge:
         runtimes.add("whisper-cpp")
-        details["whisperCppBridge"] = whisper_bridge
-    else:
-        details["whisperCppBridge"] = ""
+    details["whisperCppBridge"] = whisper_bridge
 
     if _module_available("google.cloud.speech_v2") and os.environ.get(
         "GOOGLE_APPLICATION_CREDENTIALS"
