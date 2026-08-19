@@ -1,8 +1,8 @@
 """Decodificación Marian/CTranslate2 endurecida para tiempo real.
 
 El primer pase mantiene greedy search para latencia. Si el modelo pequeño entra
-en un bucle, se ejecuta un segundo pase acotado y se conserva únicamente un
-prefijo sano antes de exponer la traducción.
+en un bucle o pierde información crítica detectable (números/negación EN→ES), se
+ejecuta un segundo pase acotado antes de exponer la traducción.
 """
 
 from __future__ import annotations
@@ -12,13 +12,14 @@ from .optional_providers import (
     OptionalProviderRuntimeError,
 )
 from .translation_quality import (
+    analyze_source_target_fidelity,
     analyze_translation_quality,
     non_repetitive_sentence_prefix,
 )
 
 
 class CTranslate2RealtimeMarianTranslator(_BaseMarianTranslator):
-    """Marian INT8 con prevención y detección de repetición patológica."""
+    """Marian INT8 con guardas de repetición y fidelidad crítica."""
 
     repetition_penalty = 1.12
     no_repeat_ngram_size = 3
@@ -52,6 +53,14 @@ class CTranslate2RealtimeMarianTranslator(_BaseMarianTranslator):
         )[0]
         return self._target_sp.decode(result.hypotheses[0]).strip()
 
+    def _fidelity(self, source: str, target: str, source_language: str):
+        return analyze_source_target_fidelity(
+            source,
+            target,
+            source_language,
+            self.target_language,
+        )
+
     def translate(self, text: str, source_language: str) -> str:
         if not text.strip():
             return ""
@@ -61,6 +70,7 @@ class CTranslate2RealtimeMarianTranslator(_BaseMarianTranslator):
                 "El modelo directo no admite esta dirección de traducción.",
             )
 
+        effective_source = self.source_language if source_language == "auto" else source_language
         translated = self._decode(
             text,
             beam_size=1,
@@ -68,10 +78,11 @@ class CTranslate2RealtimeMarianTranslator(_BaseMarianTranslator):
             tighter_limit=False,
         )
         quality = analyze_translation_quality(translated)
-        if quality.passed:
+        fidelity = self._fidelity(text, translated, effective_source)
+        if quality.passed and fidelity.passed:
             return translated
 
-        # El segundo pase solo se paga cuando el greedy entra en bucle.
+        # El segundo pase solo se paga cuando el greedy falla una guarda barata.
         retry = self._decode(
             text,
             beam_size=2,
@@ -79,12 +90,24 @@ class CTranslate2RealtimeMarianTranslator(_BaseMarianTranslator):
             tighter_limit=True,
         )
         retry_quality = analyze_translation_quality(retry)
-        if retry_quality.passed:
+        retry_fidelity = self._fidelity(text, retry, effective_source)
+        if retry_quality.passed and retry_fidelity.passed:
             return retry
 
         prefix = non_repetitive_sentence_prefix(retry or translated)
-        if prefix and analyze_translation_quality(prefix).passed:
+        if (
+            prefix
+            and analyze_translation_quality(prefix).passed
+            and self._fidelity(text, prefix, effective_source).passed
+        ):
             return prefix
+
+        fidelity_failure = retry_fidelity if not retry_fidelity.passed else fidelity
+        if not fidelity_failure.passed:
+            raise OptionalProviderRuntimeError(
+                "MARIAN_FIDELITY",
+                "La traducción local perdió información crítica y fue descartada para evitar mostrar una frase incorrecta.",
+            )
 
         raise OptionalProviderRuntimeError(
             "MARIAN_REPETITION",
