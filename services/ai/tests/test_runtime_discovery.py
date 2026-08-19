@@ -16,9 +16,10 @@ class RuntimeDiscoveryTests(unittest.TestCase):
         self.assertNotIn("whisper-cpp", inventory.runtimes)
 
     def test_persistent_whisper_bridge_is_discovered(self):
+        bridge_path = "runtime/mily-whispercpp-bridge"
         with patch.dict(
             os.environ,
-            {"MILY_WHISPER_CPP_BRIDGE": "/tmp/mily-whispercpp-bridge"},
+            {"MILY_WHISPER_CPP_BRIDGE": bridge_path},
             clear=True,
         ), patch(
             "mily_ai.runtime_discovery._module_available", return_value=False
@@ -27,13 +28,11 @@ class RuntimeDiscoveryTests(unittest.TestCase):
         ):
             inventory = discover_runtime_inventory()
         self.assertIn("whisper-cpp", inventory.runtimes)
-        self.assertEqual(
-            inventory.details["whisperCppBridge"], "/tmp/mily-whispercpp-bridge"
-        )
+        self.assertEqual(inventory.details["whisperCppBridge"], bridge_path)
 
     def test_installed_windows_bridge_is_discovered_without_manual_env(self):
         with patch.dict(
-            os.environ, {"LOCALAPPDATA": "C:/Users/test/AppData/Local"}, clear=True
+            os.environ, {"LOCALAPPDATA": "R:/MilyVoiceData"}, clear=True
         ), patch(
             "mily_ai.runtime_discovery._module_available", return_value=False
         ), patch(
