@@ -61,6 +61,20 @@ class CoalescingTranslationQueueTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual((await queue.get()).original, "important")
 
+    async def test_rescue_drop_partials_preserves_every_final(self):
+        queue = CoalescingTranslationQueue(maxsize=8, clock=lambda: 1.0)
+        await queue.put(request("u1", "partial one", created_at=0.1))
+        await queue.put(request("u2", "final one", final=True, created_at=0.2))
+        await queue.put(request("u3", "partial three", created_at=0.3))
+        removed = await queue.drop_partials()
+        self.assertEqual(removed, 2)
+        self.assertEqual(queue.qsize(), 1)
+        remaining = await queue.get()
+        self.assertTrue(remaining.final)
+        self.assertEqual(remaining.original, "final one")
+        queue.task_done()
+        await queue.join()
+
 
 if __name__ == "__main__":
     unittest.main()
