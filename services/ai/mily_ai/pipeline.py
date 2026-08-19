@@ -59,6 +59,12 @@ class TranslationRequest:
 
 
 class RealtimePipeline:
+    # Defaults de clase: algunos tests/consumidores históricos crean fixtures con
+    # __new__ sin ejecutar __init__. BetaAlpha debe ser opt-in y no romperlos.
+    _betaalpha_mode = False
+    _betaalpha_streaming = None
+    _betaalpha_translation = None
+
     def __init__(
         self,
         pack: InstalledPack,
