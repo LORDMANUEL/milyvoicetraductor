@@ -26,6 +26,25 @@ class ModelPackV2Tests(unittest.TestCase):
             "tiny", lite["components"]["asr"]["repoId"].casefold()
         )
 
+    def test_zh_lite_uses_quality_en_es_second_stage_inside_two_gib_budget(self):
+        catalog = ModelCatalog(Path("unused"))
+        definitions = catalog.definitions()
+        lite = next(item for item in definitions if item["id"] == "lite-zh-es")
+        translation = lite["components"]["translation"]
+        self.assertEqual(translation["provider"], "marian-cascade-ct2")
+        self.assertEqual(len(translation["stages"]), 2)
+        self.assertEqual(
+            translation["stages"][1]["repoId"],
+            "Helsinki-NLP/opus-mt-en-es",
+        )
+        self.assertEqual(
+            translation["stages"][1]["revision"],
+            "5bc4493",
+        )
+        self.assertNotIn("tiny", translation["stages"][1]["repoId"].casefold())
+        self.assertLessEqual(lite["ramMb"], 1536)
+        self.assertLessEqual(lite["vramMb"], 384)
+
     def test_external_pack_rejects_executable_or_script_payloads(self):
         for name in (
             "run.py",
