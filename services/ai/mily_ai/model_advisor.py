@@ -218,6 +218,7 @@ class ModelAdvisor:
             shared_gpu_mb=_finite_non_negative(
                 definition.get("sharedGpuMb", 0), 0.0
             ),
+            total_product_mb=measured_total_product,
             quality_score=_TIER_QUALITY.get(tier, 0.65),
             benchmark=BenchmarkSample(
                 rtf=combined_rtf,
