@@ -15,20 +15,13 @@ SerialTranslationAction = Literal["run", "defer", "drop"]
 def serial_translation_action(
     request: TranslationRequest, *, audio_pending: bool
 ) -> SerialTranslationAction:
-    """Prioriza ASR cuando CPU débil comparte un único executor."""
-
     if not audio_pending:
         return "run"
     return "defer" if request.final else "drop"
 
 
 class CoalescingTranslationQueue:
-    """Cola prioritaria que conserva finales y reemplaza parciales obsoletos.
-
-    Cada utterance puede tener como máximo un parcial pendiente. Un resultado
-    final elimina el parcial de su propia utterance y entra en una cola de mayor
-    prioridad. Si la cola está llena, se expulsan parciales antes de esperar.
-    """
+    """Conserva finales y mantiene como máximo un parcial por utterance."""
 
     def __init__(
         self,
@@ -50,6 +43,7 @@ class CoalescingTranslationQueue:
         self._unfinished_tasks = 0
         self._finished = asyncio.Event()
         self._finished.set()
+        self._closed = False
 
     @staticmethod
     def _key(request: TranslationRequest) -> str:
@@ -90,44 +84,44 @@ class CoalescingTranslationQueue:
         if not isinstance(request, TranslationRequest):
             raise TypeError("La cola solo acepta TranslationRequest")
         async with self._condition:
+            if self._closed:
+                return False
             self._purge_stale_locked()
             key = self._key(request)
-
             if request.final:
                 if self._partials.pop(key, None) is not None:
                     self._mark_removed()
                 while self.full() and self._partials:
                     self._partials.popitem(last=False)
                     self._mark_removed()
-                while self.full():
+                while self.full() and not self._closed:
                     await self._condition.wait()
                     self._purge_stale_locked()
+                if self._closed:
+                    return False
                 self._finals.append(request)
                 self._unfinished_tasks += 1
                 self._finished.clear()
                 self._condition.notify_all()
                 return True
-
             if key in self._partials:
                 self._partials[key] = request
                 self._partials.move_to_end(key)
                 self._condition.notify_all()
                 return True
-
             if self.full():
                 if self._partials:
                     self._partials.popitem(last=False)
                     self._mark_removed()
                 else:
                     return False
-
             self._partials[key] = request
             self._unfinished_tasks += 1
             self._finished.clear()
             self._condition.notify_all()
             return True
 
-    async def get(self) -> TranslationRequest:
+    async def get(self) -> TranslationRequest | None:
         async with self._condition:
             while True:
                 self._purge_stale_locked()
@@ -139,6 +133,8 @@ class CoalescingTranslationQueue:
                     _key, item = self._partials.popitem(last=False)
                     self._condition.notify_all()
                     return item
+                if self._closed:
+                    return None
                 await self._condition.wait()
 
     def task_done(self) -> None:
@@ -149,13 +145,16 @@ class CoalescingTranslationQueue:
     async def join(self) -> None:
         await self._finished.wait()
 
+    async def close(self) -> None:
+        async with self._condition:
+            self._closed = True
+            self._condition.notify_all()
+
 
 async def enqueue_translation(
     queue: asyncio.Queue[TranslationRequest] | CoalescingTranslationQueue,
     request: TranslationRequest,
 ) -> bool:
-    """Encola sin sacrificar finales y conserva compatibilidad con asyncio.Queue."""
-
     if isinstance(queue, CoalescingTranslationQueue):
         return await queue.put(request)
     if request.final:

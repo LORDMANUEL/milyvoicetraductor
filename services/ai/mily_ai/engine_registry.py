@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import json
 import math
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Iterable
 
 from .resource_governor import ResourceGovernor, RuntimeFootprint
@@ -17,7 +19,8 @@ class BenchmarkSample:
     stable: bool = True
 
     def __post_init__(self) -> None:
-        if not all(math.isfinite(float(value)) and float(value) >= 0 for value in (self.rtf, self.p95_ms, self.p50_ms)):
+        values = (self.rtf, self.p95_ms, self.p50_ms)
+        if not all(math.isfinite(float(value)) and float(value) >= 0 for value in values):
             raise ValueError("Las métricas de benchmark deben ser finitas y no negativas")
 
 
@@ -46,10 +49,8 @@ class EngineCandidate:
     def __post_init__(self) -> None:
         if not self.id or not self.engine_id:
             raise ValueError("El candidato debe tener id y engine_id")
-        if not all(
-            math.isfinite(float(value)) and float(value) >= 0
-            for value in (self.ram_mb, self.vram_mb, self.shared_gpu_mb)
-        ):
+        memory = (self.ram_mb, self.vram_mb, self.shared_gpu_mb)
+        if not all(math.isfinite(float(value)) and float(value) >= 0 for value in memory):
             raise ValueError("La memoria del candidato debe ser finita y no negativa")
         if not math.isfinite(float(self.quality_score)) or not 0 <= float(self.quality_score) <= 1:
             raise ValueError("quality_score debe estar entre cero y uno")
@@ -63,6 +64,35 @@ class EngineSelection:
     rejected: dict[str, str] = field(default_factory=dict)
 
 
+def load_engine_descriptors(path: Path | None = None) -> tuple[EngineDescriptor, ...]:
+    catalog_path = path or Path(__file__).with_name("engine-families.json")
+    payload = json.loads(catalog_path.read_text(encoding="utf-8"))
+    if payload.get("schemaVersion") != 1 or not isinstance(payload.get("engines"), list):
+        raise ValueError("Catálogo de motores inválido")
+    output: list[EngineDescriptor] = []
+    seen: set[str] = set()
+    for item in payload["engines"]:
+        engine_id = str(item.get("id", "")).strip()
+        if not engine_id or engine_id in seen:
+            raise ValueError("Los ids de motores deben ser únicos")
+        routes = tuple(str(route) for route in item.get("routes", ()))
+        if not routes:
+            raise ValueError("Cada motor debe declarar al menos una ruta")
+        seen.add(engine_id)
+        output.append(
+            EngineDescriptor(
+                id=engine_id,
+                kind=str(item.get("kind", "pipeline")),
+                title=str(item.get("title", engine_id)),
+                routes=routes,
+                runtime=str(item.get("runtime", "builtin")),
+                cloud=bool(item.get("cloud", False)),
+                commercial_use=bool(item.get("commercialUse", False)),
+            )
+        )
+    return tuple(output)
+
+
 class EngineRegistry:
     """Filtra incompatibilidades y elige el motor con mejor balance medido."""
 
@@ -72,11 +102,10 @@ class EngineRegistry:
         *,
         descriptors: Iterable[EngineDescriptor] = (),
     ):
+        items = tuple(descriptors)
         self.resource_governor = resource_governor
-        self._descriptors = {descriptor.id: descriptor for descriptor in descriptors}
-        if len(self._descriptors) != len(tuple(descriptors)):
-            # `descriptors` normalmente es una lista/tupla. Este guard evita ids
-            # ambiguos sin convertir el hot path en un sistema de plugins dinámico.
+        self._descriptors = {descriptor.id: descriptor for descriptor in items}
+        if len(self._descriptors) != len(items):
             raise ValueError("Los ids de motores deben ser únicos")
 
     @property
@@ -85,8 +114,6 @@ class EngineRegistry:
 
     @staticmethod
     def _score(candidate: EngineCandidate) -> float:
-        """Mayor es mejor; RTF y P95 pesan más que una mejora pequeña de calidad."""
-
         benchmark = candidate.benchmark
         if not benchmark.stable:
             return float("-inf")
@@ -121,7 +148,6 @@ class EngineRegistry:
         }
         rejected: dict[str, str] = {}
         accepted: list[tuple[float, EngineCandidate, str]] = []
-
         for candidate in candidates:
             descriptor = self._descriptors.get(candidate.engine_id)
             if descriptor is None:
@@ -139,7 +165,6 @@ class EngineRegistry:
             if commercial_required and not descriptor.commercial_use:
                 rejected[candidate.id] = "NON_COMMERCIAL"
                 continue
-
             resource = self.resource_governor.evaluate(
                 RuntimeFootprint(
                     process_mb=candidate.ram_mb,
@@ -150,7 +175,6 @@ class EngineRegistry:
             if not resource.allowed:
                 rejected[candidate.id] = resource.reason
                 continue
-
             requested_backends = candidate.backends or (
                 ("cloud",) if descriptor.cloud else ("cpu",)
             )
@@ -158,16 +182,13 @@ class EngineRegistry:
             if backend is None:
                 rejected[candidate.id] = "BACKEND_UNAVAILABLE"
                 continue
-
             score = self._score(candidate)
             if not math.isfinite(score):
                 rejected[candidate.id] = "BENCHMARK_UNSTABLE"
                 continue
             accepted.append((score, candidate, backend))
-
         if not accepted:
             raise RuntimeError("No existe un motor compatible con esta ruta y equipo")
-
         score, candidate, backend = max(
             accepted,
             key=lambda item: (item[0], -item[1].benchmark.p95_ms, item[1].id),
