@@ -10,7 +10,10 @@ from mily_ai.model_operations import _download_moonshine_fast_pack
 from mily_ai.models import InstalledPack, ModelCatalog
 
 
-MOONSHINE_010_STREAMING_ASSETS = (
+# Dependencias STT declaradas por el catálogo oficial de Moonshine para una
+# arquitectura streaming. Los recursos de spelling se descargan por separado y
+# no son necesarios mientras MilyVoice no active MOONSHINE_FLAG_SPELLING_MODE.
+MOONSHINE_010_REQUIRED_STREAMING_ASSETS = (
     "adapter.ort",
     "cross_kv.ort",
     "decoder_kv.ort",
@@ -18,6 +21,8 @@ MOONSHINE_010_STREAMING_ASSETS = (
     "frontend.ort",
     "streaming_config.json",
     "tokenizer.bin",
+)
+MOONSHINE_010_OPTIONAL_SPELLING_ASSETS = (
     "spelling_cnn.ort",
     "spelling_cnn_meta.json",
 )
@@ -87,41 +92,52 @@ class MoonshinePackTests(unittest.TestCase):
             commercial_use=True,
         )
 
-    def test_fast_pack_accepts_official_moonshine_010_streaming_layout(self):
-        """Regresión del layout descargado realmente por moonshine-voice 0.1.0."""
+    @staticmethod
+    def _write_required_streaming_assets(model_source: Path) -> None:
+        for name in MOONSHINE_010_REQUIRED_STREAMING_ASSETS:
+            payload = b"{}" if name.endswith(".json") else name.encode("ascii")
+            (model_source / name).write_bytes(payload)
+
+    def _download(self, root: Path, model_source: Path):
+        catalog = self._catalog(root)
+        installer = FakeInstaller(self._lite_pack(root))
+
+        class ModelArch:
+            TINY_STREAMING = 2
+
+        calls = []
+
+        def get_model_for_language(language, arch):
+            calls.append((language, arch))
+            return str(model_source), 2
+
+        fake_moonshine = types.SimpleNamespace(
+            ModelArch=ModelArch,
+            get_model_for_language=get_model_for_language,
+        )
+        with patch.dict(sys.modules, {"moonshine_voice": fake_moonshine}):
+            pack = _download_moonshine_fast_pack(installer, catalog)
+        return pack, installer, calls
+
+    def test_fast_pack_accepts_official_stt_layout_without_spelling_assets(self):
+        """El spelling es opcional y no puede bloquear ASR/translación normal."""
 
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            catalog = self._catalog(root)
             model_source = root / "moonshine-source"
             model_source.mkdir()
-            for name in MOONSHINE_010_STREAMING_ASSETS:
-                payload = b"{}" if name.endswith(".json") else name.encode("ascii")
-                (model_source / name).write_bytes(payload)
+            self._write_required_streaming_assets(model_source)
 
-            installer = FakeInstaller(self._lite_pack(root))
-
-            class ModelArch:
-                TINY_STREAMING = 2
-
-            calls = []
-
-            def get_model_for_language(language, arch):
-                calls.append((language, arch))
-                return str(model_source), 2
-
-            fake_moonshine = types.SimpleNamespace(
-                ModelArch=ModelArch,
-                get_model_for_language=get_model_for_language,
-            )
-            with patch.dict(sys.modules, {"moonshine_voice": fake_moonshine}):
-                pack = _download_moonshine_fast_pack(installer, catalog)
+            pack, installer, calls = self._download(root, model_source)
 
             self.assertEqual(calls, [("en", 2)])
             self.assertEqual(installer.install_calls, ["lite-en-es"])
-            for name in MOONSHINE_010_STREAMING_ASSETS:
+            for name in MOONSHINE_010_REQUIRED_STREAMING_ASSETS:
                 with self.subTest(name=name):
                     self.assertTrue((pack.path / "components" / "asr" / name).is_file())
+            for name in MOONSHINE_010_OPTIONAL_SPELLING_ASSETS:
+                with self.subTest(optional=name):
+                    self.assertFalse((pack.path / "components" / "asr" / name).exists())
             self.assertTrue(
                 (pack.path / "components" / "translation" / "model.bin").is_file()
             )
@@ -134,17 +150,56 @@ class MoonshinePackTests(unittest.TestCase):
             self.assertEqual(config["language"], "en")
             self.assertTrue((pack.path / "pack.json").is_file())
 
+    def test_fast_pack_ignores_empty_optional_spelling_metadata(self):
+        """Moonshine puede entregar spelling por separado; no se usa en este pack."""
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            model_source = root / "moonshine-source"
+            model_source.mkdir()
+            self._write_required_streaming_assets(model_source)
+            (model_source / "spelling_cnn.ort").write_bytes(b"optional")
+            (model_source / "spelling_cnn_meta.json").write_bytes(b"")
+
+            pack, _installer, _calls = self._download(root, model_source)
+
+            self.assertTrue((pack.path / "components" / "asr" / "frontend.ort").is_file())
+            # Se conservan si el proveedor los entregó, pero no participan en el
+            # readiness del ASR ni se activa spelling mode.
+            self.assertTrue(
+                (pack.path / "components" / "asr" / "spelling_cnn.ort").is_file()
+            )
+
     def test_fast_pack_rejects_streaming_layout_missing_decoder(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             catalog = self._catalog(root)
             model_source = root / "moonshine-source"
             model_source.mkdir()
-            for name in MOONSHINE_010_STREAMING_ASSETS:
-                if name == "decoder_kv.ort":
-                    continue
-                payload = b"{}" if name.endswith(".json") else name.encode("ascii")
-                (model_source / name).write_bytes(payload)
+            self._write_required_streaming_assets(model_source)
+            (model_source / "decoder_kv.ort").unlink()
+
+            installer = FakeInstaller(self._lite_pack(root))
+
+            class ModelArch:
+                TINY_STREAMING = 2
+
+            fake_moonshine = types.SimpleNamespace(
+                ModelArch=ModelArch,
+                get_model_for_language=lambda *_args: (str(model_source), 2),
+            )
+            with patch.dict(sys.modules, {"moonshine_voice": fake_moonshine}):
+                with self.assertRaisesRegex(Exception, "incompleto"):
+                    _download_moonshine_fast_pack(installer, catalog)
+
+    def test_fast_pack_rejects_empty_required_binary(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            catalog = self._catalog(root)
+            model_source = root / "moonshine-source"
+            model_source.mkdir()
+            self._write_required_streaming_assets(model_source)
+            (model_source / "encoder.ort").write_bytes(b"")
 
             installer = FakeInstaller(self._lite_pack(root))
 
