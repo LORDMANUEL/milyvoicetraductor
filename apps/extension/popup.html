@@ -23,7 +23,15 @@
       <label>Origen<select id="source"><option value="auto">Automático</option><option value="en">Inglés</option><option value="zh">Chino</option></select></label>
       <label>Destino<select disabled><option>Español</option></select></label>
     </div>
-    <label>Modo<select id="sessionMode"><option value="meeting">Reunión</option><option value="education">Educativo</option><option value="karaoke">Karaoke / canción</option><option value="compact">Compacto</option></select></label>
+    <div class="row">
+      <label>Modo<select id="sessionMode"><option value="meeting">Reunión</option><option value="education">Educativo</option><option value="tutor">Tutor</option><option value="karaoke">Karaoke / canción</option><option value="compact">Compacto</option></select></label>
+      <label>Tema<select id="subtitleTheme"><option value="auto">Automático</option><option value="mily">Mily azul</option><option value="cinema">Oscuro cine</option><option value="class">Clase clara</option><option value="contrast">Alto contraste</option><option value="neon">Karaoke neón</option></select></label>
+    </div>
+    <section id="tutorControls" class="tutor-card" hidden>
+      <strong>Tutor</strong>
+      <small>Subtítulo bilingüe + pronunciación de la frase original.</small>
+      <label>Voz para repetir<select id="tutorVoice"><option value="">Voz automática</option></select></label>
+    </section>
     <label class="check"><input id="persist" type="checkbox"><span>Guardar transcripción local</span></label>
     <label class="check"><input id="showOriginal" type="checkbox" checked><span>Mostrar texto original</span></label>
     <label class="check"><input id="speakerDetection" type="checkbox"><span>Identificar Hablante A/B/C</span></label>
