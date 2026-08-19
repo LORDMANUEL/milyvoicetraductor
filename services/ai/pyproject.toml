@@ -18,7 +18,9 @@ dependencies = [
   "sentencepiece>=0.2,<1",
   "safetensors>=0.5,<1",
   "moonshine-voice==0.1.0; platform_machine == 'AMD64' or platform_machine == 'x86_64'",
-  "sherpa-onnx>=1.13.4,<1.14",
+  "sherpa-onnx==1.13.4",
+  "vosk==0.3.45",
+  "google-cloud-speech==2.40.0",
   "PyAudioWPatch==0.2.12.8; sys_platform == 'win32'"
 ]
 
