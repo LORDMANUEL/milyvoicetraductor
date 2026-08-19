@@ -84,14 +84,25 @@ print('MOONSHINE_LITE_PACK', f'{pack.id}@{pack.version}')
 print('MOONSHINE_ASR_P95_MS', report['asrP95Ms'])
 print('MOONSHINE_E2E_P95_MS', report['endToEndP95Ms'])
 print('MOONSHINE_RTF_P95', report['combinedRtfP95'])
-print('MOONSHINE_PEAK_MB', report['peakWorkingSetMb'])
+print('MOONSHINE_ENGINE_PEAK_MB', report['enginePeakWorkingSetMb'])
+print('MOONSHINE_PRODUCT_RESERVE_MB', report['productReserveMb'])
+print('MOONSHINE_TOTAL_PRODUCT_MB', report['totalProductWorkingSetMb'])
+print('MOONSHINE_MEMORY_HEADROOM_MB', report['productMemoryHeadroomMb'])
+if report['productReserveMb'] != 320.0:
+    raise SystemExit('MOONSHINE_PRODUCT_RESERVE_INVALID')
+if report['totalProductWorkingSetMb'] > 1536.0:
+    raise SystemExit('MOONSHINE_LITE_PRODUCT_MEMORY_LIMIT')
+if report['combinedRtfP95'] >= 0.80:
+    raise SystemExit('MOONSHINE_LITE_RTF_LIMIT')
+if report['endToEndP95Ms'] > 1500.0:
+    raise SystemExit('MOONSHINE_LITE_LATENCY_LIMIT')
 if not report['passed']:
     raise SystemExit('MOONSHINE_LITE_GATE_FAILED: ' + ','.join(report['failures']))
 print('MOONSHINE_LITE_GATE_OK')
 '@ | Set-Content -Path $Probe -Encoding UTF8
 
     & $Python $Probe $EngineApp $ModelsRoot $ReportPath
-    if ($LASTEXITCODE -ne 0) { throw 'Moonshine Lite no pasó benchmark realtime/memoria.' }
+    if ($LASTEXITCODE -ne 0) { throw 'Moonshine Lite no pasó benchmark realtime/memoria total.' }
     if (-not (Test-Path $ReportPath -PathType Leaf)) { throw 'Moonshine Lite no produjo reporte JSON.' }
 
     Write-Host "MOONSHINE LITE OK: $ReportPath" -ForegroundColor Green
