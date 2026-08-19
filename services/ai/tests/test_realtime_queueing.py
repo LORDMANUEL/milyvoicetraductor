@@ -52,11 +52,11 @@ class RealtimeQueueingTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(final.final)
         self.assertEqual(final.original, "must survive")
 
-    async def test_serial_cpu_drops_partial_translation_when_audio_is_waiting(self):
+    async def test_serial_cpu_defers_partial_translation_when_audio_is_waiting(self):
         action = serial_translation_action(
-            request("translation.partial", "obsolete"), audio_pending=True
+            request("translation.partial", "fresh partial"), audio_pending=True
         )
-        self.assertEqual(action, "drop")
+        self.assertEqual(action, "defer")
 
     async def test_serial_cpu_defers_but_never_drops_final_when_audio_is_waiting(self):
         action = serial_translation_action(
