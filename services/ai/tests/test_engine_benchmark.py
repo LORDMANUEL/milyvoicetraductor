@@ -12,6 +12,7 @@ class FakeAsr:
     def __init__(self, text="hello world"):
         self.text = text
         self.closed = False
+        self.finish_calls = 0
 
     def warm_up(self, _language):
         pass
@@ -20,6 +21,9 @@ class FakeAsr:
         if not self.text:
             return []
         return [AsrSegment(0.0, 1.0, self.text, language)]
+
+    def finish_utterance(self):
+        self.finish_calls += 1
 
     def unload(self):
         self.closed = True
@@ -92,6 +96,7 @@ class EngineBenchmarkTests(unittest.TestCase):
             self.assertIn("endToEndP95Ms", report)
             self.assertIn("combinedRtfP95", report)
             self.assertEqual(translator.inputs, ["hello world"] * 3)
+            self.assertEqual(asr.finish_calls, 3)
             self.assertTrue(asr.closed)
             self.assertTrue(translator.closed)
             self.assertTrue((path / "benchmark.json").is_file())
