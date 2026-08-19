@@ -133,6 +133,7 @@ def _marian(
         cpu_budget=cpu_budget,
         source_language=source,
         target_language=target,
+        auto_tune_compute_type=bool(component.get("betaAlphaTuneComputeType", False)),
     )
 
 
@@ -170,6 +171,7 @@ def _marian_cascade(
         source_language=source,
         pivot_language=pivot,
         target_language=target,
+        auto_tune_compute_type=bool(component.get("betaAlphaTuneComputeType", False)),
     )
 
 
