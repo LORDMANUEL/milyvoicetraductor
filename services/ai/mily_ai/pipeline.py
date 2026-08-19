@@ -62,6 +62,24 @@ class TranslationRequest:
         return self.type == "translation.final"
 
 
+def partial_translation_ready(text: str, language: str) -> bool:
+    """Decide si un prefijo estabilizado ya es útil para MT parcial.
+
+    El estabilizador ya filtra fragmentos ingleses colgantes. Aquí evitamos
+    reintroducir una regla basada en espacios que bloqueaba mandarín: los
+    prefijos Han se conservan sin espacios deliberadamente, por lo que
+    ``split()`` siempre devolvía una sola unidad y la UI solo veía traducción al
+    cierre de la frase.
+    """
+
+    normalized = " ".join(str(text).split())
+    if not normalized:
+        return False
+    if str(language).strip().lower() == "zh":
+        return sum(1 for char in normalized if "\u4e00" <= char <= "\u9fff") >= 2
+    return len(normalized.split()) >= 3
+
+
 class RealtimePipeline:
     def __init__(
         self,
@@ -389,7 +407,7 @@ class RealtimePipeline:
             requests: list[TranslationRequest] = []
             if (
                 state.stable_advanced
-                and len(state.stable.split()) >= 2
+                and partial_translation_ready(state.stable, detected)
                 and state.stable.casefold()
                 != self._last_partial_translation.casefold()
             ):
