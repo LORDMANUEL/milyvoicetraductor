@@ -6,7 +6,11 @@ from mily_ai.bilingual_marian import CTranslate2BilingualMarianRouter
 from mily_ai.cpu_budget import detect_cpu_budget
 from mily_ai.models import ModelCatalog
 from mily_ai.provider_factory import TRANSLATION_BUILDERS, build_translation_provider
-from mily_ai.session_routing import route_for_languages
+from mily_ai.session_routing import (
+    adapt_components_for_session,
+    automatic_spanish_pack_id,
+    route_for_languages,
+)
 
 
 class _Stage:
@@ -26,18 +30,28 @@ class _Stage:
 
 
 class BetaAlphaBilingualAutoTests(unittest.TestCase):
-    def test_catalog_has_one_bilingual_auto_pack_for_en_and_zh_to_es(self):
-        pack = ModelCatalog(Path("unused")).definition("betaalpha-auto-es")
-        self.assertEqual(pack["routes"], ["en-es", "zh-es"])
+    def test_existing_paraformer_pack_is_reused_for_automatic_spanish(self):
+        self.assertEqual(automatic_spanish_pack_id(), "betaalpha-paraformer-zh-es")
+        pack = ModelCatalog(Path("unused")).definition(automatic_spanish_pack_id())
         self.assertEqual(pack["tier"], "lite")
         self.assertLessEqual(pack["ramMb"], 1200)
         self.assertEqual(pack["components"]["asr"]["provider"], "sherpa-onnx")
         self.assertEqual(pack["components"]["asr"]["sherpaMode"], "online-paraformer")
-        self.assertEqual(pack["components"]["asr"]["language"], "auto")
+
+    def test_auto_session_adapts_paraformer_and_shared_marian_without_mutating_pack(self):
+        original = ModelCatalog(Path("unused")).definition(
+            "betaalpha-paraformer-zh-es"
+        )["components"]
+        adapted = adapt_components_for_session(
+            "betaalpha-paraformer-zh-es", original, "auto", "es"
+        )
+        self.assertEqual(adapted["asr"]["language"], "auto")
         self.assertEqual(
-            pack["components"]["translation"]["provider"],
+            adapted["translation"]["provider"],
             "marian-bilingual-router-ct2",
         )
+        self.assertEqual(original["asr"]["language"], "zh")
+        self.assertEqual(original["translation"]["provider"], "marian-cascade-ct2")
 
     def test_router_uses_direct_en_es_and_cascade_only_for_zh(self):
         first = _Stage({"你好": "hello"})
