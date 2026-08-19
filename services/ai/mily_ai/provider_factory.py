@@ -10,9 +10,7 @@ from .cpu_budget import CpuBudget
 from .optional_providers import (
     CTranslate2MarianTranslator,
     GoogleChirpAsr,
-    MoonshineAsr,
     SherpaOnnxAsr,
-    WhisperCppAsr,
 )
 from .providers import (
     AsrProvider,
@@ -22,6 +20,7 @@ from .providers import (
     QwenTranslator,
     Translator,
 )
+from .safe_optional_providers import MoonshineResultAsr, WhisperCppBridgeAsr
 
 
 @dataclass(slots=True)
@@ -70,9 +69,9 @@ def _optional_asr(cls):
 
 ASR_BUILDERS: dict[str, AsrBuilder] = {
     "faster-whisper": _faster_whisper,
-    "moonshine": _optional_asr(MoonshineAsr),
+    "moonshine": _optional_asr(MoonshineResultAsr),
     "sherpa-onnx": _optional_asr(SherpaOnnxAsr),
-    "whisper-cpp": _optional_asr(WhisperCppAsr),
+    "whisper-cpp": _optional_asr(WhisperCppBridgeAsr),
     "google-chirp": _optional_asr(GoogleChirpAsr),
 }
 
