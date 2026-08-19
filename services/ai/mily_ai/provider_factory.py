@@ -8,6 +8,7 @@ from typing import Any, Callable
 
 from .cloud_providers import GoogleChirpV2Asr
 from .cpu_budget import CpuBudget
+from .marian_cascade import CTranslate2MarianCascadeTranslator
 from .moonshine_provider import MoonshineStreamingAsr
 from .optional_providers import CTranslate2MarianTranslator, SherpaOnnxAsr
 from .providers import (
@@ -134,6 +135,43 @@ def _marian(
     )
 
 
+def _marian_cascade(
+    component: dict[str, Any],
+    model_path: Path,
+    compute_profile: str,
+    cpu_budget: CpuBudget,
+) -> Translator:
+    stages = component.get("stages")
+    if not isinstance(stages, list) or len(stages) != 2:
+        raise ProviderConfigurationError(
+            "MARIAN_CASCADE_STAGES_REQUIRED",
+            "La cascada Marian Lite requiere exactamente dos etapas.",
+        )
+    first, second = stages
+    if not isinstance(first, dict) or not isinstance(second, dict):
+        raise ProviderConfigurationError(
+            "MARIAN_CASCADE_STAGES_INVALID",
+            "Las etapas Marian deben tener configuración válida.",
+        )
+    source = str(first.get("sourceLanguage", "")).strip().lower()
+    pivot = str(first.get("targetLanguage", "")).strip().lower()
+    second_source = str(second.get("sourceLanguage", "")).strip().lower()
+    target = str(second.get("targetLanguage", "")).strip().lower()
+    if not source or not pivot or pivot != second_source or not target:
+        raise ProviderConfigurationError(
+            "MARIAN_CASCADE_ROUTE_INVALID",
+            "Las dos etapas Marian no forman una ruta continua.",
+        )
+    return CTranslate2MarianCascadeTranslator(
+        model_path,
+        compute_profile,
+        cpu_budget,
+        source_language=source,
+        pivot_language=pivot,
+        target_language=target,
+    )
+
+
 def _qwen(
     _component: dict[str, Any],
     model_path: Path,
@@ -155,6 +193,7 @@ def _nllb(
 TRANSLATION_BUILDERS: dict[str, TranslationBuilder] = {
     "m2m100-ct2": _m2m100,
     "marian-ct2": _marian,
+    "marian-cascade-ct2": _marian_cascade,
     "qwen": _qwen,
     "nllb": _nllb,
 }
