@@ -18,7 +18,11 @@ class TelemetrySnapshot:
     asr_p95_ms: float
     translation_p50_ms: float
     translation_p95_ms: float
+    # El campo histórico real_time_factor pasa a ser conservador (P95) para que
+    # cualquier consumidor antiguo degrade carga ante los picos que acumulan cola.
     real_time_factor: float
+    real_time_factor_p50: float
+    real_time_factor_p95: float
     audio_queue_ms: int
     translation_queue_depth: int
 
@@ -60,12 +64,16 @@ class RealtimeTelemetry:
             asr = list(self._asr_ms)
             translation = list(self._translation_ms)
             rtf = list(self._rtf)
+        rtf_p50 = self._percentile(rtf, 0.50)
+        rtf_p95 = self._percentile(rtf, 0.95)
         return TelemetrySnapshot(
             asr_p50_ms=self._percentile(asr, 0.50),
             asr_p95_ms=self._percentile(asr, 0.95),
             translation_p50_ms=self._percentile(translation, 0.50),
             translation_p95_ms=self._percentile(translation, 0.95),
-            real_time_factor=self._percentile(rtf, 0.50),
+            real_time_factor=rtf_p95,
+            real_time_factor_p50=rtf_p50,
+            real_time_factor_p95=rtf_p95,
             audio_queue_ms=max(0, int(audio_queue_ms)),
             translation_queue_depth=max(0, int(translation_queue_depth)),
         )
@@ -93,7 +101,11 @@ class LatencyController:
     CATCH_UP_MEMORY_MB = 1600.0
     RESCUE_MEMORY_MB = 1920.0
     _SEVERITY = {"healthy": 0, "pressure": 1, "catch_up": 2, "rescue": 3}
-    _STEP_DOWN = {"rescue": "catch_up", "catch_up": "pressure", "pressure": "healthy"}
+    _STEP_DOWN = {
+        "rescue": "catch_up",
+        "catch_up": "pressure",
+        "pressure": "healthy",
+    }
 
     def __init__(
         self,
@@ -139,10 +151,7 @@ class LatencyController:
 
     def _sample_product_memory(self) -> float:
         now = time.monotonic()
-        if (
-            now - self._last_memory_sample_at
-            < self._memory_sample_interval_seconds
-        ):
+        if now - self._last_memory_sample_at < self._memory_sample_interval_seconds:
             return self._last_process_memory_mb
         try:
             engine_tree_mb = max(0.0, float(self._memory_provider()))
