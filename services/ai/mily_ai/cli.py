@@ -15,7 +15,7 @@ from .models import (
     ModelOperationError,
     classify_model_exception,
 )
-from .resource_governor import ResourceGovernor, ResourceLimits, RuntimeFootprint
+from .resource_governor import ResourceGovernor, ResourceLimits
 from .runtime import RuntimePaths
 from .runtime_discovery import discover_runtime_inventory
 from .security import PairingTokenService
@@ -71,18 +71,20 @@ def cmd_token(args) -> int:
 
 
 def _definition_resource(definition: dict) -> dict:
-    decision = ResourceGovernor(ResourceLimits()).evaluate(
-        RuntimeFootprint(
-            process_mb=float(definition.get("ramMb", 0)),
-            dedicated_vram_mb=float(definition.get("vramMb", 0)),
-            shared_gpu_mb=float(definition.get("sharedGpuMb", 0)),
-        )
+    governor = ResourceGovernor(ResourceLimits())
+    decision = governor.preflight_model(
+        model_ram_mb=float(definition.get("ramMb", 0)),
+        dedicated_vram_mb=float(definition.get("vramMb", 0)),
+        shared_gpu_mb=float(definition.get("sharedGpuMb", 0)),
     )
     return {
         "allowed": decision.allowed,
         "mode": decision.mode,
         "reason": decision.reason,
         "effectiveProcessMb": decision.effective_process_mb,
+        "productReserveMb": governor.limits.product_reserve_mb,
+        "processHeadroomMb": decision.process_headroom_mb,
+        "vramHeadroomMb": decision.vram_headroom_mb,
     }
 
 
@@ -123,7 +125,7 @@ def cmd_models(args) -> int:
                 if not resource["allowed"]:
                     raise ModelOperationError(
                         str(resource["reason"]),
-                        "El modelo supera el límite de 2 GB o 384 MB de VRAM.",
+                        "El modelo supera el límite total de 2 GB o 384 MB de VRAM.",
                     )
                 pack = installer.install(args.pack_id)
             print(
@@ -144,7 +146,7 @@ def cmd_models(args) -> int:
             if not resource["allowed"]:
                 raise ModelOperationError(
                     str(resource["reason"]),
-                    "El modelo supera el límite de 2 GB o 384 MB de VRAM.",
+                    "El modelo supera el límite total de 2 GB o 384 MB de VRAM.",
                 )
             installer.activate(args.pack_id, args.version)
             print(
@@ -158,7 +160,12 @@ def cmd_models(args) -> int:
             pack = installer.import_pack(Path(args.archive))
             print(
                 json.dumps(
-                    {"ok": True, "id": pack.id, "version": pack.version},
+                    {
+                        "ok": True,
+                        "id": pack.id,
+                        "version": pack.version,
+                        "active": pack.active,
+                    },
                     ensure_ascii=False,
                 )
             )
@@ -254,6 +261,7 @@ def cmd_diagnose(args) -> int:
             optional[module] = False
     inventory = discover_runtime_inventory()
     active = ModelCatalog(paths.models_dir).active_pack()
+    limits = ResourceLimits()
     print(
         json.dumps(
             {
@@ -264,7 +272,16 @@ def cmd_diagnose(args) -> int:
                 "backends": sorted(inventory.backends),
                 "cuda": "cuda" in inventory.backends,
                 "activeModelPack": f"{active.id}@{active.version}" if active else None,
-                "resourceLimits": {"processMb": 2048, "vramMb": 384},
+                "resourceLimits": {
+                    "processMb": limits.hard_process_mb,
+                    "desktopReserveMb": limits.desktop_reserve_mb,
+                    "bridgeReserveMb": limits.bridge_reserve_mb,
+                    "productReserveMb": limits.product_reserve_mb,
+                    "liteSteadyMb": limits.lite_steady_mb,
+                    "litePeakMb": limits.lite_peak_mb,
+                    "rescueMb": limits.rescue_mb,
+                    "vramMb": limits.vram_budget_mb,
+                },
             },
             indent=2,
         )
