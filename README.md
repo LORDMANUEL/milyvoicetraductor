@@ -97,7 +97,7 @@ La versión `2.0.1` consolida la base funcional de MilyVoiceTraductor con mejora
 - versión consistente entre Desktop, extensión, motor, instalador, sitio y artefactos;
 - MegaBench con Whisper Small y M2M100 reales antes de publicar la distribución.
 
-Los detalles técnicos y los problemas resueltos se encuentran en las [notas de la versión `v2.0.1`](docs/release/RELEASE_NOTES_2.0.1.md).
+El detalle completo de cambios está disponible en las [notas de la versión `v2.0.1`](docs/release/RELEASE_NOTES_2.0.1.md).
 
 ## Instalación
 
