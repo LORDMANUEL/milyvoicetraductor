@@ -84,8 +84,6 @@ def process_memory_snapshot_mb() -> tuple[float, float]:
 
 
 def process_working_set_mb() -> float:
-    """Compatibilidad con consumidores 2.0.1: working set actual."""
-
     return process_memory_snapshot_mb()[0]
 
 
@@ -122,17 +120,13 @@ def _read_wave_mono_16k(path: Path) -> list[float]:
         target_length = max(1, round(samples.size * 16000 / rate))
         source_positions = np.linspace(0.0, 1.0, num=samples.size, endpoint=False)
         target_positions = np.linspace(0.0, 1.0, num=target_length, endpoint=False)
-        samples = np.interp(target_positions, source_positions, samples).astype(
-            np.float32
-        )
+        samples = np.interp(target_positions, source_positions, samples).astype(np.float32)
     return [float(value) for value in samples]
 
 
 def _windows_sapi_fixture() -> list[float]:
     if os.name != "nt":
-        raise BenchmarkExecutionError(
-            "El benchmark ASR requiere audio real o Windows SAPI"
-        )
+        raise BenchmarkExecutionError("El benchmark ASR requiere audio real o Windows SAPI")
     with tempfile.TemporaryDirectory(prefix="mily-benchmark-") as temp:
         root = Path(temp)
         wave_path = root / "benchmark-en.wav"
@@ -190,11 +184,7 @@ def benchmark_installed_pack(
     if repeats < 3:
         raise ValueError("El benchmark requiere al menos tres muestras")
     components = definition.get("components", {})
-    if (
-        not isinstance(components, dict)
-        or "asr" not in components
-        or "translation" not in components
-    ):
+    if not isinstance(components, dict) or "asr" not in components or "translation" not in components:
         raise BenchmarkExecutionError("El pack no declara ASR y traducción")
 
     routes = tuple(str(item) for item in definition.get("routes", ("en-es",)))
@@ -214,11 +204,7 @@ def benchmark_installed_pack(
         compute_profile,
         budget,
     )
-    audio = (
-        [float(value) for value in audio_samples]
-        if audio_samples is not None
-        else _windows_sapi_fixture()
-    )
+    audio = [float(value) for value in audio_samples] if audio_samples is not None else _windows_sapi_fixture()
     if len(audio) < 1600:
         raise BenchmarkExecutionError("El audio de benchmark es demasiado corto")
     audio_seconds = len(audio) / 16000.0
@@ -251,6 +237,9 @@ def benchmark_installed_pack(
                 for segment in segments
                 if str(getattr(segment, "text", "")).strip()
             ).strip()
+            finish_utterance = getattr(asr, "finish_utterance", None)
+            if callable(finish_utterance):
+                finish_utterance()
             if not original:
                 empty_asr += 1
             current, measured_peak = process_memory_snapshot_mb()
