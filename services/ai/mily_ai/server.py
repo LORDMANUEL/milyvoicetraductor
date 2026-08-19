@@ -21,7 +21,7 @@ from .queueing import (
     enqueue_translation,
     serial_translation_action,
 )
-from .resource_governor import ResourceGovernor, ResourceLimits, RuntimeFootprint
+from .resource_governor import ResourceGovernor, ResourceLimits
 from .runtime import EngineSettings, RuntimePaths, parent_process_alive
 from .runtime_discovery import discover_runtime_inventory
 from .security import EphemeralCredentialService, PairingTokenService
@@ -114,13 +114,24 @@ def create_app(paths: RuntimePaths, port: int = 8765, parent_pid: int | None = N
 
     def pack_resource_decision(pack_id: str):
         definition = definition_for(pack_id)
-        return governor.evaluate(
-            RuntimeFootprint(
-                process_mb=float(definition.get("ramMb", 0)),
-                dedicated_vram_mb=float(definition.get("vramMb", 0)),
-                shared_gpu_mb=float(definition.get("sharedGpuMb", 0)),
-            )
+        return governor.preflight_model(
+            model_ram_mb=float(definition.get("ramMb", 0)),
+            dedicated_vram_mb=float(definition.get("vramMb", 0)),
+            shared_gpu_mb=float(definition.get("sharedGpuMb", 0)),
         )
+
+    def resource_limits_payload() -> dict[str, int]:
+        limits = governor.limits
+        return {
+            "processMb": limits.hard_process_mb,
+            "desktopReserveMb": limits.desktop_reserve_mb,
+            "bridgeReserveMb": limits.bridge_reserve_mb,
+            "productReserveMb": limits.product_reserve_mb,
+            "liteSteadyMb": limits.lite_steady_mb,
+            "litePeakMb": limits.lite_peak_mb,
+            "rescueMb": limits.rescue_mb,
+            "vramMb": limits.vram_budget_mb,
+        }
 
     @app.get("/health")
     async def health():
@@ -130,6 +141,7 @@ def create_app(paths: RuntimePaths, port: int = 8765, parent_pid: int | None = N
             "version": "2.0.1",
             "protocol": 1,
             "modelPack": f"{active.id}@{active.version}" if active else None,
+            "resourceLimits": resource_limits_payload(),
             "resourceLimitMb": governor.limits.hard_process_mb,
             "vramLimitMb": governor.limits.vram_budget_mb,
             "extensionConnected": heartbeat_path.exists()
@@ -154,13 +166,7 @@ def create_app(paths: RuntimePaths, port: int = 8765, parent_pid: int | None = N
             ],
             "runtimes": sorted(inventory.runtimes),
             "backends": sorted(inventory.backends),
-            "limits": {
-                "processMb": governor.limits.hard_process_mb,
-                "liteSteadyMb": governor.limits.lite_steady_mb,
-                "litePeakMb": governor.limits.lite_peak_mb,
-                "rescueMb": governor.limits.rescue_mb,
-                "vramMb": governor.limits.vram_budget_mb,
-            },
+            "limits": resource_limits_payload(),
         }
 
     @app.get("/v1/engines")
@@ -191,21 +197,14 @@ def create_app(paths: RuntimePaths, port: int = 8765, parent_pid: int | None = N
         authenticated(request)
         loop = asyncio.get_running_loop()
         try:
-            definition = catalog.definition(pack_id)
-            decision = governor.evaluate(
-                RuntimeFootprint(
-                    process_mb=float(definition.get("ramMb", 0)),
-                    dedicated_vram_mb=float(definition.get("vramMb", 0)),
-                    shared_gpu_mb=float(definition.get("sharedGpuMb", 0)),
-                )
-            )
+            decision = pack_resource_decision(pack_id)
             if not decision.allowed:
                 return JSONResponse(
                     status_code=409,
                     content={
                         "ok": False,
                         "code": decision.reason,
-                        "message": "Este modelo excede el presupuesto de este equipo.",
+                        "message": "Este modelo excede el presupuesto total del producto.",
                     },
                 )
             pack = await loop.run_in_executor(None, installer.install, pack_id)
@@ -235,7 +234,12 @@ def create_app(paths: RuntimePaths, port: int = 8765, parent_pid: int | None = N
                     "message": "El proveedor de modelos no pudo completar la operación.",
                 },
             )
-        return {"ok": True, "id": pack.id, "version": pack.version}
+        return {
+            "ok": True,
+            "id": pack.id,
+            "version": pack.version,
+            "active": pack.active,
+        }
 
     @app.post("/v1/models/activate/{pack_id}/{version}")
     async def activate_model(pack_id: str, version: str, request: Request):
@@ -245,7 +249,7 @@ def create_app(paths: RuntimePaths, port: int = 8765, parent_pid: int | None = N
             if not decision.allowed:
                 raise ModelOperationError(
                     decision.reason,
-                    "El modelo supera el límite de memoria/VRAM configurado.",
+                    "El modelo supera el límite total de memoria o VRAM.",
                 )
             installer.activate(pack_id, version)
         except (ModelOperationError, FileNotFoundError, KeyError) as exc:
@@ -263,12 +267,13 @@ def create_app(paths: RuntimePaths, port: int = 8765, parent_pid: int | None = N
         try:
             installer.remove(pack_id, version)
         except (RuntimeError, FileNotFoundError, OSError) as exc:
+            logger.warning("No se pudo eliminar el pack: %s", exc.__class__.__name__)
             return JSONResponse(
                 status_code=409,
                 content={
                     "ok": False,
                     "code": "MODEL_REMOVE_FAILED",
-                    "message": str(exc),
+                    "message": "No se pudo eliminar el pack local. Verifica que no esté activo.",
                 },
             )
         return {"ok": True}
@@ -290,7 +295,12 @@ def create_app(paths: RuntimePaths, port: int = 8765, parent_pid: int | None = N
                     "message": getattr(exc, "message", "No se pudo importar el pack."),
                 },
             )
-        return {"ok": True, "id": pack.id, "version": pack.version}
+        return {
+            "ok": True,
+            "id": pack.id,
+            "version": pack.version,
+            "active": pack.active,
+        }
 
     @app.post("/v1/models/select-auto")
     async def select_auto(request: Request):
@@ -367,6 +377,7 @@ def create_app(paths: RuntimePaths, port: int = 8765, parent_pid: int | None = N
                 await safe_send(event(item.type, **pipeline_event_fields(item)))
 
         def telemetry_snapshot(current: RealtimePipeline):
+            queue_age_ms = translation_queue.oldest_age_seconds() * 1000.0
             snapshot = current.telemetry.snapshot(
                 audio_queue_ms=audio_queue.qsize() * AUDIO_CHUNK_MS,
                 translation_queue_depth=translation_queue.qsize(),
@@ -375,8 +386,10 @@ def create_app(paths: RuntimePaths, port: int = 8765, parent_pid: int | None = N
                 snapshot.audio_queue_ms,
                 snapshot.translation_queue_depth,
                 snapshot.real_time_factor,
+                translation_queue_age_ms=queue_age_ms,
             )
-            return snapshot, pressure
+            current.set_resource_mode(pressure)
+            return snapshot, pressure, queue_age_ms
 
         async def emit_realtime_status(current: RealtimePipeline) -> None:
             nonlocal last_telemetry_emit
@@ -385,7 +398,11 @@ def create_app(paths: RuntimePaths, port: int = 8765, parent_pid: int | None = N
                 return
             last_telemetry_emit = now
             level = current.audio_level
-            snapshot, pressure = telemetry_snapshot(current)
+            snapshot, pressure, queue_age_ms = telemetry_snapshot(current)
+            process_memory_mb = latency_controller.last_process_memory_mb
+            memory_headroom_mb = max(
+                0.0, governor.limits.hard_process_mb - process_memory_mb
+            )
             await safe_send(
                 event(
                     "audio.level",
@@ -405,10 +422,11 @@ def create_app(paths: RuntimePaths, port: int = 8765, parent_pid: int | None = N
                     realTimeFactor=round(snapshot.real_time_factor, 3),
                     audioQueueMs=snapshot.audio_queue_ms,
                     translationQueueDepth=translation_queue.qsize(),
-                    translationQueueAgeMs=round(
-                        translation_queue.oldest_age_seconds() * 1000.0, 1
-                    ),
+                    translationQueueAgeMs=round(queue_age_ms, 1),
+                    processMemoryMb=round(process_memory_mb, 1),
+                    memoryHeadroomMb=round(memory_headroom_mb, 1),
                     pressure=pressure,
+                    resourceMode=current.resource_mode,
                     cpuProfile=current.cpu_budget.profile,
                     physicalCores=current.cpu_budget.physical_cores,
                     asrThreads=current.cpu_budget.asr_threads,
@@ -421,7 +439,7 @@ def create_app(paths: RuntimePaths, port: int = 8765, parent_pid: int | None = N
             current = pipeline
             for request in requests:
                 if not request.final and current is not None:
-                    _snapshot, pressure = telemetry_snapshot(current)
+                    _snapshot, pressure, _age = telemetry_snapshot(current)
                     if not latency_controller.allow_partial_translation(pressure):
                         logger.debug(
                             "Parcial omitido por presión realtime: %s", pressure
@@ -443,10 +461,17 @@ def create_app(paths: RuntimePaths, port: int = 8765, parent_pid: int | None = N
                     executor = asr_executor
                     if current is None or executor is None:
                         continue
-                    _snapshot, pressure = telemetry_snapshot(current)
+                    _snapshot, pressure, _age = telemetry_snapshot(current)
                     current.segmenter.set_partial_decoding(
                         latency_controller.allow_partial_asr(pressure)
                     )
+                    if pressure in {"catch_up", "rescue"}:
+                        removed = await translation_queue.drop_partials()
+                        if removed:
+                            logger.debug(
+                                "Parciales MT retirados para recuperar tiempo real: %s",
+                                removed,
+                            )
                     try:
                         events, requests = await loop.run_in_executor(
                             executor, current.ingest, samples
@@ -818,6 +843,7 @@ def create_app(paths: RuntimePaths, port: int = 8765, parent_pid: int | None = N
                         pipeline = None
                         recorder = None
                         continue
+                    latency_controller = LatencyController()
                     await start_workers()
                     try:
                         await warm_up_workers()
@@ -836,6 +862,25 @@ def create_app(paths: RuntimePaths, port: int = 8765, parent_pid: int | None = N
                             )
                         )
                         continue
+                    _initial_snapshot, initial_pressure, _initial_age = telemetry_snapshot(
+                        pipeline
+                    )
+                    if (
+                        latency_controller.last_process_memory_mb
+                        > governor.limits.hard_process_mb
+                    ):
+                        await finish_workers(flush=False)
+                        pipeline = None
+                        recorder = None
+                        await safe_send(
+                            event(
+                                "engine.error",
+                                code="PROCESS_MEMORY_LIMIT",
+                                message="El modelo superó 2 GB al cargarse. Ejecuta Optimizar automáticamente.",
+                            )
+                        )
+                        continue
+                    pipeline.set_resource_mode(initial_pressure)
                     loopback_device = None
                     native_loopback = (
                         message.source_mode == "system_loopback"
@@ -859,9 +904,13 @@ def create_app(paths: RuntimePaths, port: int = 8765, parent_pid: int | None = N
                             sourceMode=message.source_mode,
                             nativeLoopback=native_loopback,
                             loopbackDevice=loopback_device,
-                            speakerDetection=message.speaker_detection,
+                            speakerDetection=pipeline.speaker_detection_enabled,
                             binaryPcm=binary_pcm_enabled,
                             parallelStages=pipeline.cpu_budget.parallel_stages,
+                            pressure=initial_pressure,
+                            processMemoryMb=round(
+                                latency_controller.last_process_memory_mb, 1
+                            ),
                         )
                     )
                     continue
