@@ -20,6 +20,24 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v5
+
+      - name: Announce BetaAlpha run on PR 24
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+          SHA: ${{ github.sha }}
+        run: |
+          $body = @"
+          <!-- betaalpha-ci-start -->
+          ## BetaAlpha CPU run started
+
+          Run: https://github.com/$env:REPO/actions/runs/$env:RUN_ID
+          SHA: ``$env:SHA``
+          "@
+          gh pr comment 24 --repo $env:REPO --body $body
+
       - uses: actions/setup-node@v5
         with:
           node-version: "22"
