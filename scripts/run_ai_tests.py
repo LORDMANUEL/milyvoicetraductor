@@ -39,11 +39,12 @@ def _parser() -> argparse.ArgumentParser:
 def _terminate(process: subprocess.Popen[bytes]) -> None:
     if process.poll() is not None:
         return
+    pid = getattr(process, "pid", None)
+    if os.name == "nt" or not isinstance(pid, int) or pid <= 0:
+        process.kill()
+        return
     try:
-        if os.name == "nt":
-            process.kill()
-        else:
-            os.killpg(process.pid, signal.SIGKILL)
+        os.killpg(pid, signal.SIGKILL)
     except (OSError, ProcessLookupError):
         process.kill()
 

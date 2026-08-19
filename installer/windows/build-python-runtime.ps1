@@ -44,17 +44,45 @@ python -m pip install --disable-pip-version-check --no-input --target $sitePacka
 if ($LASTEXITCODE -ne 0) { throw 'No se pudieron preparar las dependencias del runtime privado.' }
 
 $embeddedPython = Join-Path $Stage 'python.exe'
-& $embeddedPython -c "import fastapi, uvicorn, numpy, faster_whisper, transformers, torch, huggingface_hub, pyaudiowpatch; print('MILY_RUNTIME_OK')"
-if ($LASTEXITCODE -ne 0) { throw 'El Python embebido no pudo importar todas las dependencias requeridas, incluido WASAPI loopback.' }
+$runtimeSmoke = @'
+import ctranslate2
+import fastapi
+import google.cloud.speech_v2
+import huggingface_hub
+import moonshine_voice
+import numpy
+import pyaudiowpatch
+import sentencepiece
+import sherpa_onnx
+import torch
+import transformers
+import uvicorn
+import vosk
+from faster_whisper import WhisperModel
+print('MILY_RUNTIME_OK')
+'@
+& $embeddedPython -c $runtimeSmoke
+if ($LASTEXITCODE -ne 0) {
+    throw 'El Python embebido no pudo importar todos los motores Engine Hub, traducción, nube opcional y WASAPI.'
+}
 
 $metadata = [ordered]@{
-    schemaVersion = 1
+    schemaVersion = 2
     pythonVersion = $PythonVersion
     source = $DownloadUrl
     sourceSha256 = $ExpectedSha256.ToLowerInvariant()
     pythonSha256 = (Get-FileHash $embeddedPython -Algorithm SHA256).Hash.ToLowerInvariant()
     architecture = 'x86_64'
     windowsLoopback = 'PyAudioWPatch-0.2.12.8'
+    engineHubRuntimes = @(
+        'faster-whisper',
+        'moonshine-voice',
+        'sherpa-onnx',
+        'vosk',
+        'ctranslate2',
+        'transformers',
+        'google-cloud-speech'
+    )
 }
 $metadata | ConvertTo-Json -Depth 4 | Set-Content (Join-Path $Stage 'runtime-manifest.json') -Encoding UTF8
 
