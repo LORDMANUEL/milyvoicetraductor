@@ -35,6 +35,49 @@ AsrBuilder = Callable[[Path, str, CpuBudget, bool], AsrProvider]
 TranslationBuilder = Callable[[dict[str, Any], Path, str, CpuBudget], Translator]
 
 
+def normalize_backend(value: object) -> str:
+    backend = str(value or "auto").strip().lower()
+    if backend == "gpu":
+        return "cuda"
+    if backend not in {
+        "auto",
+        "cpu",
+        "cuda",
+        "vulkan",
+        "openvino",
+        "directml",
+        "windowsml",
+        "cloud",
+    }:
+        return "auto"
+    return backend
+
+
+def _asr_compute_profile(provider: str, backend: str) -> str:
+    normalized = normalize_backend(backend)
+    if provider == "whisper-cpp":
+        return normalized
+    if provider == "google-chirp":
+        return "cloud" if normalized == "cloud" else normalized
+    if provider == "faster-whisper":
+        if normalized == "cuda":
+            return "gpu"
+        return normalized if normalized in {"auto", "cpu"} else "cpu"
+    # Moonshine, sherpa-onnx y Vosk se ejecutan en CPU en esta versión. El
+    # registro no debe convertir presencia de otro runtime en aceleración falsa.
+    return "cpu"
+
+
+def _translation_compute_profile(provider: str, backend: str) -> str:
+    normalized = normalize_backend(backend)
+    if normalized == "cuda":
+        return "gpu"
+    if normalized == "auto":
+        return "auto"
+    # Un ASR Vulkan/OpenVINO/DirectML puede convivir con Marian CT2 en CPU.
+    return "cpu"
+
+
 def _faster_whisper(
     model_path: Path,
     compute_profile: str,
@@ -153,7 +196,7 @@ def build_asr_provider(
         )
     return builder(
         Path(model_path),
-        compute_profile,
+        _asr_compute_profile(provider, compute_profile),
         cpu_budget,
         bool(word_timestamps),
     )
@@ -172,4 +215,9 @@ def build_translation_provider(
             "TRANSLATION_PROVIDER_UNSUPPORTED",
             f"Proveedor de traducción no soportado: {provider or 'vacío'}",
         )
-    return builder(component, Path(model_path), compute_profile, cpu_budget)
+    return builder(
+        component,
+        Path(model_path),
+        _translation_compute_profile(provider, compute_profile),
+        cpu_budget,
+    )
