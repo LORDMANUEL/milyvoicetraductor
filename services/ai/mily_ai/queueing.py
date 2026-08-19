@@ -137,6 +137,17 @@ class CoalescingTranslationQueue:
                     return None
                 await self._condition.wait()
 
+    async def drop_partials(self) -> int:
+        """Elimina solo trabajo parcial obsoleto; jamás descarta frases finales."""
+
+        async with self._condition:
+            removed = len(self._partials)
+            if removed:
+                self._partials.clear()
+                self._mark_removed(removed)
+                self._condition.notify_all()
+            return removed
+
     def task_done(self) -> None:
         if self._unfinished_tasks <= 0:
             raise ValueError("task_done() llamado demasiadas veces")
