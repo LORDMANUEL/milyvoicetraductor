@@ -19,10 +19,11 @@ from .models import (
 
 _FAST_MOONSHINE_PACK = "fast-moonshine-en-es"
 _LITE_ZH_ES_PACK = "lite-zh-es"
+_BETAALPHA_SHERPA_ZH_PACKS = {
+    "betaalpha-zipformer-zh-es",
+    "betaalpha-paraformer-zh-es",
+}
 
-# Dependencias STT declaradas por el catálogo oficial de Moonshine para las
-# arquitecturas streaming. Los archivos de spelling pertenecen a otro grupo y
-# solo son necesarios cuando el consumidor activa MOONSHINE_FLAG_SPELLING_MODE.
 _MOONSHINE_010_REQUIRED_STREAMING_ASSETS = (
     "adapter.ort",
     "cross_kv.ort",
@@ -43,13 +44,6 @@ _MOONSHINE_010_REQUIRED_BINARY_ASSETS = (
 
 
 def _moonshine_streaming_model_ready(path: Path) -> bool:
-    """Valida el STT mínimo sin convertir recursos opcionales en bloqueos.
-
-    Los binarios de inferencia y tokenizer deben existir y tener contenido. El
-    JSON de configuración debe existir; la propia carga Moonshine del benchmark
-    real valida su contenido y produce un error específico si no es utilizable.
-    """
-
     root = Path(path)
     for name in _MOONSHINE_010_REQUIRED_STREAMING_ASSETS:
         try:
@@ -85,8 +79,6 @@ def _download_moonshine_fast_pack(
     installer: HuggingFacePackInstaller,
     catalog: ModelCatalog,
 ) -> InstalledPack:
-    """Prepara Moonshine Tiny Streaming EN + Marian Tiny INT8 de forma atómica."""
-
     definition = catalog.definition(_FAST_MOONSHINE_PACK)
     version = str(definition["version"])
     final_dir = catalog.packs_dir / _FAST_MOONSHINE_PACK / version
@@ -207,8 +199,6 @@ def _download_lite_zh_es_pack(
     installer: HuggingFacePackInstaller,
     catalog: ModelCatalog,
 ) -> InstalledPack:
-    """Descarga Whisper Tiny multilingüe + ZH→EN→ES Marian y convierte MT a INT8."""
-
     try:
         from huggingface_hub import snapshot_download
     except ImportError as exc:
@@ -301,19 +291,122 @@ def _download_lite_zh_es_pack(
     return _installed_pack(catalog, _LITE_ZH_ES_PACK, version)
 
 
+def _validate_sherpa_files(asr: dict[str, Any], target: Path) -> None:
+    keys = ["encoder", "decoder", "tokens"]
+    if str(asr.get("sherpaMode", "")) == "online-transducer":
+        keys.append("joiner")
+    for key in keys:
+        name = str(asr.get(key, "")).strip()
+        path = target / name
+        if not name or not path.is_file() or path.stat().st_size <= 0:
+            raise ModelOperationError(
+                "MODEL_PROVIDER_ERROR",
+                f"El pack sherpa está incompleto: falta {key}.",
+            )
+
+
+def _download_sherpa_zh_pack(
+    installer: HuggingFacePackInstaller,
+    catalog: ModelCatalog,
+    pack_id: str,
+) -> InstalledPack:
+    """Prepara ASR sherpa ultraligero y reutiliza la cascada Marian certificada."""
+
+    try:
+        from huggingface_hub import snapshot_download
+    except ImportError as exc:
+        raise ModelOperationError(
+            "MODEL_RUNTIME_ERROR",
+            "El runtime BetaAlpha no contiene huggingface_hub.",
+        ) from exc
+
+    definition = catalog.definition(pack_id)
+    version = str(definition["version"])
+    final_dir = catalog.packs_dir / pack_id / version
+    if final_dir.is_dir() and installer.verify(pack_id, version):
+        return _installed_pack(catalog, pack_id, version)
+
+    staging = catalog.models_dir / ".staging" / f"{pack_id}-{version}"
+    shutil.rmtree(staging, ignore_errors=True)
+    staging.mkdir(parents=True, exist_ok=True)
+    components = definition["components"]
+    asr = components["asr"]
+    asr_target = staging / "components" / "asr"
+
+    catalog.write_operation(
+        state="installing",
+        phase="download",
+        message="Descargando ASR sherpa-onnx ultraligero para mandarín.",
+        pack_id=pack_id,
+        component="asr",
+    )
+    snapshot_download(
+        repo_id=asr["repoId"],
+        revision=asr["revision"],
+        local_dir=asr_target,
+        allow_patterns=asr.get("allowPatterns"),
+    )
+    _validate_sherpa_files(asr, asr_target)
+
+    catalog.write_operation(
+        state="installing",
+        phase="optimize",
+        message="Reutilizando traducción Marian ZH→EN→ES INT8 certificada.",
+        pack_id=pack_id,
+        component="translation",
+    )
+    teacher = _download_lite_zh_es_pack(installer, catalog)
+    source_translation = teacher.path / "components" / "translation"
+    if not source_translation.is_dir():
+        raise ModelOperationError(
+            "MODEL_CONVERSION_ERROR",
+            "La cascada Marian Lite no está disponible.",
+        )
+    shutil.copytree(
+        source_translation,
+        staging / "components" / "translation",
+        dirs_exist_ok=True,
+    )
+
+    (staging / "pack.json").write_text(
+        json.dumps(
+            {
+                "schemaVersion": int(definition.get("schemaVersion", 2)),
+                "id": pack_id,
+                "version": version,
+                "components": components,
+                "files": _file_manifest(staging),
+            },
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    final_dir.parent.mkdir(parents=True, exist_ok=True)
+    shutil.rmtree(final_dir, ignore_errors=True)
+    staging.replace(final_dir)
+    if not installer.verify(pack_id, version):
+        shutil.rmtree(final_dir, ignore_errors=True)
+        raise ModelOperationError(
+            "MODEL_HASH_MISMATCH",
+            "El pack sherpa BetaAlpha no pasó integridad.",
+        )
+    return _installed_pack(catalog, pack_id, version)
+
+
 def download_pack(
     installer: HuggingFacePackInstaller,
     catalog: ModelCatalog,
     pack_id: str,
 ) -> InstalledPack:
-    """Descarga/verifica un pack sin dejarlo activo."""
-
     previous_state = dict(catalog._state())
     try:
         if pack_id == _FAST_MOONSHINE_PACK:
             installed = _download_moonshine_fast_pack(installer, catalog)
         elif pack_id == _LITE_ZH_ES_PACK:
             installed = _download_lite_zh_es_pack(installer, catalog)
+        elif pack_id in _BETAALPHA_SHERPA_ZH_PACKS:
+            installed = _download_sherpa_zh_pack(installer, catalog, pack_id)
         else:
             installed = installer.install(pack_id)
         _restore_state(catalog, previous_state)
