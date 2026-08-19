@@ -35,13 +35,14 @@ fn write_json<T: Serialize>(writer: &mut impl io::Write, value: &T) -> Result<()
 }
 
 fn main() {
-    let mut args = std::env::args();
+    let mut args = std::env::args_os();
     let _program = args.next();
     let first = args.next().unwrap_or_default();
+    let first_text = first.to_string_lossy();
 
     // El mismo binario incluido por el instalador sirve como Native Messaging
     // y como bridge privado de whisper.cpp. Los protocolos nunca se mezclan.
-    if matches!(first.as_str(), "--stdio" | "--whispercpp-stdio") {
+    if matches!(first_text.as_ref(), "--stdio" | "--whispercpp-stdio") {
         if whispercpp::run_stdio(args).is_err() {
             std::process::exit(2);
         }
@@ -50,7 +51,7 @@ fn main() {
 
     // Chromium pasa el origen de la extensión como primer argumento. El manifiesto
     // allowed_origins ya limita el acceso; este chequeo agrega defensa en profundidad.
-    let origin = first;
+    let origin = first_text.into_owned();
     if !caller_origin_allowed(&origin) {
         return;
     }
