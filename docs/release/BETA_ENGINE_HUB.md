@@ -1,88 +1,72 @@
-# MilyVoiceTraductor — Beta Engine Hub
+# MilyVoiceTraductor — Beta Engine Hub 2.1
 
-> **Estado:** Beta / Testing. Esta compilación no sustituye la versión estable `v2.0.1`.
+> **Estado:** Beta / Testing. No sustituye todavía la versión estable `v2.0.1` de `main`.
 
-La rama `pruebas` contiene la siguiente evolución del motor de MilyVoiceTraductor. El objetivo de esta beta es reducir latencia y consumo de memoria, mejorar la selección automática de motores/modelos y mantener funcionamiento útil en equipos modestos.
+La rama `pruebas` contiene la evolución Engine Hub orientada a menor latencia, menor consumo de RAM, selección automática de motores y diagnóstico reparable. Un SHA solo se considera candidato instalable cuando completa el mismo MegaGate Windows; resultados verdes de commits anteriores no se mezclan.
 
-## Versión estable
+## Objetivos de esta beta
 
-La versión estable y recomendada para uso normal continúa siendo **MilyVoiceTraductor `v2.0.1`**:
+- producto completo por debajo de 2 GiB y perfil Lite con margen amplio;
+- CPU-only como ruta de primera clase, incluida referencia 2C/4T;
+- GPU de 512 MiB opcional, nunca obligatoria;
+- Moonshine/Whisper Tiny y rutas Tier 1 EN→ES / ZH→ES bajo gates comunes;
+- cero crecimiento continuo de cola y cero finales perdidos;
+- instalador NSIS real, reinstalación y reparación verificables;
+- errores con códigos estables y evidencia diagnóstica sanitizada.
 
-- Release: https://github.com/LORDMANUEL/milyvoicetraductor/releases/tag/v2.0.1
-- Instalador Windows x64: https://github.com/LORDMANUEL/milyvoicetraductor/releases/download/v2.0.1/MilyVoiceTraductor_2.0.1_x64-setup.exe
+## Optimización de traducción
 
-La estable conserva Whisper Small + M2M100 CT2 INT8 como baseline publicado y no se reemplaza por la beta hasta completar el ciclo de pruebas.
+La escucha/ASR y la traducción se miden por separado. En equipos dual-core, ASR y MT comparten un executor serial: ambos pueden reutilizar los dos cores físicos sin ejecutarse simultáneamente. Los parciales ingleses no se envían a MT si todavía terminan en un modal/conector incompleto; mandarín conserva estabilización incremental por caracteres Han.
 
-## Beta Engine Hub
+Marian EN→ES mantiene greedy search como primer pase. Solo ejecuta un segundo decode acotado cuando detecta repetición patológica o pérdida de información crítica determinista, actualmente números y negaciones. Esto evita pagar mayor latencia en frases normales y reduce resultados incongruentes de alto impacto.
 
-Build validado de referencia:
+## Diagnóstico y reparación
 
-- Rama: `pruebas`
-- SHA fuente: `a6a8b7cb22b1feb656e492f3bba0e2e2555d5737`
-- CI: `#1078`
-- Resultado: **success**
-- Run: https://github.com/LORDMANUEL/milyvoicetraductor/actions/runs/32247097330
-- Artefacto Windows: https://github.com/LORDMANUEL/milyvoicetraductor/actions/runs/32247097330/artifacts/9364017906
+MilyVoice mantiene dos niveles de evidencia local:
 
-> GitHub puede requerir iniciar sesión para descargar artefactos de Actions. Este artefacto es de prueba y expira según la retención configurada del workflow.
+- `milyvoice.log`: log humano rotado y sanitizado;
+- `repair-history.jsonl`: eventos estructurados de reparación, también rotados y sanitizados.
 
-### Motores y modelos en prueba
+Cada reparación usa un `incidentId` común y registra `Started`, `Succeeded` o `Failed`, además de componente, etapa, código público, mensaje y acción recomendada. Se eliminan tokens, contraseñas, correos y homes de usuario antes de persistir.
 
-- **Moonshine Tiny Streaming + Marian Tiny INT8** para EN→ES de muy baja latencia.
-- **Whisper Tiny + Marian Tiny INT8** como ruta Lite EN→ES y fallback local.
-- **Whisper Tiny multilingüe + Marian ZH→EN→ES INT8** como ruta Lite ZH→ES.
-- Registro/adapters para sherpa-onnx, whisper.cpp y Vosk; solo se promueven automáticamente cuando runtime, pack y benchmark están completos.
-- Google Chirp permanece opcional y requiere consentimiento explícito por ser un proveedor cloud.
+Desktop incluye **Diagnóstico y reparación**, donde se muestran los eventos recientes y se puede ejecutar la reparación controlada sin abrir PowerShell visible.
 
-### Selección automática y recursos
+El bootstrap Windows diferencia módulos base de adapters opcionales. Un adapter opcional que no pueda cargar en una PC concreta no debe impedir abrir MilyVoice; se registra y Engine Hub utiliza fallback. Los componentes base sí bloquean y entregan un código concreto.
 
-Engine Hub detecta hardware, ruta de idioma y disponibilidad real del runtime. Un motor no se selecciona por estar instalado: debe caber en presupuesto y superar los gates de rendimiento.
+## Evidencia CI incluso cuando falla
 
-Perfil objetivo de pruebas:
+El Windows gate conserva un artefacto `MilyVoiceTraductor-Diagnostics-<sha>` con evidencia sanitizada aunque la certificación falle antes de generar el EXE. Puede incluir:
 
-```text
-Equipo de referencia: 8 GB RAM
-Windows:               4 GB
-MilyVoiceTraductor:    máximo 2 GB
-Chrome/Chromium:       1 GB
-Reserva libre:         1 GB
-CPU objetivo:          2 cores / 4 threads
-Clase GPU/iGPU:        512 MB
-Presupuesto VRAM app:  384 MB
-```
+- salida de tests AI;
+- benchmarks parciales;
+- `runtime-manifest.json`;
+- `bootstrap/status.json`;
+- logs MilyVoice/AI/repair-history generados por el runner;
+- contexto mínimo de run y SHA.
 
-El controlador puede degradar funciones no esenciales bajo presión antes de permitir crecimiento de cola o memoria: parciales, diarización, word timestamps y TTS se reducen antes que resultados finales.
+Nunca se exportan variables de entorno, tokens ni credenciales.
 
-### Extensión beta
+## MegaGate obligatorio
 
-La extensión de la rama `pruebas` también incorpora cambios que se validan junto al motor:
+Un único SHA debe pasar:
 
-- modo **Tutor**;
-- repetición/pronunciación del original;
-- temas Automático, Mily, Cine, Clase, Alto contraste y Karaoke;
-- elección de voces y voces por hablante;
-- caché de preferencias;
-- animación Karaoke solo cuando está activa para reducir CPU en reposo.
+1. Source/Privacy/Extension/Site guards.
+2. Python unit + realtime contracts.
+3. Frontend typecheck/tests/build.
+4. Rust format/tests/Clippy Linux y Windows.
+5. Runtime Python privado y Native Messaging.
+6. Simulación de máquina objetivo 2 GiB.
+7. Moonshine Lite EN→ES real.
+8. Whisper Tiny Lite EN→ES real.
+9. Mandarin Lite ZH→ES real.
+10. Desktop Release y `WINDOWS_GUI`.
+11. Tauri NSIS.
+12. Instalación limpia del NSIS real.
+13. Reinstalación sobre runtime previo activo.
+14. Extensión Chromium, benchmarks y SHA-256.
 
-## Evidencia CI #1078
+Hasta que ese mismo SHA complete todo, el PR permanece Draft y `main` continúa en v2.0.1.
 
-El pipeline Windows de la beta completó correctamente:
+## Candidato actual
 
-1. AI unit tests y stress realtime.
-2. Simulación de máquina objetivo.
-3. Política que impide activar Quality bajo presupuesto de 2 GiB.
-4. Benchmark real Moonshine Lite EN→ES.
-5. Benchmark real Whisper Tiny Lite EN→ES.
-6. Benchmark Lite mandarín ZH→ES.
-7. Rust tests y Clippy.
-8. Build Desktop Windows.
-9. Verificación de subsistema GUI.
-10. Tauri NSIS.
-11. Instalación del NSIS generado.
-12. Empaquetado de extensión y SHA-256.
-
-Esta evidencia permite distribuir la compilación como **beta para pruebas**, no como reemplazo automático de `v2.0.1`.
-
-## Criterio para promover a estable
-
-La beta solo debe sustituir la versión estable cuando se complete validación repetida en PCs Windows reales de bajos recursos, incluyendo reuniones largas, audio real EN/ES/ZH, Chrome/Teams concurrente, consumo de RAM sostenido, recuperación bajo presión y actualización sobre instalaciones existentes.
+El SHA se fija en el comentario de coordinación de PR #11. Durante una certificación no se permiten nuevos pushes a `pruebas`; si falla un gate, se corrige únicamente la causa comprobada y el nuevo SHA vuelve a ejecutar el MegaGate completo.
