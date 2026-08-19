@@ -1,0 +1,4 @@
+# Solo perfiles Quality/Research. No se instala en BetaAlpha Lite.
+transformers>=4.51,<6
+torch>=2.7,<3
+google-cloud-speech==2.40.0
