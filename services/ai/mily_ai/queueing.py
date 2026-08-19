@@ -15,9 +15,18 @@ SerialTranslationAction = Literal["run", "defer", "drop"]
 def serial_translation_action(
     request: TranslationRequest, *, audio_pending: bool
 ) -> SerialTranslationAction:
+    """Prioriza ASR sin convertir una CPU serial en subtítulos sin traducción.
+
+    Cuando hay audio pendiente, el worker serial cede primero una ventana breve
+    al ASR. Después puede traducir el parcial más reciente. Los parciales viejos
+    ya se eliminan/coalescen antes de llegar aquí y, bajo presión, el servidor no
+    los encola; descartarlos también en estado saludable hacía que el usuario
+    viera la transcripción a tiempo pero la traducción solo al cierre de frase.
+    """
+
     if not audio_pending:
         return "run"
-    return "defer" if request.final else "drop"
+    return "defer"
 
 
 class CoalescingTranslationQueue:
