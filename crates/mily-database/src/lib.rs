@@ -1,6 +1,6 @@
 //! SQLite local y migraciones monotónicas de MilyVoiceTraductor.
 
-use rusqlite::{Connection, params};
+use rusqlite::{Connection, Error as SqliteError, ErrorCode, params};
 use std::fs;
 use std::path::{Path, PathBuf};
 use thiserror::Error;
@@ -57,8 +57,15 @@ impl DatabaseService {
         if let Some(parent) = service.path.parent() {
             fs::create_dir_all(parent)?;
         }
-        service.apply_migrations()?;
-        Ok(service)
+        match service.apply_migrations() {
+            Ok(()) => Ok(service),
+            Err(error) if service.path.is_file() && is_recoverable_corruption(&error) => {
+                service.quarantine_corrupt_database()?;
+                service.apply_migrations()?;
+                Ok(service)
+            }
+            Err(error) => Err(error),
+        }
     }
 
     pub fn path(&self) -> &Path {
@@ -124,6 +131,53 @@ impl DatabaseService {
             |row| row.get(0),
         )?)
     }
+
+    fn quarantine_corrupt_database(&self) -> Result<(), DatabaseError> {
+        let quarantine = next_quarantine_path(&self.path);
+        fs::rename(&self.path, &quarantine)?;
+        quarantine_sidecar(&self.path, &quarantine, "-wal")?;
+        quarantine_sidecar(&self.path, &quarantine, "-shm")?;
+        Ok(())
+    }
+}
+
+fn is_recoverable_corruption(error: &DatabaseError) -> bool {
+    matches!(
+        error,
+        DatabaseError::Sqlite(SqliteError::SqliteFailure(details, _))
+            if matches!(details.code, ErrorCode::NotADatabase | ErrorCode::DatabaseCorrupt)
+    )
+}
+
+fn next_quarantine_path(path: &Path) -> PathBuf {
+    let primary = path.with_extension(match path.extension().and_then(|value| value.to_str()) {
+        Some(extension) if !extension.is_empty() => format!("{extension}.corrupt"),
+        _ => "corrupt".to_string(),
+    });
+    if !primary.exists() {
+        return primary;
+    }
+    for index in 1_u32.. {
+        let candidate = PathBuf::from(format!("{}.{}", primary.display(), index));
+        if !candidate.exists() {
+            return candidate;
+        }
+    }
+    unreachable!()
+}
+
+fn quarantine_sidecar(
+    database: &Path,
+    quarantine: &Path,
+    suffix: &str,
+) -> Result<(), DatabaseError> {
+    let source = PathBuf::from(format!("{}{suffix}", database.display()));
+    if !source.exists() {
+        return Ok(());
+    }
+    let destination = PathBuf::from(format!("{}{suffix}", quarantine.display()));
+    fs::rename(source, destination)?;
+    Ok(())
 }
 
 #[derive(Debug, Error)]
@@ -164,6 +218,23 @@ mod tests {
         assert_eq!(
             fs::read(quarantine).unwrap(),
             b"this is not a sqlite database"
+        );
+    }
+
+    #[test]
+    fn existing_quarantine_is_never_overwritten() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("milyvoice.db");
+        let previous = dir.path().join("milyvoice.db.corrupt");
+        fs::write(&previous, b"older evidence").unwrap();
+        fs::write(&path, b"new corruption").unwrap();
+
+        DatabaseService::open(&path).expect("la recuperación debe conservar cuarentenas anteriores");
+
+        assert_eq!(fs::read(previous).unwrap(), b"older evidence");
+        assert_eq!(
+            fs::read(dir.path().join("milyvoice.db.corrupt.1")).unwrap(),
+            b"new corruption"
         );
     }
 }
