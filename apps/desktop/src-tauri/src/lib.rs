@@ -47,6 +47,7 @@ pub fn run() {
             activate_model,
             optimize_models,
             import_model_pack,
+            import_model_pack_url,
             verify_model,
             remove_model,
             rollback_model,
