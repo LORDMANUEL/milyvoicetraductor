@@ -66,17 +66,24 @@ def _decode_output(payload: bytes) -> str:
 
 
 def _write_output(text: str, *, error: bool = False) -> None:
-    """Escribe incluso cuando la consola Windows usa CP1252."""
+    """Escribe salida UTF-8 incluso si Windows anuncia un encoder distinto."""
 
     if not text:
         return
     stream = sys.stderr if error else sys.stdout
-    encoding = getattr(stream, "encoding", None) or "utf-8"
+    binary = getattr(stream, "buffer", None)
+    if binary is not None:
+        try:
+            binary.write(text.encode("utf-8", errors="backslashreplace"))
+            binary.flush()
+            return
+        except (AttributeError, OSError, ValueError):
+            pass
+    safe = text.encode("ascii", errors="backslashreplace").decode("ascii")
     try:
-        safe = text.encode(encoding, errors="backslashreplace").decode(encoding)
-    except LookupError:
-        safe = text.encode("utf-8", errors="backslashreplace").decode("utf-8")
-    stream.write(safe)
+        stream.write(safe)
+    except UnicodeEncodeError:
+        stream.write(safe.encode("ascii", errors="backslashreplace").decode("ascii"))
     stream.flush()
 
 
