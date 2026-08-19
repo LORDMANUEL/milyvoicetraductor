@@ -31,14 +31,15 @@ try {
     if (-not (Test-Path $Python -PathType Leaf)) { throw 'El runtime privado no contiene python.exe.' }
     if (-not (Test-Path $EngineMain -PathType Leaf)) { throw 'El fixture no contiene main.py.' }
 
-    Write-Host '[MEGABENCH] Instalando pack real realtime-m2m100...'
+    Write-Host '[MEGABENCH] Descargando pack Quality realtime-m2m100 sin activarlo...'
+    Write-Host '[MEGABENCH] Este pack supera el contrato Lite de 2 GiB; se prueba solo como regresión de compatibilidad.'
     & $Python $EngineMain models `
         --data-dir $AppRoot `
         --config-dir $ConfigRoot `
         --cache-dir $CacheRoot `
         --models-dir $ModelsRoot `
-        install realtime-m2m100 | Out-Host
-    if ($LASTEXITCODE -ne 0) { throw 'No se pudo descargar/convertir realtime-m2m100.' }
+        install realtime-m2m100 --download-only | Out-Host
+    if ($LASTEXITCODE -ne 0) { throw 'No se pudo descargar/convertir realtime-m2m100 en modo download-only.' }
 
     & $Python $EngineMain models `
         --data-dir $AppRoot `
@@ -116,9 +117,12 @@ def load_wav_mono_16k(path: Path):
     return samples.astype(np.float32, copy=False), len(samples) / 16000.0
 
 
-pack = ModelCatalog(models_root).active_pack()
-if pack is None or pack.id != 'realtime-m2m100':
-    raise SystemExit('El pack realtime no quedó activo')
+catalog = ModelCatalog(models_root)
+pack = next((item for item in catalog.installed() if item.id == 'realtime-m2m100'), None)
+if pack is None:
+    raise SystemExit('El pack realtime-m2m100 no quedó descargado')
+if pack.active:
+    raise SystemExit('El pack Quality no debe quedar activo bajo el contrato Lite de 2 GiB')
 
 samples, audio_seconds = load_wav_mono_16k(audio_path)
 if audio_seconds < 2.0:
@@ -193,10 +197,11 @@ gate = performance_gate(
 )
 
 report = {
-    'schemaVersion': 1,
+    'schemaVersion': 2,
     'productVersion': '2.0.1',
     'modelPack': f'{pack.id}@{pack.version}',
-    'mode': 'github-windows-regression-gate',
+    'mode': 'github-windows-quality-compatibility-gate',
+    'activationAllowedUnder2GiB': False,
     'physicalLegacyHaswellGateExecuted': False,
     'environment': {
         'platform': platform.platform(),
@@ -222,15 +227,18 @@ report = {
     'estimatedEndToEndP95Ms': round(float(asr_summary['p95Ms']) + mt_p95, 3),
     'gate': gate,
     'notes': [
-        'Este gate mide regresiones en el runner Windows de GitHub.',
+        'Este gate mide regresiones del pack Quality en el runner Windows de GitHub.',
+        'El pack se descarga y verifica, pero deliberadamente NO se activa porque excede el contrato Lite de 2 GiB.',
+        'La certificación de la máquina objetivo de 2 GiB se ejecuta después con el pack Lite real.',
         'No equivale al benchmark físico obligatorio del perfil Legacy sobre Intel Core i3 Haswell.',
-        'EN→ES y ZH→ES son smoke reales prioritarios de esta candidata.',
+        'EN→ES y ZH→ES se conservan aquí como smoke reales de compatibilidad del pack Quality.',
     ],
 }
 report_path.parent.mkdir(parents=True, exist_ok=True)
 report_path.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding='utf-8')
 
-print('REALTIME_MODEL_LOAD_OK')
+print('REALTIME_QUALITY_MODEL_LOAD_OK')
+print('QUALITY_PACK_ACTIVE', pack.active)
 print('ASR_TEXT', asr_text)
 print('ASR_P50_MS', asr_summary['p50Ms'])
 print('ASR_P95_MS', asr_summary['p95Ms'])
@@ -243,14 +251,14 @@ print('ZH_ES_P95_MS', zh_summary['p95Ms'])
 print('MEGABENCH_REPORT', report_path)
 if not gate['passed']:
     raise SystemExit('MEGABENCH PERFORMANCE GATE FAILED: ' + ','.join(gate['failures']))
-print('MEGABENCH_2_0_1_OK')
+print('MEGABENCH_QUALITY_COMPATIBILITY_OK')
 '@ | Set-Content -Path $Probe -Encoding UTF8
 
     & $Python $Probe $EngineApp $ModelsRoot $BenchmarkWave $ReportPath
-    if ($LASTEXITCODE -ne 0) { throw 'MegaBench 2.0.1 falló al ejecutar el pack real o sus límites de rendimiento.' }
+    if ($LASTEXITCODE -ne 0) { throw 'MegaBench Quality falló al ejecutar el pack real o sus límites de rendimiento.' }
     if (-not (Test-Path $ReportPath -PathType Leaf)) { throw 'MegaBench no produjo su reporte JSON.' }
 
-    Write-Host "MEGABENCH 2.0.1 OK: $ReportPath" -ForegroundColor Green
+    Write-Host "MEGABENCH QUALITY OK: $ReportPath" -ForegroundColor Green
 }
 finally {
     Remove-Item $FixtureRoot -Recurse -Force -ErrorAction SilentlyContinue
