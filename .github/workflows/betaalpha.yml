@@ -7,6 +7,8 @@ on:
 
 permissions:
   contents: read
+  issues: write
+  pull-requests: write
 
 concurrency:
   group: betaalpha-${{ github.ref }}
@@ -33,10 +35,12 @@ jobs:
       - name: Install frontend dependencies
         run: npm install --prefix apps/desktop --workspaces=false --legacy-peer-deps --no-audit --no-fund
       - name: Frontend build
+        id: frontend
         run: npm run --prefix apps/desktop build
       - name: Install lightweight AI test dependencies
         run: python -m pip install --disable-pip-version-check "fastapi>=0.116,<1" "httpx>=0.28,<1" "numpy>=2.2,<3"
       - name: BetaAlpha unit and source verification
+        id: ai
         env:
           PYTHONPATH: services/ai
         shell: pwsh
@@ -47,11 +51,13 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Offline bootstrap policy
+        id: bootstrap
         shell: pwsh
         run: .\installer\windows\test-bootstrap.ps1
       - name: Native Messaging bridge release build
         run: cargo build -p mily-bridge --release
       - name: Build private Python runtime
+        id: runtime
         shell: pwsh
         run: .\installer\windows\build-python-runtime.ps1
       - name: Validate private runtime
@@ -61,40 +67,51 @@ jobs:
         shell: pwsh
         run: .\installer\windows\test-installed-flow.ps1
       - name: Target machine 2 GiB simulation
+        id: target_machine
         shell: pwsh
         run: .\installer\windows\test-engine-hub-target-machine.ps1
 
       - name: Engine Hub baseline Moonshine benchmark
+        id: moonshine
         shell: pwsh
         run: .\installer\windows\test-moonshine-lite.ps1
       - name: Engine Hub baseline Whisper Tiny benchmark
+        id: whisper
         shell: pwsh
         run: .\installer\windows\test-whisper-tiny-lite.ps1
       - name: Engine Hub baseline Mandarin benchmark
+        id: mandarin_baseline
         shell: pwsh
         run: .\installer\windows\test-zh-es-lite.ps1
       - name: BetaAlpha real Zipformer and Paraformer CPU benchmark
+        id: sherpa
         shell: pwsh
         run: .\installer\windows\test-betaalpha-sherpa-lite.ps1
 
       - name: Rust tests
+        id: rust
         run: cargo test --workspace
       - name: Clippy
+        id: clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
       - name: Windows desktop release build
+        id: desktop
         run: cargo build -p milyvoicetraductor-desktop --release
       - name: Verify Windows GUI subsystem
         shell: pwsh
         run: .\installer\windows\test-windows-gui.ps1
       - name: Tauri NSIS bundle
+        id: nsis
         run: npm run --prefix apps/desktop tauri -- build
       - name: Exercise generated NSIS installer
+        id: nsis_smoke
         shell: pwsh
         run: .\installer\windows\test-nsis-installer.ps1
       - name: Package Chromium extension
         run: python scripts/build_extension_zip.py
 
       - name: Prepare BetaAlpha release bundle
+        id: bundle
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force "dist/betaalpha" | Out-Null
@@ -121,6 +138,7 @@ jobs:
           $lines | Set-Content -Encoding ascii "dist/betaalpha/SHA256SUMS.txt"
 
       - name: Upload BetaAlpha Windows candidate
+        id: artifact
         uses: actions/upload-artifact@v6
         with:
           name: MilyVoiceTraductor-BetaAlpha-Windows-x64-${{ github.sha }}
@@ -128,3 +146,57 @@ jobs:
           retention-days: 30
           compression-level: 0
           if-no-files-found: error
+
+      - name: Publish BetaAlpha certification status on PR 24
+        if: always()
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+          SHA: ${{ github.sha }}
+          FRONTEND: ${{ steps.frontend.outcome }}
+          AI: ${{ steps.ai.outcome }}
+          BOOTSTRAP: ${{ steps.bootstrap.outcome }}
+          RUNTIME: ${{ steps.runtime.outcome }}
+          TARGET_MACHINE: ${{ steps.target_machine.outcome }}
+          MOONSHINE: ${{ steps.moonshine.outcome }}
+          WHISPER: ${{ steps.whisper.outcome }}
+          MANDARIN_BASELINE: ${{ steps.mandarin_baseline.outcome }}
+          SHERPA: ${{ steps.sherpa.outcome }}
+          RUST: ${{ steps.rust.outcome }}
+          CLIPPY: ${{ steps.clippy.outcome }}
+          DESKTOP: ${{ steps.desktop.outcome }}
+          NSIS: ${{ steps.nsis.outcome }}
+          NSIS_SMOKE: ${{ steps.nsis_smoke.outcome }}
+          BUNDLE: ${{ steps.bundle.outcome }}
+          ARTIFACT: ${{ steps.artifact.outcome }}
+        run: |
+          $lines = @(
+            "<!-- betaalpha-ci -->",
+            "## BetaAlpha CPU certification",
+            "",
+            "Run: https://github.com/$env:REPO/actions/runs/$env:RUN_ID",
+            "SHA: ``$env:SHA``",
+            "",
+            "| Gate | Resultado |",
+            "|---|---|",
+            "| Frontend | $env:FRONTEND |",
+            "| AI + Source Verification | $env:AI |",
+            "| Bootstrap | $env:BOOTSTRAP |",
+            "| Runtime privado | $env:RUNTIME |",
+            "| Simulación 2 GiB | $env:TARGET_MACHINE |",
+            "| Moonshine baseline | $env:MOONSHINE |",
+            "| Whisper Tiny baseline | $env:WHISPER |",
+            "| Mandarin baseline | $env:MANDARIN_BASELINE |",
+            "| Zipformer/Paraformer reales | $env:SHERPA |",
+            "| Rust | $env:RUST |",
+            "| Clippy | $env:CLIPPY |",
+            "| Desktop | $env:DESKTOP |",
+            "| NSIS build | $env:NSIS |",
+            "| NSIS install smoke | $env:NSIS_SMOKE |",
+            "| Bundle | $env:BUNDLE |",
+            "| Artifact | $env:ARTIFACT |"
+          )
+          $body = $lines -join "`n"
+          gh pr comment 24 --repo $env:REPO --body $body
