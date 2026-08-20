@@ -9,42 +9,49 @@ styles = ROOT / "apps" / "site" / "styles.css"
 logo = ROOT / "apps" / "site" / "assets" / "logo.svg"
 history = ROOT / "docs" / "release" / "VERSION_HISTORY.md"
 
-WINDOWS_DOWNLOAD = "https://github.com/LORDMANUEL/milyvoicetraductor/releases/download/v2.0.1/MilyVoiceTraductor_2.0.1_x64-setup.exe"
-HISTORICAL_DOWNLOADS = [
-    "https://github.com/LORDMANUEL/milyvoicetraductor/releases/download/v2.0.0/MilyVoiceTraductor_2.0.0_x64-setup.exe",
-    "https://github.com/LORDMANUEL/milyvoicetraductor/releases/download/v1.0.5/MilyVoiceTraductor_1.0.5_x64-setup.exe",
-    "https://github.com/LORDMANUEL/milyvoicetraductor/releases/download/v1.0.0-rc.1/MilyVoiceTraductor_1.0.0-rc.1_x64-setup.exe",
-]
+CURRENT_VERSION = "2.1.0"
+CURRENT_INSTALLER = (
+    "https://github.com/LORDMANUEL/milyvoicetraductor/releases/download/"
+    "v2.1.0/MilyVoiceTraductor_2.1.0_x64-setup.exe"
+)
+CURRENT_EXTENSION = (
+    "https://github.com/LORDMANUEL/milyvoicetraductor/releases/download/"
+    "v2.1.0/MilyVoiceTraductor-Chromium-Extension.zip"
+)
+CURRENT_RELEASE = "https://github.com/LORDMANUEL/milyvoicetraductor/releases/tag/v2.1.0"
 
 errors: list[str] = []
 if not index.exists():
     errors.append("Falta apps/site/index.html")
 else:
     html = index.read_text(encoding="utf-8")
-    for required in [
-        "MilyVoiceTraductor 2.0.1",
+    required_content = [
+        f"MilyVoiceTraductor {CURRENT_VERSION}",
+        "2.1.0 ESTABLE",
         'id="privacidad"',
         'id="compute"',
-        'id="beta"',
         'id="versiones"',
         'id="estado"',
         "Sin telemetría",
         "MilyCompute",
-        "MegaBench",
-        "2.0.1 · Runtime privado",
         "Engine Hub",
-        "BetaAlpha",
-        "1.0.0 RC1",
-        "MilyVoiceTraductor 1.0.5",
+        "Moonshine",
+        "Whisper Tiny",
+        "Sherpa Zipformer",
+        "MilyVoiceTraductor 2.0.1",
         "MilyVoiceTraductor 2.0.0",
-        WINDOWS_DOWNLOAD,
-        "https://github.com/LORDMANUEL/milyvoicetraductor/tree/pruebas",
-        "https://github.com/LORDMANUEL/milyvoicetraductor/tree/betaalpha",
-    ] + HISTORICAL_DOWNLOADS:
+        CURRENT_INSTALLER,
+        CURRENT_EXTENSION,
+        CURRENT_RELEASE,
+    ]
+    for required in required_content:
         if required not in html:
             errors.append(f"Falta contenido requerido: {required}")
 
     for stale in [
+        "Descargar estable 2.0.1",
+        "La versión recomendada sigue siendo 2.0.1",
+        "2.0.1 estable · Engine Hub Beta · BetaAlpha",
         "2.0 RC",
         "Candidata actual",
         "permanece RC",
@@ -64,10 +71,12 @@ for asset in [styles, logo, history]:
 if history.exists():
     registry = history.read_text(encoding="utf-8")
     for required in [
-        "v1.0.0-rc.1",
-        "v1.0.5",
-        "v2.0.0",
+        "v2.1.0",
+        "6645be5413a46d92e24b0c37c56b1bb851a94067",
         "v2.0.1",
+        "v2.0.0",
+        "v1.0.5",
+        "v1.0.0-rc.1",
         "875c182c67bcc4c2984cf15de474602017129f99",
         "1da9a1090535f8f69639c7def2cc760e4b76364d",
     ]:
@@ -77,6 +86,9 @@ if history.exists():
 if errors:
     print("SITE CHECK FAILED")
     for error in errors:
-        print(f"- {error}")
+        print("-", error)
     sys.exit(1)
-print("SITE CHECK OK: estable 2.0.1, historial 1.0.0-rc.1/1.0.5/2.0.0, Engine Hub y BetaAlpha presentes.")
+print(
+    "SITE CHECK OK: estable 2.1.0, historial de releases, "
+    "Engine Hub y evidencias de plataforma presentes."
+)
