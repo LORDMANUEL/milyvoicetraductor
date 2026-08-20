@@ -18,6 +18,7 @@ const SPEAKER_FOCUS_MODES = new Set(['all', 'dominant', 'fixed']);
 
 let nativePort = null;
 let pendingBridgeRequest = null;
+let bridgeRequestChain = Promise.resolve();
 
 async function ensureOffscreenDocument() {
   const contexts = await chrome.runtime.getContexts({
@@ -99,12 +100,8 @@ function connectNativeHost() {
   return nativePort;
 }
 
-function requestBridge(type = 'status', timeoutMs = 3500) {
+function requestBridgeNow(type = 'status', timeoutMs = 3500) {
   return new Promise((resolve, reject) => {
-    if (pendingBridgeRequest) {
-      reject(new Error('El bridge local está atendiendo otra solicitud.'));
-      return;
-    }
     const port = connectNativeHost();
     if (!port) {
       reject(new Error('MilyVoiceTraductor no está instalado o el bridge no está registrado.'));
@@ -128,6 +125,13 @@ function requestBridge(type = 'status', timeoutMs = 3500) {
       reject(error);
     }
   });
+}
+
+function requestBridge(type = 'status', timeoutMs = 3500) {
+  const execute = () => requestBridgeNow(type, timeoutMs);
+  const scheduled = bridgeRequestChain.then(execute, execute);
+  bridgeRequestChain = scheduled.catch(() => undefined);
+  return scheduled;
 }
 
 function assertCapturableTab(tab) {
