@@ -85,6 +85,53 @@ class TranslationQualityTests(unittest.TestCase):
         self.assertEqual(result.reason, "NUMBER_LOST")
         self.assertEqual(result.missing_numbers, ("1038",))
 
+    def test_fidelity_accepts_small_number_as_spanish_word(self):
+        result = analyze_source_target_fidelity(
+            "The meeting starts at 9.",
+            "La reunión empieza a las nueve.",
+            "en",
+            "es",
+        )
+        self.assertTrue(result.passed)
+        self.assertEqual(result.missing_numbers, ())
+
+    def test_fidelity_accepts_clock_words_without_false_number_loss(self):
+        nine = analyze_source_target_fidelity(
+            "The meeting starts at 9:00.",
+            "La reunión empieza a las nueve.",
+            "en",
+            "es",
+        )
+        five_thirty = analyze_source_target_fidelity(
+            "The client needs the invoice before 5:30.",
+            "El cliente necesita la factura antes de las cinco y media.",
+            "en",
+            "es",
+        )
+        self.assertTrue(nine.passed)
+        self.assertTrue(five_thirty.passed)
+
+    def test_fidelity_keeps_order_identifiers_exact_even_when_small(self):
+        result = analyze_source_target_fidelity(
+            "Do not cancel order 9.",
+            "No cancele el pedido nueve.",
+            "en",
+            "es",
+        )
+        self.assertFalse(result.passed)
+        self.assertEqual(result.reason, "NUMBER_LOST")
+        self.assertEqual(result.missing_numbers, ("9",))
+
+    def test_fidelity_keeps_large_identifier_exact(self):
+        result = analyze_source_target_fidelity(
+            "Do not cancel order 1038.",
+            "No cancele el pedido mil treinta y ocho.",
+            "en",
+            "es",
+        )
+        self.assertFalse(result.passed)
+        self.assertEqual(result.missing_numbers, ("1038",))
+
     def test_fidelity_accepts_preserved_negation_and_numbers(self):
         result = analyze_source_target_fidelity(
             "Do not cancel order 1038.",
