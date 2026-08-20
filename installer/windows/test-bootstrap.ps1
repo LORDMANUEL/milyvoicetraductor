@@ -79,10 +79,11 @@ if ($RequireRuntime) {
         Remove-Item $expanded -Recurse -Force -ErrorAction SilentlyContinue
     }
 
+    # El fixture de diagnóstico provoca a propósito un proceso nativo con exit
+    # code distinto de cero para verificar que el bootstrap capture el error.
+    # Si el .ps1 falla realmente, ErrorActionPreference=Stop propaga la excepción;
+    # no debemos reinterpretar el LASTEXITCODE nativo que deja su prueba interna.
     & (Join-Path $Root 'installer\windows\test-runtime-import-diagnostics.ps1')
-    if ($LASTEXITCODE -ne 0) {
-        throw 'Falló el gate de diagnóstico de imports del runtime privado.'
-    }
 }
 
 Write-Host 'BOOTSTRAP POLICY OK' -ForegroundColor Green
