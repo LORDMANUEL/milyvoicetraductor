@@ -6,6 +6,7 @@ from mily_ai.marian_realtime import CTranslate2RealtimeMarianTranslator
 from mily_ai.translation_quality import (
     analyze_source_target_fidelity,
     analyze_translation_quality,
+    non_repetitive_ngram_prefix,
 )
 
 
@@ -47,6 +48,21 @@ class TranslationQualityTests(unittest.TestCase):
         )
         self.assertTrue(result.passed)
         self.assertEqual(result.max_ngram_occurrences, 1)
+
+    def test_single_sentence_loop_recovers_the_longest_safe_ngram_prefix(self):
+        repeated = (
+            "No cancele el pedido 1038 y no cancele el pedido 1038 y "
+            "no cancele el pedido 1038."
+        )
+        self.assertFalse(analyze_translation_quality(repeated).passed)
+
+        prefix = non_repetitive_ngram_prefix(repeated)
+
+        self.assertTrue(prefix)
+        self.assertTrue(analyze_translation_quality(prefix).passed)
+        self.assertIn("1038", prefix)
+        self.assertNotEqual(prefix, repeated)
+        self.assertFalse(prefix.rstrip(" .").endswith(" y"))
 
     def test_fidelity_rejects_lost_negation(self):
         result = analyze_source_target_fidelity(
@@ -120,6 +136,45 @@ class TranslationQualityTests(unittest.TestCase):
         self.assertEqual(translator.calls, 2)
         self.assertIn("No", translated)
         self.assertIn("1038", translated)
+
+    def test_marian_salvages_safe_prefix_from_single_sentence_loop(self):
+        provider = CTranslate2RealtimeMarianTranslator(
+            Path("unused"),
+            "cpu",
+            source_language="en",
+            target_language="es",
+        )
+        loop = [
+            "No",
+            "cancele",
+            "el",
+            "pedido",
+            "1038",
+            "y",
+            "no",
+            "cancele",
+            "el",
+            "pedido",
+            "1038",
+            "y",
+            "no",
+            "cancele",
+            "el",
+            "pedido",
+            "1038",
+        ]
+        translator = _TranslatorStub(outputs=[loop, loop])
+        provider._translator = translator
+        provider._source_sp = _SentencePieceStub()
+        provider._target_sp = _SentencePieceStub()
+
+        translated = provider.translate("Do not cancel order 1038.", "en")
+
+        self.assertEqual(translator.calls, 2)
+        self.assertTrue(analyze_translation_quality(translated).passed)
+        self.assertIn("1038", translated)
+        self.assertTrue(translated.casefold().startswith("no "))
+        self.assertLess(len(translated.split()), len(loop))
 
 
 if __name__ == "__main__":

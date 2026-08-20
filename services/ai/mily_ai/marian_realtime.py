@@ -14,6 +14,7 @@ from .optional_providers import (
 from .translation_quality import (
     analyze_source_target_fidelity,
     analyze_translation_quality,
+    non_repetitive_ngram_prefix,
     non_repetitive_sentence_prefix,
 )
 
@@ -61,6 +62,31 @@ class CTranslate2RealtimeMarianTranslator(_BaseMarianTranslator):
             self.target_language,
         )
 
+    def _safe_repetition_prefixes(
+        self,
+        source: str,
+        source_language: str,
+        *outputs: str,
+    ) -> list[str]:
+        candidates: list[str] = []
+        for output in outputs:
+            if not output:
+                continue
+            for builder in (
+                non_repetitive_sentence_prefix,
+                non_repetitive_ngram_prefix,
+            ):
+                prefix = builder(output)
+                if not prefix:
+                    continue
+                if not analyze_translation_quality(prefix).passed:
+                    continue
+                if not self._fidelity(source, prefix, source_language).passed:
+                    continue
+                if prefix not in candidates:
+                    candidates.append(prefix)
+        return candidates
+
     def translate(self, text: str, source_language: str) -> str:
         if not text.strip():
             return ""
@@ -94,13 +120,17 @@ class CTranslate2RealtimeMarianTranslator(_BaseMarianTranslator):
         if retry_quality.passed and retry_fidelity.passed:
             return retry
 
-        prefix = non_repetitive_sentence_prefix(retry or translated)
-        if (
-            prefix
-            and analyze_translation_quality(prefix).passed
-            and self._fidelity(text, prefix, effective_source).passed
-        ):
-            return prefix
+        # Una repetición puede ocurrir dentro de una sola oración. En ese caso el
+        # antiguo rescate por oraciones no podía conservar la primera cláusula sana.
+        # Se permite únicamente el prefijo que vuelve a pasar calidad Y fidelidad.
+        prefixes = self._safe_repetition_prefixes(
+            text,
+            effective_source,
+            retry,
+            translated,
+        )
+        if prefixes:
+            return max(prefixes, key=len)
 
         fidelity_failure = retry_fidelity if not retry_fidelity.passed else fidelity
         if not fidelity_failure.passed:

@@ -20,6 +20,10 @@ _EN_NEGATION_RE = re.compile(
     re.IGNORECASE,
 )
 _ES_NEGATIONS = {"no", "nunca", "jamás", "sin", "tampoco", "ni"}
+_TRAILING_CONNECTOR_RE = re.compile(
+    r"\b(?:y|e|o|u|pero|and|or|but|then)\s*$",
+    re.IGNORECASE,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -197,3 +201,45 @@ def non_repetitive_sentence_prefix(text: str) -> str:
             continue
         break
     return " ".join(accepted).strip()
+
+
+def non_repetitive_ngram_prefix(text: str, *, ngram_size: int = 3) -> str:
+    """Recupera el prefijo anterior a un bucle dentro de una sola oración.
+
+    Solo debe usarse después de que ``analyze_translation_quality`` haya rechazado
+    la salida completa. Se buscan límites donde reaparece un n-grama y se conserva
+    el prefijo más largo que vuelve a pasar la misma guarda. La fidelidad semántica
+    (números/negaciones) se valida después por el llamador.
+    """
+
+    if ngram_size < 2:
+        raise ValueError("ngram_size debe ser al menos 2")
+    raw = str(text or "").strip()
+    if not raw:
+        return ""
+
+    matches = list(_WORD_RE.finditer(raw))
+    if len(matches) < ngram_size * 2:
+        return ""
+
+    normalized_tokens = [match.group(0).casefold() for match in matches]
+    seen: set[tuple[str, ...]] = set()
+    repeated_offsets: list[int] = []
+    for index in range(len(normalized_tokens) - ngram_size + 1):
+        ngram = tuple(normalized_tokens[index : index + ngram_size])
+        if ngram in seen:
+            repeated_offsets.append(matches[index].start())
+        else:
+            seen.add(ngram)
+
+    for offset in sorted(set(repeated_offsets), reverse=True):
+        prefix = raw[:offset].rstrip()
+        prefix = re.sub(r"[\s,;:–—-]+$", "", prefix)
+        prefix = _TRAILING_CONNECTOR_RE.sub("", prefix).strip()
+        if not prefix:
+            continue
+        if prefix[-1] not in ".!?。！？":
+            prefix += "."
+        if analyze_translation_quality(prefix, ngram_size=ngram_size).passed:
+            return prefix
+    return ""
