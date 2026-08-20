@@ -46,6 +46,17 @@ class WindowsInstallerDistributionContractTests(unittest.TestCase):
             bootstrap_test,
         )
 
+    def test_model_downloads_happen_only_inside_engine_hub(self) -> None:
+        onboarding = (ROOT / "apps/desktop/src/pages/Onboarding.svelte").read_text(encoding="utf-8")
+        models = (ROOT / "apps/desktop/src/pages/Models.svelte").read_text(encoding="utf-8")
+        bootstrap = (ROOT / "installer/windows/setup-installed.ps1").read_text(encoding="utf-8")
+
+        self.assertNotIn("desktopApi.installModel(", onboarding)
+        self.assertNotIn("realtime-m2m100", onboarding)
+        self.assertIn("desktopApi.installModel(pack.id)", models)
+        self.assertIn("pack.resourceAllowed", models)
+        self.assertIn("El modelo se descargará desde la aplicación", bootstrap)
+
 
 if __name__ == "__main__":
     unittest.main()
