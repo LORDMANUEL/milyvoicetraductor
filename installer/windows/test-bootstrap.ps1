@@ -78,6 +78,11 @@ if ($RequireRuntime) {
     } finally {
         Remove-Item $expanded -Recurse -Force -ErrorAction SilentlyContinue
     }
+
+    & (Join-Path $Root 'installer\windows\test-runtime-import-diagnostics.ps1')
+    if ($LASTEXITCODE -ne 0) {
+        throw 'Falló el gate de diagnóstico de imports del runtime privado.'
+    }
 }
 
 Write-Host 'BOOTSTRAP POLICY OK' -ForegroundColor Green
