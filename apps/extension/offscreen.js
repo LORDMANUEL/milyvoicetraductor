@@ -9,6 +9,7 @@ let websocket = null;
 let activeTabId = null;
 let stopping = false;
 let binaryPcmActive = false;
+let sessionReady = false;
 
 function arrayBufferToBase64(buffer) {
   const bytes = new Uint8Array(buffer);
@@ -30,14 +31,14 @@ function publishTranslation(payload) {
 }
 
 function sendControl(type, fields = {}) {
-  if (websocket?.readyState !== WebSocket.OPEN) return false;
+  if (websocket?.readyState !== WebSocket.OPEN || !sessionReady) return false;
   websocket.send(JSON.stringify({ protocol: 1, type, targetLanguage: 'es', ...fields }));
   return true;
 }
 
 async function cleanup() {
   stopping = true;
-  if (websocket && websocket.readyState === WebSocket.OPEN) {
+  if (websocket && websocket.readyState === WebSocket.OPEN && sessionReady) {
     websocket.send(JSON.stringify({ protocol: 1, type: 'audio.stop', sourceLanguage: 'auto', targetLanguage: 'es' }));
     await new Promise((resolve) => setTimeout(resolve, 250));
   }
@@ -51,6 +52,7 @@ async function cleanup() {
   mediaStream = null;
   activeTabId = null;
   binaryPcmActive = false;
+  sessionReady = false;
   stopping = false;
 }
 
@@ -93,48 +95,76 @@ async function startCapture(message) {
   const localPort = Math.min(65535, Math.max(1024, Number(message.enginePort) || 8765));
   const wsUrl = `ws://127.0.0.1:${localPort}/ws?token=${encodeURIComponent(message.credential)}`;
   websocket = new WebSocket(wsUrl);
-  websocket.addEventListener('open', () => {
-    websocket.send(JSON.stringify({
-      protocol: 1,
-      type: 'client.hello',
-      sourceLanguage: message.sourceLanguage || 'auto',
-      targetLanguage: 'es',
-      sessionMode: message.sessionMode || 'meeting',
-      sourceMode: 'browser_tab',
-      speakerDetection: Boolean(message.speakerDetection),
-      speakerFocusMode: message.speakerFocusMode || 'all',
-      speakerId: message.speakerId || null,
-      persistTranscript: Boolean(message.persistTranscript),
-      binaryPcm: true
-    }));
-    publishEngineEvent({ type: 'connected' });
+
+  const readyPromise = new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      if (!sessionReady) reject(new Error('El motor local no confirmó la sesión de audio a tiempo.'));
+    }, 8000);
+
+    const failBeforeReady = (messageText) => {
+      if (sessionReady) return;
+      clearTimeout(timeout);
+      reject(new Error(messageText));
+    };
+
+    websocket.addEventListener('open', () => {
+      websocket.send(JSON.stringify({
+        protocol: 1,
+        type: 'client.hello',
+        sourceLanguage: message.sourceLanguage || 'auto',
+        targetLanguage: 'es',
+        sessionMode: message.sessionMode || 'meeting',
+        sourceMode: 'browser_tab',
+        speakerDetection: Boolean(message.speakerDetection),
+        speakerFocusMode: message.speakerFocusMode || 'all',
+        speakerId: message.speakerId || null,
+        persistTranscript: Boolean(message.persistTranscript),
+        binaryPcm: true
+      }));
+    });
+
+    websocket.addEventListener('message', (event) => {
+      let payload;
+      try { payload = JSON.parse(event.data); } catch (_) { return; }
+      if (payload.type === 'session.started') {
+        binaryPcmActive = payload.binaryPcm === true;
+        sessionReady = true;
+        clearTimeout(timeout);
+        publishEngineEvent({ type: 'connected' });
+        resolve(payload);
+      }
+      if (payload.type === 'engine.error' && !sessionReady) {
+        failBeforeReady(payload.message || 'El motor local rechazó el inicio de la sesión.');
+      }
+      if (
+        payload.type === 'translation.final' ||
+        payload.type === 'translation.partial' ||
+        payload.type === 'transcription.partial' ||
+        payload.type === 'transcription.final' ||
+        payload.type === 'pipeline.metrics' ||
+        payload.type === 'speaker.changed'
+      ) {
+        publishTranslation(payload);
+      }
+      publishEngineEvent(payload);
+    });
+
+    websocket.addEventListener('close', () => {
+      binaryPcmActive = false;
+      const wasReady = sessionReady;
+      sessionReady = false;
+      if (!wasReady) failBeforeReady('El motor local cerró la conexión antes de iniciar la sesión.');
+      if (!stopping) publishEngineEvent({ type: 'disconnected' });
+    });
+
+    websocket.addEventListener('error', () => {
+      publishEngineEvent({ type: 'error', message: 'No se pudo conectar al motor local.' });
+      failBeforeReady('No se pudo conectar al motor local.');
+    });
   });
-  websocket.addEventListener('message', (event) => {
-    let payload;
-    try { payload = JSON.parse(event.data); } catch (_) { return; }
-    if (payload.type === 'session.started') {
-      binaryPcmActive = payload.binaryPcm === true;
-    }
-    if (
-      payload.type === 'translation.final' ||
-      payload.type === 'translation.partial' ||
-      payload.type === 'transcription.partial' ||
-      payload.type === 'transcription.final' ||
-      payload.type === 'pipeline.metrics' ||
-      payload.type === 'speaker.changed'
-    ) {
-      publishTranslation(payload);
-    }
-    publishEngineEvent(payload);
-  });
-  websocket.addEventListener('close', () => {
-    binaryPcmActive = false;
-    if (!stopping) publishEngineEvent({ type: 'disconnected' });
-  });
-  websocket.addEventListener('error', () => publishEngineEvent({ type: 'error', message: 'No se pudo conectar al motor local.' }));
 
   workletNode.port.onmessage = (event) => {
-    if (websocket?.readyState !== WebSocket.OPEN) return;
+    if (websocket?.readyState !== WebSocket.OPEN || !sessionReady) return;
     if (binaryPcmActive) {
       websocket.send(event.data);
       return;
@@ -148,6 +178,13 @@ async function startCapture(message) {
       audioBase64: arrayBufferToBase64(event.data)
     }));
   };
+
+  try {
+    await readyPromise;
+  } catch (error) {
+    await cleanup();
+    throw error;
+  }
 }
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
