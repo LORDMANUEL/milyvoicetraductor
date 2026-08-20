@@ -39,6 +39,13 @@ class WindowsInstallerDistributionContractTests(unittest.TestCase):
         )
         self.assertNotIn(stale_check, bootstrap_test)
 
+    def test_bootstrap_gate_explicitly_returns_success_after_diagnostic_fixture(self) -> None:
+        bootstrap_test = (ROOT / "installer/windows/test-bootstrap.ps1").read_text(encoding="utf-8")
+        self.assertIn(
+            "Write-Host 'BOOTSTRAP POLICY OK' -ForegroundColor Green\nexit 0",
+            bootstrap_test,
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
