@@ -46,7 +46,6 @@ jobs:
           test -f release/MilyVoiceTraductor-2.0.1-MoonshineLiteBench.json
           test -f release/MilyVoiceTraductor-2.0.1-WhisperTinyLiteBench.json
           test -f release/MilyVoiceTraductor-2.0.1-SherpaLiteBench.json
-          test -f release/MilyVoiceTraductor-2.0.1-ZhEsLiteBench.json
           test -f release/SHA256SUMS.txt
           cd release
           sha256sum -c SHA256SUMS.txt
@@ -73,6 +72,5 @@ jobs:
           grep -Fxq 'MilyVoiceTraductor-2.0.1-MoonshineLiteBench.json' <<<"$assets"
           grep -Fxq 'MilyVoiceTraductor-2.0.1-WhisperTinyLiteBench.json' <<<"$assets"
           grep -Fxq 'MilyVoiceTraductor-2.0.1-SherpaLiteBench.json' <<<"$assets"
-          grep -Fxq 'MilyVoiceTraductor-2.0.1-ZhEsLiteBench.json' <<<"$assets"
           grep -Fxq 'SHA256SUMS.txt' <<<"$assets"
           gh release view "$RELEASE_TAG" --repo "$REPOSITORY" --json url --jq '.url'
