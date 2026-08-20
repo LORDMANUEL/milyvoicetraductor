@@ -15,7 +15,12 @@ from dataclasses import asdict, dataclass
 _WORD_RE = re.compile(r"[^\W_]+(?:['’][^\W_]+)?", re.UNICODE)
 _SENTENCE_RE = re.compile(r"[^.!?。！？]+[.!?。！？]?", re.UNICODE)
 _NUMBER_RE = re.compile(r"(?<!\w)\d+(?:[.,]\d+)?(?!\w)")
-_CLOCK_RE = re.compile(r"(?<!\w)(\d{1,2}):(\d{2})(?!\w)")
+_CLOCK_RE = re.compile(r"(?<!\w)(\d{1,2})([:.])(\d{2})(?!\w)")
+_TIME_CUE_RE = re.compile(
+    r"\b(?:at|by|before|after|until|around|about|from|to|starts?|begins?|ends?|"
+    r"meeting|appointment|deadline|o['’]?clock|a\.?m\.?|p\.?m\.?)\b",
+    re.IGNORECASE,
+)
 _IDENTIFIER_PREFIX_RE = re.compile(
     r"\b(?:order|id|code|ticket|case|serial|vin|part)"
     r"(?:\s+(?:number|no\.?))?\s*(?:#\s*)?$",
@@ -189,13 +194,22 @@ def _number_requires_exact(source: str, match: re.Match[str]) -> bool:
     return bool(_IDENTIFIER_PREFIX_RE.search(prefix))
 
 
+def _dot_clock_has_time_context(source: str, match: re.Match[str]) -> bool:
+    if match.group(2) != ".":
+        return True
+    start = max(0, match.start() - 48)
+    end = min(len(source), match.end() + 24)
+    return bool(_TIME_CUE_RE.search(source[start:end]))
+
+
 def _missing_en_es_numbers(source: str, target: str) -> tuple[str, ...]:
     """Preserva datos críticos sin confundir una hora traducida con pérdida numérica.
 
     IDs/códigos, números grandes, decimales y valores con ceros iniciales deben
     sobrevivir literalmente. Los enteros pequeños pueden expresarse con palabras
-    españolas. En horas se admiten las equivalencias naturales ``9:00 → nueve`` y
-    ``5:30 → cinco y media``/``5:15 → cinco y cuarto``.
+    españolas. Las horas aceptan ``9:00``/``9.00 → nueve`` y
+    ``5:30``/``5.30 → cinco y media`` cuando un punto aparece en contexto horario.
+    Un decimal ordinario como un precio 5.30 continúa exigiendo preservación exacta.
     """
 
     source_text = str(source or "")
@@ -207,8 +221,10 @@ def _missing_en_es_numbers(source: str, target: str) -> tuple[str, ...]:
     covered_spans: list[tuple[int, int]] = []
 
     for clock in _CLOCK_RE.finditer(source_text):
+        if not _dot_clock_has_time_context(source_text, clock):
+            continue
         covered_spans.append(clock.span())
-        hour_raw, minute_raw = clock.groups()
+        hour_raw, _separator, minute_raw = clock.groups()
         hour_value = int(hour_raw)
         hour_ok = _small_integer_preserved(
             str(hour_value),

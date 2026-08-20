@@ -7,6 +7,8 @@ ejecutan rescates acotados antes de exponer la traducción.
 
 from __future__ import annotations
 
+import re
+
 from .optional_providers import (
     CTranslate2MarianTranslator as _BaseMarianTranslator,
     OptionalProviderRuntimeError,
@@ -16,6 +18,22 @@ from .translation_quality import (
     analyze_translation_quality,
     non_repetitive_ngram_prefix,
     non_repetitive_sentence_prefix,
+)
+
+_CONTRACTION_EXPANSIONS = (
+    (re.compile(r"\bwon['’]t\b", re.IGNORECASE), "will not"),
+    (re.compile(r"\bcan['’]t\b", re.IGNORECASE), "cannot"),
+    (re.compile(r"\bdon['’]t\b", re.IGNORECASE), "do not"),
+    (re.compile(r"\bdoesn['’]t\b", re.IGNORECASE), "does not"),
+    (re.compile(r"\bdidn['’]t\b", re.IGNORECASE), "did not"),
+    (re.compile(r"\bisn['’]t\b", re.IGNORECASE), "is not"),
+    (re.compile(r"\baren['’]t\b", re.IGNORECASE), "are not"),
+    (re.compile(r"\bwasn['’]t\b", re.IGNORECASE), "was not"),
+    (re.compile(r"\bweren['’]t\b", re.IGNORECASE), "were not"),
+    (re.compile(r"\bshouldn['’]t\b", re.IGNORECASE), "should not"),
+    (re.compile(r"\bwouldn['’]t\b", re.IGNORECASE), "would not"),
+    (re.compile(r"\bcouldn['’]t\b", re.IGNORECASE), "could not"),
+    (re.compile(r"\bmustn['’]t\b", re.IGNORECASE), "must not"),
 )
 
 
@@ -72,6 +90,21 @@ class CTranslate2RealtimeMarianTranslator(_BaseMarianTranslator):
             source_language,
             self.target_language,
         )
+
+    @staticmethod
+    def _quality_rescue_source(text: str, source_language: str) -> str:
+        """Expande contracciones inglesas solo para el último decode de rescate.
+
+        No altera el texto que se usa para validar fidelidad. Sirve para que Marian
+        vea la negación de forma inequívoca si los tres pases realtime la perdieron.
+        """
+
+        if source_language != "en":
+            return text
+        expanded = text
+        for pattern, replacement in _CONTRACTION_EXPANSIONS:
+            expanded = pattern.sub(replacement, expanded)
+        return expanded
 
     def _safe_repetition_prefixes(
         self,
@@ -142,10 +175,7 @@ class CTranslate2RealtimeMarianTranslator(_BaseMarianTranslator):
         if prefixes:
             return max(prefixes, key=len)
 
-        # Último recurso: búsqueda un poco más amplia pero con bloqueo de bigramas
-        # y longitud más estricta. Solo ocurre en una salida ya rechazada, por lo que
-        # no penaliza el camino realtime sano. El resultado vuelve a pasar TODAS las
-        # guardas antes de poder mostrarse.
+        # Tercer pase: bloqueo fuerte de bigramas y longitud corta para cortar loops.
         rescue = self._decode(
             text,
             beam_size=3,
@@ -167,10 +197,44 @@ class CTranslate2RealtimeMarianTranslator(_BaseMarianTranslator):
         if rescue_prefixes:
             return max(rescue_prefixes, key=len)
 
+        # Último recurso de FIDELIDAD: Marian OPUS usa beam=4 como configuración de
+        # calidad. Se ejecuta únicamente tras fallar los tres pases anteriores. No
+        # relaja ninguna guarda: el resultado debe pasar repetición y fidelidad contra
+        # el texto ORIGINAL antes de exponerse.
+        quality_source = self._quality_rescue_source(text, effective_source)
+        quality_rescue = self._decode(
+            quality_source,
+            beam_size=4,
+            repetition_penalty=1.10,
+            tighter_limit=False,
+            no_repeat_ngram_size=3,
+        )
+        quality_rescue_quality = analyze_translation_quality(quality_rescue)
+        quality_rescue_fidelity = self._fidelity(
+            text,
+            quality_rescue,
+            effective_source,
+        )
+        if quality_rescue_quality.passed and quality_rescue_fidelity.passed:
+            return quality_rescue
+
+        quality_prefixes = self._safe_repetition_prefixes(
+            text,
+            effective_source,
+            quality_rescue,
+        )
+        if quality_prefixes:
+            return max(quality_prefixes, key=len)
+
         fidelity_failure = next(
             (
                 item
-                for item in (rescue_fidelity, retry_fidelity, fidelity)
+                for item in (
+                    quality_rescue_fidelity,
+                    rescue_fidelity,
+                    retry_fidelity,
+                    fidelity,
+                )
                 if not item.passed
             ),
             None,

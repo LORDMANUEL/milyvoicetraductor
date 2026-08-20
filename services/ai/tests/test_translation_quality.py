@@ -11,7 +11,11 @@ from mily_ai.translation_quality import (
 
 
 class _SentencePieceStub:
+    def __init__(self):
+        self.encoded_texts: list[str] = []
+
     def encode(self, text, out_type=str):
+        self.encoded_texts.append(text)
         return [token for token in text.replace(".", " .").split() if token]
 
     def decode(self, tokens):
@@ -110,6 +114,30 @@ class TranslationQualityTests(unittest.TestCase):
         )
         self.assertTrue(nine.passed)
         self.assertTrue(five_thirty.passed)
+
+    def test_fidelity_accepts_dot_clock_only_with_time_context(self):
+        nine = analyze_source_target_fidelity(
+            "The meeting starts at 9.00.",
+            "La reunión empieza a las nueve.",
+            "en",
+            "es",
+        )
+        five_thirty = analyze_source_target_fidelity(
+            "The client needs the invoice before 5.30.",
+            "El cliente necesita la factura antes de las cinco y media.",
+            "en",
+            "es",
+        )
+        price = analyze_source_target_fidelity(
+            "The price is 5.30.",
+            "El precio es cinco y treinta.",
+            "en",
+            "es",
+        )
+        self.assertTrue(nine.passed)
+        self.assertTrue(five_thirty.passed)
+        self.assertFalse(price.passed)
+        self.assertEqual(price.missing_numbers, ("5.30",))
 
     def test_fidelity_keeps_order_identifiers_exact_even_when_small(self):
         result = analyze_source_target_fidelity(
@@ -263,6 +291,40 @@ class TranslationQualityTests(unittest.TestCase):
         self.assertEqual(translator.options["beam_size"], 3)
         self.assertEqual(translator.options["no_repeat_ngram_size"], 2)
         self.assertGreaterEqual(translator.options["repetition_penalty"], 1.3)
+
+    def test_marian_uses_beam_four_fidelity_rescue_after_three_failed_outputs(self):
+        provider = CTranslate2RealtimeMarianTranslator(
+            Path("unused"),
+            "cpu",
+            source_language="en",
+            target_language="es",
+        )
+        bad = ["Cancele", "el", "pedido"]
+        source_sp = _SentencePieceStub()
+        translator = _TranslatorStub(
+            outputs=[
+                bad,
+                bad,
+                bad,
+                ["No", "cancele", "el", "pedido", "1038"],
+            ]
+        )
+        provider._translator = translator
+        provider._source_sp = source_sp
+        provider._target_sp = _SentencePieceStub()
+
+        translated = provider.translate("Don't cancel order 1038.", "en")
+
+        self.assertEqual(translator.calls, 4)
+        self.assertEqual(translated, "No cancele el pedido 1038")
+        self.assertEqual(translator.options["beam_size"], 4)
+        self.assertEqual(translator.options["no_repeat_ngram_size"], 3)
+        self.assertIn("Do not cancel order 1038.", source_sp.encoded_texts[-1])
+        self.assertTrue(
+            analyze_source_target_fidelity(
+                "Don't cancel order 1038.", translated, "en", "es"
+            ).passed
+        )
 
 
 if __name__ == "__main__":
