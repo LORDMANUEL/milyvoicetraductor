@@ -10,14 +10,14 @@
 
 <p align="center">
   <a href="https://lordmanuel.github.io/milyvoicetraductor/"><img alt="Sitio oficial" src="https://img.shields.io/badge/Sitio_oficial-Ver_producto-00a878?style=for-the-badge" /></a>
-  <a href="https://github.com/LORDMANUEL/milyvoicetraductor/releases/download/v2.1.0/MilyVoiceTraductor_2.1.0_x64-setup.exe"><img alt="Descargar para Windows" src="https://img.shields.io/badge/Windows_x64-Descargar_2.1.0-0078d4?style=for-the-badge&logo=windows" /></a>
-  <a href="https://github.com/LORDMANUEL/milyvoicetraductor/releases/tag/v2.1.0"><img alt="Release v2.1.0" src="https://img.shields.io/badge/Release-v2.1.0-2563eb?style=for-the-badge" /></a>
+  <a href="https://github.com/LORDMANUEL/milyvoicetraductor/releases/download/v2.0.1/MilyVoiceTraductor_2.0.1_x64-setup.exe"><img alt="Descargar estable para Windows" src="https://img.shields.io/badge/Windows_x64-Descargar_estable_2.0.1-0078d4?style=for-the-badge&logo=windows" /></a>
+  <a href="https://github.com/LORDMANUEL/milyvoicetraductor/releases/tag/v2.1.0"><img alt="Beta 2.1.0" src="https://img.shields.io/badge/Beta-2.1.0-f59e0b?style=for-the-badge" /></a>
 </p>
 
 <p align="center">
-  <a href="https://github.com/LORDMANUEL/milyvoicetraductor/releases/download/v2.1.0/MilyVoiceTraductor_2.1.0_x64-setup.exe"><strong>Descargar MilyVoiceTraductor 2.1.0 para Windows x64</strong></a>
+  <a href="https://github.com/LORDMANUEL/milyvoicetraductor/releases/download/v2.0.1/MilyVoiceTraductor_2.0.1_x64-setup.exe"><strong>Descargar estable 2.0.1</strong></a>
   ·
-  <a href="https://github.com/LORDMANUEL/milyvoicetraductor/releases/tag/v2.1.0">Ver release</a>
+  <a href="https://github.com/LORDMANUEL/milyvoicetraductor/releases/tag/v2.1.0">Probar beta 2.1.0</a>
   ·
   <a href="docs/INSTALLATION.md">Instalación</a>
   ·
@@ -26,120 +26,97 @@
 
 ---
 
-## Estable actual — `v2.1.0`
+## Canales de versión
 
-**MilyVoiceTraductor 2.1.0** es la versión estable recomendada para pruebas y uso en Windows x64.
+### Estable actual — `v2.0.1`
 
-**[Descargar instalador 2.1.0](https://github.com/LORDMANUEL/milyvoicetraductor/releases/download/v2.1.0/MilyVoiceTraductor_2.1.0_x64-setup.exe)**
+La versión recomendada para uso normal continúa siendo **MilyVoiceTraductor 2.0.1 para Windows x64**.
 
-La release 2.1.0 fue construida con el flujo de Windows que valida runtime privado, Native Messaging, motores Lite reales, Desktop Windows, subsistema GUI, NSIS e instalación/reinstalación del instalador generado antes de publicar los artefactos.
+**[Descargar estable 2.0.1](https://github.com/LORDMANUEL/milyvoicetraductor/releases/download/v2.0.1/MilyVoiceTraductor_2.0.1_x64-setup.exe)**
+
+### Beta actual — `v2.1.0`
+
+**MilyVoiceTraductor 2.1.0 es una beta pública para pruebas.** No sustituye todavía a 2.0.1 como estable.
+
+La beta 2.1.0 incorpora Engine Hub, rutas Lite, selección adaptativa de motores y nuevas pruebas de Windows. Debe usarse para validación externa, reporte de fallos y comparación de rendimiento.
+
+**[Descargar beta 2.1.0](https://github.com/LORDMANUEL/milyvoicetraductor/releases/download/v2.1.0/MilyVoiceTraductor_2.1.0_x64-setup.exe)**
 
 ### Descargas oficiales
 
-| Componente | Descarga |
-|---|---|
-| **Instalador Windows x64** | [MilyVoiceTraductor_2.1.0_x64-setup.exe](https://github.com/LORDMANUEL/milyvoicetraductor/releases/download/v2.1.0/MilyVoiceTraductor_2.1.0_x64-setup.exe) |
-| **Extensión Chromium** | [MilyVoiceTraductor-Chromium-Extension.zip](https://github.com/LORDMANUEL/milyvoicetraductor/releases/download/v2.1.0/MilyVoiceTraductor-Chromium-Extension.zip) |
-| **Hashes SHA-256** | [SHA256SUMS.txt](https://github.com/LORDMANUEL/milyvoicetraductor/releases/download/v2.1.0/SHA256SUMS.txt) |
-| **Benchmark Moonshine Lite** | [MoonshineLiteBench.json](https://github.com/LORDMANUEL/milyvoicetraductor/releases/download/v2.1.0/MilyVoiceTraductor-2.1.0-MoonshineLiteBench.json) |
-| **Benchmark Whisper Tiny Lite** | [WhisperTinyLiteBench.json](https://github.com/LORDMANUEL/milyvoicetraductor/releases/download/v2.1.0/MilyVoiceTraductor-2.1.0-WhisperTinyLiteBench.json) |
-| **Benchmark Sherpa Lite** | [SherpaLiteBench.json](https://github.com/LORDMANUEL/milyvoicetraductor/releases/download/v2.1.0/MilyVoiceTraductor-2.1.0-SherpaLiteBench.json) |
-| **Simulación de equipo objetivo** | [TargetMachineSimulation.json](https://github.com/LORDMANUEL/milyvoicetraductor/releases/download/v2.1.0/MilyVoiceTraductor-2.1.0-TargetMachineSimulation.json) |
-| **Release completa** | [GitHub Release v2.1.0](https://github.com/LORDMANUEL/milyvoicetraductor/releases/tag/v2.1.0) |
+| Canal | Componente | Descarga |
+|---|---|---|
+| **Estable** | Instalador Windows x64 | [MilyVoiceTraductor 2.0.1](https://github.com/LORDMANUEL/milyvoicetraductor/releases/download/v2.0.1/MilyVoiceTraductor_2.0.1_x64-setup.exe) |
+| **Estable** | Extensión Chromium | [Extensión 2.0.1](https://github.com/LORDMANUEL/milyvoicetraductor/releases/download/v2.0.1/MilyVoiceTraductor-Chromium-Extension.zip) |
+| **Beta** | Instalador Windows x64 | [MilyVoiceTraductor 2.1.0 Beta](https://github.com/LORDMANUEL/milyvoicetraductor/releases/download/v2.1.0/MilyVoiceTraductor_2.1.0_x64-setup.exe) |
+| **Beta** | Extensión Chromium | [Extensión 2.1.0](https://github.com/LORDMANUEL/milyvoicetraductor/releases/download/v2.1.0/MilyVoiceTraductor-Chromium-Extension.zip) |
+| **Beta** | Hashes SHA-256 | [SHA256SUMS.txt](https://github.com/LORDMANUEL/milyvoicetraductor/releases/download/v2.1.0/SHA256SUMS.txt) |
+| **Beta** | Release / evidencia | [Tag v2.1.0](https://github.com/LORDMANUEL/milyvoicetraductor/releases/tag/v2.1.0) |
 
-## Qué incluye 2.1.0
+---
 
-- aplicación Windows nativa con Tauri 2 + Rust;
-- runtime Python 3.13 privado;
-- Native Messaging para integración automática con Chromium;
-- captura de pestaña, micrófono, audio del sistema y archivos multimedia;
-- traducción realtime **EN → ES** con rutas Lite seleccionables automáticamente;
-- Moonshine Tiny Streaming, Whisper Tiny y Sherpa Zipformer dentro del Engine Hub certificado;
-- mandarín **ZH → ES** disponible como ruta experimental;
-- Resource Governor y simulación de presupuesto bajo 2 GiB para el producto;
-- subtítulos, sesiones, TTS, modos de aprendizaje/video/karaoke y herramientas de diagnóstico;
-- extensión para Chrome, Edge, Brave y navegadores Chromium compatibles.
+## Qué hace MilyVoiceTraductor
 
-## Instalación
+MilyVoiceTraductor convierte voz y contenido multimedia en subtítulos y traducción al español, con procesamiento local y una aplicación de escritorio para Windows junto con una extensión Chromium.
 
-1. Descarga **[MilyVoiceTraductor_2.1.0_x64-setup.exe](https://github.com/LORDMANUEL/milyvoicetraductor/releases/download/v2.1.0/MilyVoiceTraductor_2.1.0_x64-setup.exe)**.
-2. Ejecuta el instalador en Windows x64.
-3. Abre MilyVoiceTraductor.
-4. Para audio de pestaña, descarga la **[extensión Chromium](https://github.com/LORDMANUEL/milyvoicetraductor/releases/download/v2.1.0/MilyVoiceTraductor-Chromium-Extension.zip)**, extráela y cárgala como extensión desempaquetada.
-5. Selecciona la fuente de audio y comienza la sesión.
+### Fuentes de audio
 
-No es necesario instalar Python por separado ni copiar manualmente puertos o tokens para el enlace normal Desktop ↔ extensión.
+- Microsoft Teams Desktop mediante audio del sistema Windows.
+- Teams Web y otras pestañas Chromium.
+- Micrófono.
+- Audio del sistema.
+- Archivos multimedia.
 
-## Privacidad
+### Resultados
 
-El flujo local principal permanece dentro del equipo:
+- subtítulos originales y traducción al español;
+- transcripción local;
+- identificación visual de hablantes;
+- TTS con voces instaladas en Windows;
+- modos de reunión, aprendizaje, video y karaoke;
+- exportación local de sesiones y subtítulos.
+
+## Arquitectura local
 
 ```text
-audio → ASR local → traducción local → subtítulos / TTS / sesión
+audio → motor local → ASR → traducción → subtítulos / TTS / sesión
 ```
 
-No se envía el contenido de la conversación a un servicio de telemetría. Los conectores cloud opcionales, si se habilitan en el futuro o por configuración explícita, deben mostrar claramente que el audio sale del equipo.
+El instalador incorpora runtime Python privado, motor local, bridge Native Messaging y herramientas de reparación. No depende del Python del usuario ni de copiar tokens o puertos manualmente.
 
-## Certificación de la distribución
+### MilyCompute / Engine Hub
 
-El gate Windows de 2.1.0 comprueba, entre otros:
+En el canal beta 2.1.0 se prueban rutas como Moonshine, Whisper Tiny y Sherpa Zipformer con selección automática según hardware, memoria y rendimiento. La CPU permanece como fallback seguro.
 
-- frontend y tests AI;
-- bootstrap offline;
-- bridge Native Messaging;
-- runtime Python privado;
-- flujo instalado y registro del bridge;
-- simulación de equipo objetivo;
-- política de memoria Lite;
-- Moonshine EN→ES real;
-- Whisper Tiny EN→ES real;
-- Sherpa Zipformer EN→ES real;
-- ZH→ES experimental;
-- Rust + Clippy Windows;
-- Desktop Release;
-- `WINDOWS_GUI`;
-- Tauri NSIS;
-- instalación y reinstalación del NSIS generado;
-- extensión Chromium;
-- hashes SHA-256 y bundle final.
+## Historial
 
-## Tecnología
+Las versiones anteriores se conservan públicamente:
 
-```text
-Windows Desktop:  Tauri 2 + Rust + Svelte + TypeScript
-Motor local:      Python 3.13 privado + Engine Hub
-ASR Lite:         Moonshine / Whisper Tiny / Sherpa Zipformer
-Traducción:       Marian / CTranslate2 según pack
-Navegador:        Chromium Manifest V3 + Native Messaging
-Audio Windows:    WASAPI loopback
-Datos locales:    SQLite + archivos de sesión opt-in
-```
+- [v2.0.1 — estable actual](https://github.com/LORDMANUEL/milyvoicetraductor/releases/tag/v2.0.1)
+- [v2.0.0 — histórica](https://github.com/LORDMANUEL/milyvoicetraductor/releases/tag/v2.0.0)
+- [v1.0.5 — histórica](https://github.com/LORDMANUEL/milyvoicetraductor/releases/tag/v1.0.5)
+- [v1.0.0-rc.1 — RC histórica](https://github.com/LORDMANUEL/milyvoicetraductor/releases/tag/v1.0.0-rc.1)
 
-## Versiones anteriores
-
-- [v2.0.1](https://github.com/LORDMANUEL/milyvoicetraductor/releases/tag/v2.0.1)
-- [v2.0.0](https://github.com/LORDMANUEL/milyvoicetraductor/releases/tag/v2.0.0)
-- [v1.0.5](https://github.com/LORDMANUEL/milyvoicetraductor/releases/tag/v1.0.5)
-- [v1.0.0-rc.1](https://github.com/LORDMANUEL/milyvoicetraductor/releases/tag/v1.0.0-rc.1)
+El registro técnico completo está en [VERSION_HISTORY.md](docs/release/VERSION_HISTORY.md).
 
 ## Documentación
 
-- [MASTER y alcance del producto](MASTER.md)
+- [MASTER y alcance](MASTER.md)
 - [Instalación](docs/INSTALLATION.md)
 - [Arquitectura](docs/architecture/COMPLETE_ARCHITECTURE.md)
 - [Modelos y licencias](docs/MODELS.md)
 - [Privacidad](docs/privacy/PRIVACY.md)
 - [Seguridad](SECURITY.md)
-- [Notas de 2.1.0](docs/release/RELEASE_NOTES_2.1.0.md)
-- [Checklist de publicación](docs/release/RELEASE_CHECKLIST.md)
+- [Notas 2.0.1](docs/release/RELEASE_NOTES_2.0.1.md)
+- [Notas beta 2.1.0](docs/release/RELEASE_NOTES_2.1.0.md)
 
 ## Licencia
 
-El código propio de MilyVoiceTraductor se distribuye bajo licencia MIT. Los modelos y componentes externos mantienen sus licencias originales y solo se redistribuyen cuando su licencia lo permite.
+El código propio de MilyVoiceTraductor se distribuye bajo licencia MIT. Modelos y componentes externos mantienen sus licencias originales.
 
 ---
 
 <p align="center">
-  <strong>MilyVoiceTraductor 2.1.0 estable</strong><br />
+  <strong>2.0.1 estable · 2.1.0 beta pública</strong><br />
   IA local · Audio universal · Realtime · Privacidad por diseño
 </p>
