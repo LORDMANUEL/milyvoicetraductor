@@ -188,11 +188,16 @@ class TranslationQualityTests(unittest.TestCase):
             "no",
             "no",
             "no",
+            "no",
+            "no",
+            "no",
+            "no",
             "cancele",
             "el",
             "pedido",
             "1038",
         ]
+        self.assertFalse(analyze_translation_quality(" ".join(early_loop)).passed)
         translator = _TranslatorStub(
             outputs=[
                 early_loop,
