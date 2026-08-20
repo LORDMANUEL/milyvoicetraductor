@@ -99,38 +99,96 @@ try {
     Remove-Item $NativeCredential -Force -ErrorAction SilentlyContinue
     $Probe = Join-Path $FixtureRoot 'probe_native.py'
     @'
+import asyncio
 import json
 import struct
 import subprocess
 import sys
+import time
 
 bridge, origin = sys.argv[1], sys.argv[2]
-proc = subprocess.Popen([bridge, origin], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-payload = json.dumps({"protocol": 1, "type": "status"}, separators=(",", ":")).encode("utf-8")
-proc.stdin.write(struct.pack("<I", len(payload)) + payload)
-proc.stdin.flush()
-raw_len = proc.stdout.read(4)
-if len(raw_len) != 4:
-    raise SystemExit("El bridge no devolvió cabecera Native Messaging")
-length = struct.unpack("<I", raw_len)[0]
-body = proc.stdout.read(length)
-reply = json.loads(body.decode("utf-8"))
-if reply.get("type") != "bridge.ready" or reply.get("desktop") != "ready":
-    raise SystemExit(f"Respuesta bridge inesperada: {reply}")
-if "credential" in reply or "expiresAt" in reply:
+proc = subprocess.Popen(
+    [bridge, origin],
+    stdin=subprocess.PIPE,
+    stdout=subprocess.PIPE,
+    stderr=subprocess.PIPE,
+)
+
+
+def exchange(kind: str):
+    payload = json.dumps({"protocol": 1, "type": kind}, separators=(",", ":")).encode("utf-8")
+    proc.stdin.write(struct.pack("<I", len(payload)) + payload)
+    proc.stdin.flush()
+    raw_len = proc.stdout.read(4)
+    if len(raw_len) != 4:
+        raise SystemExit(f"El bridge no devolvió cabecera Native Messaging para {kind}")
+    length = struct.unpack("<I", raw_len)[0]
+    body = proc.stdout.read(length)
+    return json.loads(body.decode("utf-8"))
+
+status = exchange("status")
+if status.get("type") != "bridge.ready" or status.get("desktop") != "ready":
+    raise SystemExit(f"Respuesta bridge status inesperada: {status}")
+if "credential" in status or "expiresAt" in status:
     raise SystemExit("Una consulta status no debe emitir credenciales efímeras")
+print("NATIVE_BRIDGE_PASSIVE_STATUS_OK")
+
+hello = exchange("hello")
+if hello.get("type") != "bridge.ready" or hello.get("engine") != "ready":
+    raise SystemExit(f"Respuesta bridge hello inesperada: {hello}")
+credential = hello.get("credential")
+port = int(hello.get("port") or 0)
+expires_at = int(hello.get("expiresAt") or 0)
+if not credential or len(credential) < 32 or not (1024 <= port <= 65535):
+    raise SystemExit("hello no devolvió credencial/puerto válidos")
+if expires_at <= int(time.time()):
+    raise SystemExit("hello devolvió una credencial ya expirada")
+
+async def verify_live_engine():
+    try:
+        import websockets
+    except Exception as exc:
+        raise SystemExit(f"El runtime privado no contiene soporte WebSocket: {exc}")
+    uri = f"ws://127.0.0.1:{port}/ws?token={credential}"
+    async with websockets.connect(uri, origin=origin.rstrip("/"), open_timeout=5, close_timeout=2) as ws:
+        raw = await asyncio.wait_for(ws.recv(), timeout=5)
+        payload = json.loads(raw)
+        if payload.get("type") != "engine.ready":
+            raise SystemExit(f"El motor real no confirmó engine.ready: {payload}")
+
+asyncio.run(verify_live_engine())
+print("NATIVE_BRIDGE_HELLO_WEBSOCKET_OK")
+
 proc.terminate()
 proc.wait(timeout=5)
-print("NATIVE_BRIDGE_PASSIVE_STATUS_OK")
 '@ | Set-Content -Path $Probe -Encoding UTF8
 
-    & python $Probe $Bridge 'chrome-extension://edcpjonegaempcifgodcmgejbcpdpddm/'
-    if ($LASTEXITCODE -ne 0) { throw 'El bridge instalado no respondió correctamente a Native Messaging.' }
-    if (Test-Path $NativeCredential) {
-        throw 'La consulta status escribió native-credential.json sin iniciar captura.'
+    & $Python $Probe $Bridge 'chrome-extension://edcpjonegaempcifgodcmgejbcpdpddm/'
+    if ($LASTEXITCODE -ne 0) { throw 'El bridge instalado no completó status + hello + WebSocket real.' }
+    Assert-File $NativeCredential 'hello no generó native-credential.json.'
+
+    # El engine arrancado por Native Messaging hereda el PID del bridge. Tras cerrar
+    # el probe debe apagarse solo y no dejar procesos huérfanos/archivos bloqueados.
+    Start-Sleep -Seconds 3
+    $config = Get-Content (Join-Path $AppRoot 'config\config.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+    $port = [int]$config.enginePort
+    $stillOpen = $false
+    try {
+        $client = [System.Net.Sockets.TcpClient]::new()
+        $async = $client.BeginConnect('127.0.0.1', $port, $null, $null)
+        if ($async.AsyncWaitHandle.WaitOne(600)) {
+            $client.EndConnect($async)
+            $stillOpen = $client.Connected
+        }
+        $client.Dispose()
+    } catch {
+        $stillOpen = $false
+    }
+    if ($stillOpen) {
+        throw 'El motor iniciado por Native Messaging quedó huérfano después de cerrar el bridge.'
     }
 
-    Write-Host 'INSTALLED FLOW WINDOWS POWERSHELL 5.1 OK' -ForegroundColor Green
+    Write-Host 'INSTALLED FLOW + EXTENSION BRIDGE + WINDOWS POWERSHELL 5.1 OK' -ForegroundColor Green
 }
 finally {
     try {
