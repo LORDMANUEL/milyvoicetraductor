@@ -19,12 +19,14 @@ class StableFirstRunContractTests(unittest.TestCase):
         self.assertIn("activePage = 'models'", app)
 
     def test_real_nsis_verifies_first_launch_without_implicit_model_download(self) -> None:
-        nsis_test = (ROOT / "installer/windows/test-nsis-installer.ps1").read_text(encoding="utf-8")
+        nsis_test = (ROOT / "installer/windows/test-first-run-no-model-download.ps1").read_text(encoding="utf-8")
+        ci = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
         self.assertIn("Assert-FirstRunStartsWithoutModelDownload", nsis_test)
         self.assertIn("model-pending", nsis_test)
         self.assertIn("current.json", nsis_test)
         self.assertIn("Start-Sleep -Seconds 5", nsis_test)
         self.assertIn("descarga o preparación implícita", nsis_test)
+        self.assertIn("test-first-run-no-model-download.ps1", ci)
 
 
 if __name__ == "__main__":
