@@ -44,9 +44,16 @@ class CTranslate2FastRealtimeMarianTranslator(CTranslate2RealtimeMarianTranslato
         return " ".join(str(text).split())
 
     @staticmethod
-    def _with_final_period(value: str) -> str:
+    def _safe_period_reuse(value: str) -> str | None:
         cleaned = str(value).rstrip()
-        if not cleaned or cleaned.endswith((".", "?", "!")):
+        if not cleaned:
+            return None
+        # Si Marian infirió por sí mismo pregunta/exclamación en el parcial,
+        # el punto final del ASR puede cambiar la intención. En ese caso se
+        # fuerza una inferencia nueva en vez de reutilizar una salida ambigua.
+        if cleaned.endswith(("?", "!", "？", "！")):
+            return None
+        if cleaned.endswith((".", "。")):
             return cleaned
         return cleaned + "."
 
@@ -64,18 +71,20 @@ class CTranslate2FastRealtimeMarianTranslator(CTranslate2RealtimeMarianTranslato
             return ""
 
         # Únicamente se reutiliza partial→final cuando el cambio es exactamente
-        # un punto. '?' y '!' siguen recorriendo Marian porque sí cambian la
-        # intención y la puntuación española.
+        # un punto y la salida parcial no contiene una intención interrogativa
+        # o exclamativa propia. '?' y '!' en la fuente siempre recorren Marian.
         if normalized.endswith("."):
             periodless = normalized[:-1].rstrip()
             key = (source_language, periodless)
             cached = self._periodless_cache.get(key)
             if cached is not None:
-                self._periodless_cache.move_to_end(key)
-                return self._with_final_period(cached)
+                reused = self._safe_period_reuse(cached)
+                if reused is not None:
+                    self._periodless_cache.move_to_end(key)
+                    return reused
 
         translated = super().translate(normalized, source_language)
-        if not normalized.endswith((".", "?", "!")):
+        if not normalized.endswith((".", "?", "!", "。", "？", "！")):
             self._remember_periodless(source_language, normalized, translated)
         return translated
 
