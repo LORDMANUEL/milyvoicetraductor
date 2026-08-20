@@ -63,6 +63,17 @@ class WindowsInstallerDistributionContractTests(unittest.TestCase):
         self.assertIn("activePage = 'models'", app)
         self.assertIn("onboarding.modelState === 'ready' ? 'live' : 'models'", app)
 
+    def test_real_nsis_first_launch_cannot_download_or_activate_a_model_implicitly(self) -> None:
+        nsis_test = (ROOT / "installer/windows/test-nsis-installer.ps1").read_text(encoding="utf-8")
+        self.assertIn("Assert-FirstRunStartsWithoutModelDownload", nsis_test)
+        self.assertIn("$CurrentModel = Join-Path $ModelsRoot 'current.json'", nsis_test)
+        self.assertIn("$status.state -ne 'model-pending'", nsis_test)
+        self.assertIn("$modelFilesBeforeLaunch", nsis_test)
+        self.assertIn("$modelFilesAfterLaunch", nsis_test)
+        self.assertIn("Compare-Object", nsis_test)
+        self.assertIn("Start-Sleep -Seconds 5", nsis_test)
+        self.assertIn("Assert-FirstRunStartsWithoutModelDownload $DesktopExe $ModelsRoot $CurrentModel $StatusPath", nsis_test)
+
 
 if __name__ == "__main__":
     unittest.main()
