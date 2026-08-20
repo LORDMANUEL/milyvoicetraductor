@@ -1,4 +1,4 @@
-name: Publish 2.1.0
+name: Publish 2.1.0 Beta
 
 on:
   workflow_run:
@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   publish:
-    name: Publish verified 2.1.0 downloads
+    name: Publish verified 2.1.0 beta downloads
     if: ${{ github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main' }}
     runs-on: ubuntu-latest
     env:
@@ -21,7 +21,7 @@ jobs:
       VERIFIED_SHA: ${{ github.event.workflow_run.head_sha }}
       ARTIFACT_NAME: MilyVoiceTraductor-Full-2.1.0-Windows-x64-${{ github.event.workflow_run.head_sha }}
       RELEASE_TAG: v2.1.0
-      RELEASE_TITLE: MilyVoiceTraductor 2.1.0
+      RELEASE_TITLE: MilyVoiceTraductor 2.1.0 Beta
     steps:
       - name: Checkout the verified source revision
         uses: actions/checkout@v5
@@ -50,18 +50,26 @@ jobs:
           cd release
           sha256sum -c SHA256SUMS.txt
 
-      - name: Create or update the public 2.1.0 release
+      - name: Create or update the public 2.1.0 beta release
         shell: bash
         run: |
           set -euo pipefail
           if gh release view "$RELEASE_TAG" --repo "$REPOSITORY" >/dev/null 2>&1; then
-            gh release edit "$RELEASE_TAG" --repo "$REPOSITORY" --title "$RELEASE_TITLE" --notes-file docs/release/RELEASE_NOTES_2.1.0.md --latest
+            gh release edit "$RELEASE_TAG" --repo "$REPOSITORY" \
+              --title "$RELEASE_TITLE" \
+              --notes-file docs/release/RELEASE_NOTES_2.1.0.md \
+              --prerelease \
+              --latest=false
             gh release upload "$RELEASE_TAG" release/* --repo "$REPOSITORY" --clobber
           else
-            gh release create "$RELEASE_TAG" release/* --repo "$REPOSITORY" --target "$VERIFIED_SHA" --title "$RELEASE_TITLE" --notes-file docs/release/RELEASE_NOTES_2.1.0.md --latest
+            gh release create "$RELEASE_TAG" release/* --repo "$REPOSITORY" \
+              --target "$VERIFIED_SHA" \
+              --title "$RELEASE_TITLE" \
+              --notes-file docs/release/RELEASE_NOTES_2.1.0.md \
+              --prerelease
           fi
 
-      - name: Confirm release assets
+      - name: Confirm beta release assets
         shell: bash
         run: |
           set -euo pipefail
@@ -73,4 +81,4 @@ jobs:
           grep -Fxq 'MilyVoiceTraductor-2.1.0-WhisperTinyLiteBench.json' <<<"$assets"
           grep -Fxq 'MilyVoiceTraductor-2.1.0-SherpaLiteBench.json' <<<"$assets"
           grep -Fxq 'SHA256SUMS.txt' <<<"$assets"
-          gh release view "$RELEASE_TAG" --repo "$REPOSITORY" --json url --jq '.url'
+          gh release view "$RELEASE_TAG" --repo "$REPOSITORY" --json url,isPrerelease --jq '{url:.url,isPrerelease:.isPrerelease}'
