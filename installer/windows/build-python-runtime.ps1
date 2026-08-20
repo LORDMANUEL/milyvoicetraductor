@@ -15,6 +15,23 @@ $RuntimeZip = Join-Path $OutputRoot 'milyvoice-python-runtime.zip'
 $RuntimeHash = "$RuntimeZip.sha256"
 $DownloadUrl = "https://www.python.org/ftp/python/$PythonVersion/python-$PythonVersion-embeddable-amd64.zip"
 
+# CTranslate2 y otros wheels nativos de Windows dependen del Visual C++ Runtime.
+# El runner de GitHub lo tiene instalado, pero una PC limpia puede no tenerlo.
+# Para que el runtime sea realmente privado/autónomo, copiamos el CRT al lado de
+# python.exe (app-local deployment) en vez de depender del estado del sistema.
+$RequiredAppLocalVisualCppDlls = @(
+    'concrt140.dll',
+    'msvcp140.dll',
+    'vcruntime140.dll',
+    'vcruntime140_1.dll'
+)
+$OptionalAppLocalVisualCppDlls = @(
+    'msvcp140_1.dll',
+    'msvcp140_2.dll',
+    'msvcp140_atomic_wait.dll',
+    'msvcp140_codecvt_ids.dll'
+)
+
 # Contrato único del runtime. El bootstrap del usuario solo bloquea la instalación
 # si falla el núcleo necesario para arrancar y traducir. Los motores Quality y
 # adapters alternativos se empaquetan y se prueban en build, pero una DLL opcional
@@ -67,6 +84,27 @@ if (-not $pth) { throw 'El paquete embebido no contiene archivo _pth.' }
 python -m pip install --disable-pip-version-check --no-input --target $sitePackages -r (Join-Path $Root 'services\ai\requirements.runtime.txt')
 if ($LASTEXITCODE -ne 0) { throw 'No se pudieron preparar las dependencias del runtime privado.' }
 
+$systemRoot = if ([string]::IsNullOrWhiteSpace($env:SystemRoot)) { 'C:\Windows' } else { $env:SystemRoot }
+$system32 = Join-Path $systemRoot 'System32'
+$appLocalVisualCppRuntime = @()
+foreach ($dllName in @($RequiredAppLocalVisualCppDlls + $OptionalAppLocalVisualCppDlls)) {
+    $source = Join-Path $system32 $dllName
+    $destination = Join-Path $Stage $dllName
+    if (-not (Test-Path $source -PathType Leaf)) {
+        if ($RequiredAppLocalVisualCppDlls -contains $dllName) {
+            throw "El runner Windows no contiene la DLL obligatoria del Visual C++ Runtime: $dllName"
+        }
+        continue
+    }
+    Copy-Item -LiteralPath $source -Destination $destination -Force
+    $copied = Get-Item -LiteralPath $destination
+    $appLocalVisualCppRuntime += [ordered]@{
+        file = $dllName
+        sha256 = (Get-FileHash $destination -Algorithm SHA256).Hash.ToLowerInvariant()
+        fileVersion = [string]$copied.VersionInfo.FileVersion
+    }
+}
+
 $embeddedPython = Join-Path $Stage 'python.exe'
 foreach ($module in @($RequiredRuntimeModules + $OptionalRuntimeModules)) {
     $probe = "import importlib; importlib.import_module('$module'); print('MILY_RUNTIME_MODULE_OK')"
@@ -86,6 +124,7 @@ $metadata = [ordered]@{
     windowsLoopback = 'PyAudioWPatch-0.2.12.8'
     requiredModules = $RequiredRuntimeModules
     optionalModules = $OptionalRuntimeModules
+    appLocalVisualCppRuntime = $appLocalVisualCppRuntime
     engineHubRuntimes = @(
         'faster-whisper',
         'moonshine-voice',
