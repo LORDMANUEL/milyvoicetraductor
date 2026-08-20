@@ -28,6 +28,17 @@ class WindowsInstallerDistributionContractTests(unittest.TestCase):
         self.assertIn("msvcp140.dll", bootstrap_test)
         self.assertIn("vcruntime140_1.dll", bootstrap_test)
 
+    def test_bootstrap_does_not_treat_fixture_native_exit_as_powershell_gate_failure(self) -> None:
+        bootstrap_test = (ROOT / "installer/windows/test-bootstrap.ps1").read_text(encoding="utf-8")
+        invocation = "& (Join-Path $Root 'installer\\windows\\test-runtime-import-diagnostics.ps1')"
+        self.assertIn(invocation, bootstrap_test)
+        stale_check = (
+            invocation
+            + "\n    if ($LASTEXITCODE -ne 0) {\n"
+            + "        throw 'Falló el gate de diagnóstico de imports del runtime privado.'"
+        )
+        self.assertNotIn(stale_check, bootstrap_test)
+
 
 if __name__ == "__main__":
     unittest.main()
