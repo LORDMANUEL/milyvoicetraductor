@@ -1,0 +1,77 @@
+name: Publish 2.0.2 Stable
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  publish:
+    name: Publish verified 2.0.2 stable downloads
+    if: ${{ github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'stable/2.0.x' }}
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REPOSITORY: ${{ github.repository }}
+      RUN_ID: ${{ github.event.workflow_run.id }}
+      VERIFIED_SHA: ${{ github.event.workflow_run.head_sha }}
+      ARTIFACT_NAME: MilyVoiceTraductor-Full-2.0.2-Windows-x64-${{ github.event.workflow_run.head_sha }}
+      RELEASE_TAG: v2.0.2
+      RELEASE_TITLE: MilyVoiceTraductor 2.0.2
+    steps:
+      - name: Checkout the verified stable source revision
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - name: Download the exact Windows artifact produced by stable CI
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf release
+          mkdir -p release
+          gh run download "$RUN_ID" --repo "$REPOSITORY" --name "$ARTIFACT_NAME" --dir release
+
+      - name: Verify stable file set and SHA-256 checksums
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f release/MilyVoiceTraductor_2.0.2_x64-setup.exe
+          test -f release/MilyVoiceTraductor-Chromium-Extension.zip
+          test -f release/MilyVoiceTraductor-2.0.2-MegaBench.json
+          test -f release/SHA256SUMS.txt
+          cd release
+          sha256sum -c SHA256SUMS.txt
+
+      - name: Create or update the public stable 2.0.2 release
+        shell: bash
+        run: |
+          set -euo pipefail
+          if gh release view "$RELEASE_TAG" --repo "$REPOSITORY" >/dev/null 2>&1; then
+            gh release edit "$RELEASE_TAG" --repo "$REPOSITORY" \
+              --title "$RELEASE_TITLE" \
+              --notes-file docs/release/RELEASE_NOTES_2.0.2.md \
+              --latest
+            gh release upload "$RELEASE_TAG" release/* --repo "$REPOSITORY" --clobber
+          else
+            gh release create "$RELEASE_TAG" release/* --repo "$REPOSITORY" \
+              --target "$VERIFIED_SHA" \
+              --title "$RELEASE_TITLE" \
+              --notes-file docs/release/RELEASE_NOTES_2.0.2.md \
+              --latest
+          fi
+
+      - name: Confirm stable release assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          assets="$(gh release view "$RELEASE_TAG" --repo "$REPOSITORY" --json assets --jq '.assets[].name')"
+          grep -Fxq 'MilyVoiceTraductor_2.0.2_x64-setup.exe' <<<"$assets"
+          grep -Fxq 'MilyVoiceTraductor-Chromium-Extension.zip' <<<"$assets"
+          grep -Fxq 'MilyVoiceTraductor-2.0.2-MegaBench.json' <<<"$assets"
+          grep -Fxq 'SHA256SUMS.txt' <<<"$assets"
+          gh release view "$RELEASE_TAG" --repo "$REPOSITORY" --json url,isPrerelease,isLatest --jq '{url:.url,isPrerelease:.isPrerelease,isLatest:.isLatest}'
