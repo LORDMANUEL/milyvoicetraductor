@@ -87,3 +87,4 @@ if ($RequireRuntime) {
 }
 
 Write-Host 'BOOTSTRAP POLICY OK' -ForegroundColor Green
+exit 0
