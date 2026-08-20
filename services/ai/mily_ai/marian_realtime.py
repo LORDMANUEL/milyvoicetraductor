@@ -2,7 +2,7 @@
 
 El primer pase mantiene greedy search para latencia. Si el modelo pequeño entra
 en un bucle o pierde información crítica detectable (números/negación EN→ES), se
-ejecuta un segundo pase acotado antes de exponer la traducción.
+ejecutan rescates acotados antes de exponer la traducción.
 """
 
 from __future__ import annotations
@@ -32,6 +32,8 @@ class CTranslate2RealtimeMarianTranslator(_BaseMarianTranslator):
         beam_size: int,
         repetition_penalty: float,
         tighter_limit: bool,
+        no_repeat_ngram_size: int | None = None,
+        severe_limit: bool = False,
     ) -> str:
         self._load()
         assert self._translator is not None
@@ -39,7 +41,12 @@ class CTranslate2RealtimeMarianTranslator(_BaseMarianTranslator):
 
         source_tokens = self._source_sp.encode(text.strip(), out_type=str)
         decoding_limit = self._decoding_limit(len(source_tokens))
-        if tighter_limit:
+        if severe_limit:
+            decoding_limit = min(
+                decoding_limit,
+                max(12, round(len(source_tokens) * 1.35) + 4),
+            )
+        elif tighter_limit:
             decoding_limit = min(
                 decoding_limit,
                 max(12, round(len(source_tokens) * 1.6) + 6),
@@ -49,7 +56,11 @@ class CTranslate2RealtimeMarianTranslator(_BaseMarianTranslator):
             beam_size=beam_size,
             return_scores=False,
             repetition_penalty=repetition_penalty,
-            no_repeat_ngram_size=self.no_repeat_ngram_size,
+            no_repeat_ngram_size=(
+                self.no_repeat_ngram_size
+                if no_repeat_ngram_size is None
+                else no_repeat_ngram_size
+            ),
             max_decoding_length=decoding_limit,
         )[0]
         return self._target_sp.decode(result.hypotheses[0]).strip()
@@ -120,9 +131,8 @@ class CTranslate2RealtimeMarianTranslator(_BaseMarianTranslator):
         if retry_quality.passed and retry_fidelity.passed:
             return retry
 
-        # Una repetición puede ocurrir dentro de una sola oración. En ese caso el
-        # antiguo rescate por oraciones no podía conservar la primera cláusula sana.
-        # Se permite únicamente el prefijo que vuelve a pasar calidad Y fidelidad.
+        # Una repetición puede ocurrir dentro de una sola oración. En ese caso se
+        # conserva únicamente un prefijo que siga preservando números/negaciones.
         prefixes = self._safe_repetition_prefixes(
             text,
             effective_source,
@@ -132,8 +142,40 @@ class CTranslate2RealtimeMarianTranslator(_BaseMarianTranslator):
         if prefixes:
             return max(prefixes, key=len)
 
-        fidelity_failure = retry_fidelity if not retry_fidelity.passed else fidelity
-        if not fidelity_failure.passed:
+        # Último recurso: búsqueda un poco más amplia pero con bloqueo de bigramas
+        # y longitud más estricta. Solo ocurre en una salida ya rechazada, por lo que
+        # no penaliza el camino realtime sano. El resultado vuelve a pasar TODAS las
+        # guardas antes de poder mostrarse.
+        rescue = self._decode(
+            text,
+            beam_size=3,
+            repetition_penalty=1.32,
+            tighter_limit=True,
+            no_repeat_ngram_size=2,
+            severe_limit=True,
+        )
+        rescue_quality = analyze_translation_quality(rescue)
+        rescue_fidelity = self._fidelity(text, rescue, effective_source)
+        if rescue_quality.passed and rescue_fidelity.passed:
+            return rescue
+
+        rescue_prefixes = self._safe_repetition_prefixes(
+            text,
+            effective_source,
+            rescue,
+        )
+        if rescue_prefixes:
+            return max(rescue_prefixes, key=len)
+
+        fidelity_failure = next(
+            (
+                item
+                for item in (rescue_fidelity, retry_fidelity, fidelity)
+                if not item.passed
+            ),
+            None,
+        )
+        if fidelity_failure is not None:
             raise OptionalProviderRuntimeError(
                 "MARIAN_FIDELITY",
                 "La traducción local perdió información crítica y fue descartada para evitar mostrar una frase incorrecta.",

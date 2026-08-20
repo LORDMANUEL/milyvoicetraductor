@@ -176,6 +176,42 @@ class TranslationQualityTests(unittest.TestCase):
         self.assertTrue(translated.casefold().startswith("no "))
         self.assertLess(len(translated.split()), len(loop))
 
+    def test_marian_uses_strict_rescue_when_prefix_would_lose_critical_data(self):
+        provider = CTranslate2RealtimeMarianTranslator(
+            Path("unused"),
+            "cpu",
+            source_language="en",
+            target_language="es",
+        )
+        early_loop = [
+            "No",
+            "no",
+            "no",
+            "no",
+            "cancele",
+            "el",
+            "pedido",
+            "1038",
+        ]
+        translator = _TranslatorStub(
+            outputs=[
+                early_loop,
+                early_loop,
+                ["No", "cancele", "el", "pedido", "1038"],
+            ]
+        )
+        provider._translator = translator
+        provider._source_sp = _SentencePieceStub()
+        provider._target_sp = _SentencePieceStub()
+
+        translated = provider.translate("Do not cancel order 1038.", "en")
+
+        self.assertEqual(translator.calls, 3)
+        self.assertEqual(translated, "No cancele el pedido 1038")
+        self.assertEqual(translator.options["beam_size"], 3)
+        self.assertEqual(translator.options["no_repeat_ngram_size"], 2)
+        self.assertGreaterEqual(translator.options["repetition_penalty"], 1.3)
+
 
 if __name__ == "__main__":
     unittest.main()
