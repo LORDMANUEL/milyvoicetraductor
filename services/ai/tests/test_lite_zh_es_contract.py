@@ -2,8 +2,22 @@ import json
 import unittest
 from pathlib import Path
 
+from mily_ai.marian_cascade import CTranslate2MarianCascadeTranslator
 from mily_ai.models import ModelCatalog
 from mily_ai.provider_factory import TRANSLATION_BUILDERS
+
+
+class _WarmStage:
+    def __init__(self, output: str):
+        self.output = output
+        self.calls: list[tuple[str, str]] = []
+        self.selected_device = "cpu"
+        self.fallback_used = False
+        self.fallback_reason = ""
+
+    def translate(self, text: str, source_language: str) -> str:
+        self.calls.append((text, source_language))
+        return self.output
 
 
 class LiteZhEsContractTests(unittest.TestCase):
@@ -40,6 +54,34 @@ class LiteZhEsContractTests(unittest.TestCase):
         payload = json.loads(path.read_text(encoding="utf-8"))
         lite = next(item for item in payload["engines"] if item["id"] == "local-ct2-lite")
         self.assertIn("zh-es", lite["routes"])
+
+    def test_cascade_warmup_primes_each_stage_with_its_own_language(self):
+        provider = CTranslate2MarianCascadeTranslator.__new__(
+            CTranslate2MarianCascadeTranslator
+        )
+        provider.source_language = "zh"
+        provider.pivot_language = "en"
+        provider.target_language = "es"
+        provider._first = _WarmStage("degenerate pivot must not be chained")
+        provider._second = _WarmStage("horario confirmado")
+        provider.selected_device = None
+        provider.fallback_used = False
+        provider.fallback_reason = ""
+        provider._warmed = False
+
+        provider.warm_up()
+        provider.warm_up()
+
+        self.assertEqual(len(provider._first.calls), 1)
+        self.assertEqual(provider._first.calls[0][1], "zh")
+        self.assertTrue(
+            any("\u4e00" <= char <= "\u9fff" for char in provider._first.calls[0][0])
+        )
+        self.assertEqual(
+            provider._second.calls,
+            [("Please confirm today's meeting schedule.", "en")],
+        )
+        self.assertTrue(provider._warmed)
 
 
 if __name__ == "__main__":
