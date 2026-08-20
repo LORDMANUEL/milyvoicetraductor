@@ -1,0 +1,74 @@
+name: Engine Hub fast preflight
+
+on:
+  push:
+    branches: [pruebas]
+  pull_request:
+    branches: [pruebas]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: enginehub-pruebas-${{ github.event.pull_request.head.ref || github.ref }}
+  cancel-in-progress: true
+
+# Este workflow es deliberadamente Linux-only. La certificación Windows completa
+# vive en ci.yml y ya compila el bridge MSVC, runtime privado, modelos reales,
+# Rust/Clippy, Desktop y NSIS. Pedir aquí otros dos windows-latest duplicaba el
+# trabajo y dejaba varios jobs de la misma candidata esperando runners Windows.
+jobs:
+  target-machine:
+    name: Engine Hub preflight / Ubuntu
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+      - name: Install lightweight validation dependencies
+        run: python -m pip install --disable-pip-version-check "fastapi>=0.116,<1" "httpx>=0.28,<1" "numpy>=2.2,<3"
+      - name: Simulate target machine, engine selection and ten-minute backlog
+        env:
+          PYTHONPATH: services/ai
+        run: python -m unittest discover -s services/ai/tests -p "test_engine_hub_target_machine.py" -v
+      - name: Verify complete private runtime contract
+        env:
+          PYTHONPATH: services/ai
+        run: python -m unittest discover -s services/ai/tests -p "test_engine_hub_runtime_bundle.py" -v
+      - name: Verify portable runtime discovery
+        env:
+          PYTHONPATH: services/ai
+        run: python -m unittest discover -s services/ai/tests -p "test_runtime_discovery.py" -v
+      - name: Verify Moonshine streaming model layout
+        env:
+          PYTHONPATH: services/ai
+        run: python -m unittest discover -s services/ai/tests -p "test_moonshine_model_layout.py" -v
+      - name: Verify resources, queues, backend truth and deterministic unload
+        env:
+          PYTHONPATH: services/ai
+        run: |
+          python -m unittest discover -s services/ai/tests -p "test_resource_governor.py" -v
+          python -m unittest discover -s services/ai/tests -p "test_realtime_telemetry.py" -v
+          python -m unittest discover -s services/ai/tests -p "test_coalescing_queue.py" -v
+          python -m unittest discover -s services/ai/tests -p "test_model_advisor_total_product_memory.py" -v
+          python -m unittest discover -s services/ai/tests -p "test_provider_unload.py" -v
+          python -m unittest discover -s services/ai/tests -p "test_model_advisor_backend_matrix.py" -v
+          python -m unittest discover -s services/ai/tests -p "test_model_selection_state.py" -v
+          python -m unittest discover -s services/ai/tests -p "test_measured_shared_gpu_memory.py" -v
+          python -m unittest discover -s services/ai/tests -p "test_engine_benchmark_backend_truth.py" -v
+          python -m unittest discover -s services/ai/tests -p "test_cli_special_model_install.py" -v
+          python -m unittest discover -s services/ai/tests -p "test_model_advisor_backend_failure_isolation.py" -v
+          python -m unittest discover -s services/ai/tests -p "test_moonshine_incremental_streaming.py" -v
+          python -m unittest discover -s services/ai/tests -p "test_translation_latency_policy.py" -v
+
+  rustfmt:
+    name: Rust formatting gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - run: cargo fmt --all -- --check

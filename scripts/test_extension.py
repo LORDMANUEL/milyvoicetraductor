@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Guardia estática de permisos, privacidad y auto-descubrimiento Chromium."""
+"""Guardia estática de permisos, privacidad, Tutor y auto-descubrimiento Chromium."""
 from pathlib import Path
 import base64
 import hashlib
@@ -16,6 +16,7 @@ background = (ext / "background.js").read_text(encoding="utf-8")
 offscreen = (ext / "offscreen.js").read_text(encoding="utf-8")
 worklet = (ext / "audio-worklet.js").read_text(encoding="utf-8")
 tts = (ext / "tts.js").read_text(encoding="utf-8")
+content = (ext / "content.js").read_text(encoding="utf-8")
 settings = (root / "apps" / "desktop" / "src" / "pages" / "Settings.svelte").read_text(encoding="utf-8")
 
 EXPECTED_EXTENSION_ID = "edcpjonegaempcifgodcmgejbcpdpddm"
@@ -34,7 +35,6 @@ assert not manifest.get("content_scripts"), "El overlay no debe inyectarse perma
 public_key = manifest.get("key", "")
 assert public_key, "La extensión debe fijar un ID estable para allowed_origins"
 
-# Reproduce el cálculo de ID de Chromium a partir de la clave pública.
 digest = hashlib.sha256(base64.b64decode(public_key)).digest()[:16]
 alphabet = "abcdefghijklmnop"
 derived_id = "".join(alphabet[byte >> 4] + alphabet[byte & 15] for byte in digest)
@@ -56,9 +56,26 @@ assert "speakTranslation" in background, "La traducción final debe poder activa
 assert "tts.started" in offscreen and "tts.finished" in offscreen, "TTS debe avisar al motor para anti-feedback"
 assert "chrome.tts.speak" in tts, "La extensión debe usar síntesis local de Chromium/Windows"
 
+# Tutor, temas y voces son parte funcional de la extensión, no opciones solo Desktop.
+assert 'value="tutor"' in popup, "Falta el modo Tutor en la extensión"
+assert 'id="subtitleTheme"' in popup, "Falta selector de tema en la extensión"
+for theme in ("auto", "mily", "cinema", "class", "contrast", "neon"):
+    assert f'value="{theme}"' in popup, f"Falta el tema {theme}"
+assert 'id="tutorVoice"' in popup, "Tutor debe permitir elegir voz para pronunciación"
+assert 'class="tutor-repeat"' in content, "Tutor debe poder repetir la frase original sobre el video"
+assert "speakerVoiceNames" in popup_script, "Las voces por hablante deben persistir"
+assert "tutorVoiceName" in popup_script, "La voz de Tutor debe persistir"
+assert "subtitleTheme" in popup_script, "El tema de overlay debe persistir"
+assert "requestAnimationFrame" in content, "Karaoke necesita animación bajo demanda"
+assert "function startKaraokeLoop" in content and "function stopKaraokeLoop" in content, (
+    "La animación del overlay debe encenderse/apagarse bajo demanda"
+)
+assert "frame = requestAnimationFrame(animate);" not in content, (
+    "El overlay no debe arrancar el RAF permanente del diseño anterior"
+)
+
 # Un motor instalado pero detenido NO debe bloquear Teams Web. START_CAPTURE usa
 # `hello`, y es precisamente esa llamada la que arranca el motor automáticamente.
-# En cambio notInstalled/error sí deben seguir bloqueados para no mostrar un botón falso.
 assert "state?.engine === 'ready' && state?.modelPack" not in popup_script, (
     "El popup no debe deshabilitar Inicio solo porque el motor esté detenido."
 )
@@ -120,4 +137,4 @@ for path in ext.glob("*.js"):
     ]
     assert not external_ws, f"WebSocket externo en {path.name}: {external_ws}"
 
-print("Extension privacy/autodiscovery guard: OK")
+print("Extension privacy/autodiscovery/tutor guard: OK")

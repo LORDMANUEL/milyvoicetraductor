@@ -6,6 +6,7 @@ export type PageId =
   | 'models'
   | 'permissions'
   | 'devices'
+  | 'diagnostics'
   | 'settings'
   | 'help'
   | 'about';
@@ -23,6 +24,7 @@ export const navigationItems: readonly NavigationItem[] = [
   { id: 'models', label: 'Modelos', icon: '⬡' },
   { id: 'permissions', label: 'Permisos', icon: '◇' },
   { id: 'devices', label: 'Dispositivos', icon: '◌' },
+  { id: 'diagnostics', label: 'Diagnóstico', icon: '!' },
   { id: 'settings', label: 'Ajustes', icon: '⚙' },
   { id: 'help', label: 'Ayuda', icon: '?' },
   { id: 'about', label: 'Acerca de', icon: 'i' }

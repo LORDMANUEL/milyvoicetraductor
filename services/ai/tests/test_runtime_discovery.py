@@ -1,0 +1,75 @@
+import os
+import unittest
+from unittest.mock import patch
+
+from mily_ai.runtime_discovery import discover_runtime_inventory
+
+
+class RuntimeDiscoveryTests(unittest.TestCase):
+    def test_bare_whisper_cli_is_not_considered_realtime_runtime(self):
+        with patch.dict(os.environ, {}, clear=True), patch(
+            "mily_ai.runtime_discovery._module_available", return_value=False
+        ), patch("mily_ai.runtime_discovery.os.path.isfile", return_value=False), patch(
+            "mily_ai.runtime_discovery.Path.is_file", return_value=False
+        ):
+            inventory = discover_runtime_inventory()
+        self.assertNotIn("whisper-cpp", inventory.runtimes)
+
+    def test_persistent_whisper_bridge_is_discovered(self):
+        bridge_path = "runtime/mily-whispercpp-bridge"
+        with patch.dict(
+            os.environ,
+            {"MILY_WHISPER_CPP_BRIDGE": bridge_path},
+            clear=True,
+        ), patch(
+            "mily_ai.runtime_discovery._module_available", return_value=False
+        ), patch(
+            "mily_ai.runtime_discovery.os.path.isfile", return_value=True
+        ):
+            inventory = discover_runtime_inventory()
+        self.assertIn("whisper-cpp", inventory.runtimes)
+        self.assertEqual(inventory.details["whisperCppBridge"], bridge_path)
+
+    def test_installed_windows_bridge_is_discovered_without_manual_env(self):
+        with patch.dict(
+            os.environ, {"LOCALAPPDATA": "R:/MilyVoiceData"}, clear=True
+        ), patch(
+            "mily_ai.runtime_discovery._module_available", return_value=False
+        ), patch(
+            "mily_ai.runtime_discovery.os.path.isfile", return_value=False
+        ), patch(
+            "mily_ai.runtime_discovery.Path.is_file", return_value=True
+        ):
+            inventory = discover_runtime_inventory()
+        self.assertIn("whisper-cpp", inventory.runtimes)
+        normalized = inventory.details["whisperCppBridge"].replace("\\", "/")
+        self.assertTrue(
+            normalized.endswith(
+                "MilyVoiceTraductor/bridge/milyvoice-bridge.exe"
+            )
+        )
+
+    def test_vosk_runtime_is_discovered_without_loading_a_model(self):
+        available = {
+            "vosk": True,
+            "moonshine_voice": False,
+            "sherpa_onnx": False,
+            "transformers": False,
+            "torch": False,
+            "google.cloud.speech_v2": False,
+        }
+        with patch.dict(os.environ, {}, clear=True), patch(
+            "mily_ai.runtime_discovery._module_available",
+            side_effect=lambda name: available.get(name, False),
+        ), patch(
+            "mily_ai.runtime_discovery.os.path.isfile", return_value=False
+        ), patch(
+            "mily_ai.runtime_discovery.Path.is_file", return_value=False
+        ):
+            inventory = discover_runtime_inventory()
+        self.assertIn("vosk", inventory.runtimes)
+        self.assertIn("cpu", inventory.backends)
+
+
+if __name__ == "__main__":
+    unittest.main()

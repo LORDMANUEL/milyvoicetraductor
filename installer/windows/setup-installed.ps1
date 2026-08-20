@@ -42,6 +42,27 @@ $ModelsRoot = Join-Path $AppRoot 'models'
 $BootstrapStateRoot = Join-Path $AppRoot 'bootstrap'
 $StatusPath = Join-Path $BootstrapStateRoot 'status.json'
 $script:BootstrapStage = 'BOOTSTRAP_START'
+$script:OptionalRuntimeUnavailable = @()
+
+$DefaultRequiredRuntimeModules = @(
+    'fastapi',
+    'uvicorn',
+    'numpy',
+    'faster_whisper',
+    'ctranslate2',
+    'huggingface_hub',
+    'sentencepiece'
+)
+$DefaultOptionalRuntimeModules = @(
+    'transformers',
+    'torch',
+    'moonshine_voice',
+    'sherpa_onnx',
+    'onnxruntime',
+    'vosk',
+    'google.cloud.speech_v2',
+    'pyaudiowpatch'
+)
 
 function Write-Step([string]$Text) {
     Write-Host "[MilyVoiceTraductor] $Text"
@@ -50,12 +71,14 @@ function Write-Step([string]$Text) {
 function Write-BootstrapStatus([string]$State, [string]$Code, [string]$Message) {
     New-Item -ItemType Directory -Force -Path $BootstrapStateRoot | Out-Null
     [ordered]@{
-        schemaVersion = 2
+        schemaVersion = 3
         state = $State
         code = $Code
         message = $Message
+        stage = $script:BootstrapStage
+        optionalUnavailable = @($script:OptionalRuntimeUnavailable)
         updatedAt = (Get-Date).ToUniversalTime().ToString('o')
-    } | ConvertTo-Json -Depth 4 | Set-Content -Path $StatusPath -Encoding UTF8
+    } | ConvertTo-Json -Depth 5 | Set-Content -Path $StatusPath -Encoding UTF8
 }
 
 function Set-BootstrapStage([string]$Code, [string]$Message) {
@@ -190,7 +213,7 @@ function Resolve-UnstructuredFailure([string]$Stage) {
         'RUNTIME_VERIFY' { return @('RUNTIME_VERIFY_FAILED', 'No se pudo verificar la integridad del runtime privado.') }
         'RUNTIME_EXTRACT' { return @('RUNTIME_EXTRACT_FAILED', 'No se pudo extraer el runtime privado incluido en el instalador.') }
         'RUNTIME_MANIFEST' { return @('RUNTIME_VERIFY_FAILED', 'No se pudo validar el manifiesto del runtime privado.') }
-        'RUNTIME_IMPORT' { return @('RUNTIME_IMPORT_FAILED', 'El runtime privado no pudo cargar sus dependencias.') }
+        'RUNTIME_IMPORT' { return @('RUNTIME_IMPORT_FAILED', 'El runtime privado no pudo cargar sus dependencias base.') }
         'RUNTIME_ACTIVATE' { return @('RUNTIME_ACTIVATE_FAILED', 'No se pudo activar el runtime privado en el perfil del usuario.') }
         'ENGINE_COPY' { return @('ENGINE_COPY_FAILED', 'No se pudo preparar el motor local incluido.') }
         'EXTENSION_COPY' { return @('EXTENSION_COPY_FAILED', 'No se pudo preparar la extensión Chromium incluida.') }
@@ -200,6 +223,12 @@ function Resolve-UnstructuredFailure([string]$Stage) {
         'BOOTSTRAP_FINALIZE' { return @('BOOTSTRAP_FINALIZE_FAILED', 'La preparación local terminó, pero no pudo guardar su estado final.') }
         default { return @('BOOTSTRAP_FAILED', 'La preparación local no terminó correctamente.') }
     }
+}
+
+function Test-PythonModule([string]$Python, [string]$Module) {
+    $probe = "import importlib; importlib.import_module('$Module')"
+    & $Python -c $probe 1>$null 2>$null
+    return $LASTEXITCODE -eq 0
 }
 
 try {
@@ -253,10 +282,37 @@ try {
         throw 'RUNTIME_PYTHON_HASH_MISMATCH|python.exe no coincide con el manifiesto del runtime.'
     }
 
-    Set-BootstrapStage 'RUNTIME_IMPORT' 'Comprobando dependencias del runtime privado.'
-    & $nextPython -c "import fastapi,uvicorn,numpy,faster_whisper,transformers,torch,huggingface_hub; print('MILY_RUNTIME_OK')"
-    if ($LASTEXITCODE -ne 0) {
-        throw 'RUNTIME_IMPORT_FAILED|El runtime privado no pudo cargar sus dependencias.'
+    # El manifest generado en build es la única fuente del contrato de módulos.
+    # El fallback conserva compatibilidad con runtimes 2.0.1 previos a schema v3.
+    $requiredRuntimeModules = @()
+    $optionalRuntimeModules = @()
+    try { $requiredRuntimeModules = @($runtimeManifest.requiredModules) } catch { $requiredRuntimeModules = @() }
+    try { $optionalRuntimeModules = @($runtimeManifest.optionalModules) } catch { $optionalRuntimeModules = @() }
+    $requiredRuntimeModules = @($requiredRuntimeModules | ForEach-Object { ([string]$_).Trim() } | Where-Object { $_ })
+    $optionalRuntimeModules = @($optionalRuntimeModules | ForEach-Object { ([string]$_).Trim() } | Where-Object { $_ })
+    if ($requiredRuntimeModules.Count -eq 0) { $requiredRuntimeModules = @($DefaultRequiredRuntimeModules) }
+    if ($optionalRuntimeModules.Count -eq 0) { $optionalRuntimeModules = @($DefaultOptionalRuntimeModules) }
+
+    Set-BootstrapStage 'RUNTIME_IMPORT' 'Comprobando dependencias base del runtime privado.'
+    $missingRequired = @()
+    foreach ($module in $requiredRuntimeModules) {
+        if (-not (Test-PythonModule $nextPython $module)) {
+            $missingRequired += $module
+        }
+    }
+    if ($missingRequired.Count -gt 0) {
+        throw ('RUNTIME_IMPORT_FAILED|No se pudo cargar el runtime base requerido: {0}.' -f ($missingRequired -join ', '))
+    }
+
+    # Los adapters opcionales se diagnostican, pero jamás bloquean la instalación.
+    $script:OptionalRuntimeUnavailable = @()
+    foreach ($module in $optionalRuntimeModules) {
+        if (-not (Test-PythonModule $nextPython $module)) {
+            $script:OptionalRuntimeUnavailable += $module
+        }
+    }
+    if ($script:OptionalRuntimeUnavailable.Count -gt 0) {
+        Write-Step ('Motores opcionales no disponibles en este equipo: {0}. Se usará fallback.' -f ($script:OptionalRuntimeUnavailable -join ', '))
     }
 
     Set-BootstrapStage 'RUNTIME_ACTIVATE' 'Activando runtime privado.'
@@ -321,7 +377,11 @@ try {
         $code = $resolved[0]
         $message = $resolved[1]
     }
-    Write-BootstrapStatus 'failed' $code $message
-    Write-Error "$code`: $message"
+    try {
+        Write-BootstrapStatus 'failed' $code $message
+    } catch {
+        # El error original debe seguir visible aunque no podamos escribir status.json.
+    }
+    Write-Error ('{0}: {1}' -f $code, $message)
     exit 1
 }

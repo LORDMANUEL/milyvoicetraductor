@@ -3,17 +3,75 @@
 from __future__ import annotations
 
 import argparse
+import importlib
 import json
 import sys
+from pathlib import Path
 
+from .external_sources import download_external_pack
+from .model_advisor import ModelAdvisor
+from .model_operations import download_pack
 from .models import (
     HuggingFacePackInstaller,
     ModelCatalog,
     ModelOperationError,
     classify_model_exception,
 )
+from .resource_governor import ResourceGovernor, ResourceLimits
 from .runtime import RuntimePaths
+from .runtime_discovery import discover_runtime_inventory
 from .security import PairingTokenService
+
+
+_DEFAULT_REQUIRED_RUNTIME_MODULES = (
+    "fastapi",
+    "uvicorn",
+    "numpy",
+    "faster_whisper",
+    "ctranslate2",
+    "huggingface_hub",
+    "sentencepiece",
+)
+_DEFAULT_OPTIONAL_RUNTIME_MODULES = (
+    "transformers",
+    "torch",
+    "moonshine_voice",
+    "sherpa_onnx",
+    "onnxruntime",
+    "vosk",
+    "google.cloud.speech_v2",
+    "pyaudiowpatch",
+)
+
+
+def _runtime_module_contract() -> tuple[tuple[str, ...], tuple[str, ...]]:
+    """Lee el mismo contrato firmado dentro del runtime que usa el instalador.
+
+    En desarrollo/source no existe runtime-manifest.json, por eso se conserva un
+    fallback equivalente. Un manifest incompleto nunca puede vaciar el núcleo.
+    """
+
+    manifest_path = Path(sys.executable).resolve().parent / "runtime-manifest.json"
+    try:
+        payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError, TypeError):
+        return _DEFAULT_REQUIRED_RUNTIME_MODULES, _DEFAULT_OPTIONAL_RUNTIME_MODULES
+
+    def normalized(key: str, fallback: tuple[str, ...]) -> tuple[str, ...]:
+        value = payload.get(key)
+        if not isinstance(value, list):
+            return fallback
+        modules = tuple(
+            item.strip()
+            for item in value
+            if isinstance(item, str) and item.strip()
+        )
+        return modules or fallback
+
+    return (
+        normalized("requiredModules", _DEFAULT_REQUIRED_RUNTIME_MODULES),
+        normalized("optionalModules", _DEFAULT_OPTIONAL_RUNTIME_MODULES),
+    )
 
 
 def _paths(args) -> RuntimePaths:
@@ -30,7 +88,6 @@ def _paths(args) -> RuntimePaths:
 
 
 def _emit_model_error(error: ModelOperationError) -> int:
-    """Escribe una única línea JSON estable que Rust puede interpretar sin traceback."""
     print(
         json.dumps(
             {"ok": False, "code": error.code, "message": error.message},
@@ -39,6 +96,20 @@ def _emit_model_error(error: ModelOperationError) -> int:
         file=sys.stderr,
     )
     return 10
+
+
+def _emit_pack(pack) -> None:
+    print(
+        json.dumps(
+            {
+                "ok": True,
+                "id": pack.id,
+                "version": pack.version,
+                "active": pack.active,
+            },
+            ensure_ascii=False,
+        )
+    )
 
 
 def cmd_serve(args) -> int:
@@ -66,20 +137,46 @@ def cmd_token(args) -> int:
     return 0
 
 
+def _definition_resource(definition: dict) -> dict:
+    governor = ResourceGovernor(ResourceLimits())
+    decision = governor.preflight_model(
+        model_ram_mb=float(definition.get("ramMb", 0)),
+        dedicated_vram_mb=float(definition.get("vramMb", 0)),
+        shared_gpu_mb=float(definition.get("sharedGpuMb", 0)),
+    )
+    return {
+        "allowed": decision.allowed,
+        "mode": decision.mode,
+        "reason": decision.reason,
+        "effectiveProcessMb": decision.effective_process_mb,
+        "productReserveMb": governor.limits.product_reserve_mb,
+        "processHeadroomMb": decision.process_headroom_mb,
+        "vramHeadroomMb": decision.vram_headroom_mb,
+    }
+
+
 def cmd_models(args) -> int:
     paths = _paths(args)
     catalog = ModelCatalog(paths.models_dir)
     installer = HuggingFacePackInstaller(catalog)
     try:
         if args.model_action == "list":
+            definitions = []
+            for definition in catalog.definitions():
+                enriched = dict(definition)
+                enriched["resource"] = _definition_resource(definition)
+                definitions.append(enriched)
+            inventory = discover_runtime_inventory()
             print(
                 json.dumps(
                     {
-                        "definitions": catalog.definitions(),
+                        "definitions": definitions,
                         "installed": [
                             {"id": p.id, "version": p.version, "active": p.active}
                             for p in catalog.installed()
                         ],
+                        "runtimes": sorted(inventory.runtimes),
+                        "backends": sorted(inventory.backends),
                     },
                     indent=2,
                     ensure_ascii=False,
@@ -87,10 +184,65 @@ def cmd_models(args) -> int:
             )
             return 0
         if args.model_action == "install":
-            pack = installer.install(args.pack_id)
+            definition = catalog.definition(args.pack_id)
+            if not args.download_only:
+                resource = _definition_resource(definition)
+                if not resource["allowed"]:
+                    raise ModelOperationError(
+                        str(resource["reason"]),
+                        "El modelo supera el límite total de 2 GB o 384 MB de VRAM.",
+                    )
+            pack = download_pack(installer, catalog, args.pack_id)
+            if not args.download_only:
+                installer.activate(pack.id, pack.version)
+                pack.active = True
+            _emit_pack(pack)
+            return 0
+        if args.model_action == "activate":
+            definition = catalog.definition(args.pack_id)
+            resource = _definition_resource(definition)
+            if not resource["allowed"]:
+                raise ModelOperationError(
+                    str(resource["reason"]),
+                    "El modelo supera el límite total de 2 GB o 384 MB de VRAM.",
+                )
+            installer.activate(args.pack_id, args.version)
             print(
                 json.dumps(
-                    {"ok": True, "id": pack.id, "version": pack.version},
+                    {"ok": True, "active": f"{args.pack_id}@{args.version}"},
+                    ensure_ascii=False,
+                )
+            )
+            return 0
+        if args.model_action == "import":
+            _emit_pack(installer.import_pack(Path(args.archive)))
+            return 0
+        if args.model_action == "import-url":
+            staging = paths.models_dir / ".staging" / "external-downloads"
+            archive = download_external_pack(args.url, staging)
+            try:
+                pack = installer.import_pack(archive)
+            finally:
+                archive.unlink(missing_ok=True)
+            _emit_pack(pack)
+            return 0
+        if args.model_action == "auto-select":
+            advisor = ModelAdvisor(catalog, installer)
+            selection, reports = advisor.optimize(
+                args.route,
+                allow_cloud=args.allow_cloud,
+                force_benchmark=args.force_benchmark,
+            )
+            print(
+                json.dumps(
+                    {
+                        "ok": True,
+                        "selected": selection.candidate.id,
+                        "backend": selection.backend,
+                        "score": round(selection.score, 4),
+                        "rejected": selection.rejected,
+                        "benchmarks": reports,
+                    },
                     ensure_ascii=False,
                 )
             )
@@ -133,42 +285,49 @@ def cmd_models(args) -> int:
 
 def cmd_diagnose(args) -> int:
     paths = _paths(args)
-    checks = {}
-    for module in (
-        "fastapi",
-        "uvicorn",
-        "numpy",
-        "faster_whisper",
-        "ctranslate2",
-        "transformers",
-        "torch",
-        "huggingface_hub",
-        "sentencepiece",
-    ):
+    required_modules, optional_modules = _runtime_module_contract()
+    required: dict[str, bool] = {}
+    optional: dict[str, bool] = {}
+    for module in required_modules:
         try:
-            __import__(module)
-            checks[module] = True
+            importlib.import_module(module)
+            required[module] = True
         except Exception:
-            checks[module] = False
-    try:
-        import torch
-
-        cuda = bool(torch.cuda.is_available())
-    except Exception:
-        cuda = False
+            required[module] = False
+    for module in optional_modules:
+        try:
+            importlib.import_module(module)
+            optional[module] = True
+        except Exception:
+            optional[module] = False
+    inventory = discover_runtime_inventory()
     active = ModelCatalog(paths.models_dir).active_pack()
+    limits = ResourceLimits()
     print(
         json.dumps(
             {
                 "python": sys.version.split()[0],
-                "dependencies": checks,
-                "cuda": cuda,
+                "dependencies": required,
+                "optionalDependencies": optional,
+                "runtimes": sorted(inventory.runtimes),
+                "backends": sorted(inventory.backends),
+                "cuda": "cuda" in inventory.backends,
                 "activeModelPack": f"{active.id}@{active.version}" if active else None,
+                "resourceLimits": {
+                    "processMb": limits.hard_process_mb,
+                    "desktopReserveMb": limits.desktop_reserve_mb,
+                    "bridgeReserveMb": limits.bridge_reserve_mb,
+                    "productReserveMb": limits.product_reserve_mb,
+                    "liteSteadyMb": limits.lite_steady_mb,
+                    "litePeakMb": limits.lite_peak_mb,
+                    "rescueMb": limits.rescue_mb,
+                    "vramMb": limits.vram_budget_mb,
+                },
             },
             indent=2,
         )
     )
-    return 0 if all(checks.values()) else 1
+    return 0 if all(required.values()) else 1
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -192,7 +351,23 @@ def build_parser() -> argparse.ArgumentParser:
     model_sub.add_parser("list").set_defaults(func=cmd_models)
     install = model_sub.add_parser("install")
     install.add_argument("pack_id")
+    install.add_argument("--download-only", action="store_true")
     install.set_defaults(func=cmd_models)
+    activate = model_sub.add_parser("activate")
+    activate.add_argument("pack_id")
+    activate.add_argument("version")
+    activate.set_defaults(func=cmd_models)
+    import_pack = model_sub.add_parser("import")
+    import_pack.add_argument("archive")
+    import_pack.set_defaults(func=cmd_models)
+    import_url = model_sub.add_parser("import-url")
+    import_url.add_argument("url")
+    import_url.set_defaults(func=cmd_models)
+    auto = model_sub.add_parser("auto-select")
+    auto.add_argument("--route", default="en-es")
+    auto.add_argument("--allow-cloud", action="store_true")
+    auto.add_argument("--force-benchmark", action="store_true")
+    auto.set_defaults(func=cmd_models)
     rollback = model_sub.add_parser("rollback")
     rollback.set_defaults(func=cmd_models)
     verify = model_sub.add_parser("verify")
