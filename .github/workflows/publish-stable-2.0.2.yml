@@ -74,4 +74,4 @@ jobs:
           grep -Fxq 'MilyVoiceTraductor-Chromium-Extension.zip' <<<"$assets"
           grep -Fxq 'MilyVoiceTraductor-2.0.2-MegaBench.json' <<<"$assets"
           grep -Fxq 'SHA256SUMS.txt' <<<"$assets"
-          gh release view "$RELEASE_TAG" --repo "$REPOSITORY" --json url,isPrerelease,isLatest --jq '{url:.url,isPrerelease:.isPrerelease,isLatest:.isLatest}'
+          gh release view "$RELEASE_TAG" --repo "$REPOSITORY" --json url,isPrerelease --jq '{url:.url,isPrerelease:.isPrerelease}'
