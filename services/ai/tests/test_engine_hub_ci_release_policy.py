@@ -33,10 +33,11 @@ class EngineHubCiReleasePolicyTests(unittest.TestCase):
         self.assertIn(report, self.publish)
         self.assertTrue((WINDOWS / "test-engine-hub-target-machine.ps1").is_file())
 
-    def test_three_real_lite_benchmarks_run_before_nsis(self):
+    def test_four_real_engine_benchmarks_run_before_nsis(self):
         steps = (
             ("Moonshine Lite real EN to ES benchmark", "test-moonshine-lite.ps1"),
             ("Whisper Tiny Lite real EN to ES benchmark", "test-whisper-tiny-lite.ps1"),
+            ("Sherpa Zipformer Lite real EN to ES benchmark", "test-sherpa-lite.ps1"),
             ("Mandarin Lite real ZH to ES benchmark", "test-zh-es-lite.ps1"),
         )
         nsis = self.workflow.index("Tauri NSIS bundle")
@@ -45,6 +46,23 @@ class EngineHubCiReleasePolicyTests(unittest.TestCase):
                 self.assertLess(self.workflow.index(label), nsis)
                 self.assertIn(script, self.workflow)
                 self.assertTrue((WINDOWS / script).is_file())
+
+    def test_sherpa_gate_enforces_real_memory_rtf_and_latency_limits(self):
+        text = (WINDOWS / "test-sherpa-lite.ps1").read_text(encoding="utf-8")
+        for marker in (
+            "sherpa-zipformer-en-es",
+            "test_wavs/*.wav",
+            "benchmark_installed_pack",
+            "totalProductWorkingSetMb",
+            "combinedRtfP95",
+            "endToEndP95Ms",
+            "1536.0",
+            "0.80",
+            "1500.0",
+            "SHERPA_LITE_GATE_OK",
+        ):
+            with self.subTest(marker=marker):
+                self.assertIn(marker, text)
 
     def test_zh_benchmark_uses_public_process_tree_memory_probe(self):
         text = (WINDOWS / "test-zh-es-lite.ps1").read_text(encoding="utf-8")
@@ -85,6 +103,7 @@ class EngineHubCiReleasePolicyTests(unittest.TestCase):
             "MilyVoiceTraductor-2.0.1-TargetMachineSimulation.json",
             "MilyVoiceTraductor-2.0.1-MoonshineLiteBench.json",
             "MilyVoiceTraductor-2.0.1-WhisperTinyLiteBench.json",
+            "MilyVoiceTraductor-2.0.1-SherpaLiteBench.json",
             "MilyVoiceTraductor-2.0.1-ZhEsLiteBench.json",
         ):
             with self.subTest(filename=filename):
