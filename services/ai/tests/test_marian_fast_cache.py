@@ -67,6 +67,33 @@ class MarianFastCacheTests(unittest.TestCase):
             ["Are you ready", "Are you ready?", "Are you ready!"],
         )
 
+    def test_period_final_reinfers_when_partial_translation_changes_intent(self):
+        calls: list[str] = []
+
+        def fake_translate(_self, text: str, _source_language: str) -> str:
+            calls.append(text)
+            if text == "You are ready":
+                return "¿Estás listo?"
+            return "Estás listo."
+
+        with patch.object(
+            CTranslate2RealtimeMarianTranslator,
+            "translate",
+            new=fake_translate,
+        ):
+            translator = CTranslate2FastRealtimeMarianTranslator(
+                self.path,
+                "cpu",
+                source_language="en",
+                target_language="es",
+            )
+            partial = translator.translate("You are ready", "en")
+            final = translator.translate("You are ready.", "en")
+
+        self.assertEqual(partial, "¿Estás listo?")
+        self.assertEqual(final, "Estás listo.")
+        self.assertEqual(calls, ["You are ready", "You are ready."])
+
     def test_cache_is_bounded_and_cleared_on_unload(self):
         with patch.object(
             CTranslate2RealtimeMarianTranslator,
