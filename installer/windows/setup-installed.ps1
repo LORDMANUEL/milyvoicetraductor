@@ -43,6 +43,7 @@ $BootstrapStateRoot = Join-Path $AppRoot 'bootstrap'
 $StatusPath = Join-Path $BootstrapStateRoot 'status.json'
 $script:BootstrapStage = 'BOOTSTRAP_START'
 $script:OptionalRuntimeUnavailable = @()
+$script:RuntimeImportFailures = @()
 
 $DefaultRequiredRuntimeModules = @(
     'fastapi',
@@ -77,8 +78,9 @@ function Write-BootstrapStatus([string]$State, [string]$Code, [string]$Message) 
         message = $Message
         stage = $script:BootstrapStage
         optionalUnavailable = @($script:OptionalRuntimeUnavailable)
+        runtimeImportFailures = @($script:RuntimeImportFailures)
         updatedAt = (Get-Date).ToUniversalTime().ToString('o')
-    } | ConvertTo-Json -Depth 5 | Set-Content -Path $StatusPath -Encoding UTF8
+    } | ConvertTo-Json -Depth 7 | Set-Content -Path $StatusPath -Encoding UTF8
 }
 
 function Set-BootstrapStage([string]$Code, [string]$Message) {
@@ -225,10 +227,81 @@ function Resolve-UnstructuredFailure([string]$Stage) {
     }
 }
 
+function ConvertTo-SafeImportSummary([string]$Text) {
+    $safe = [string]$Text
+    foreach ($path in @($InstallRoot, $AppRoot, $RuntimeNext, $RuntimeRoot, $env:USERPROFILE, $env:GITHUB_WORKSPACE)) {
+        if ([string]::IsNullOrWhiteSpace([string]$path)) { continue }
+        $safe = $safe -replace [regex]::Escape([string]$path), '<PATH>'
+    }
+    $safe = $safe -replace '(?i)(token|password|passwd|secret)\s*[:=]\s*[^\s]+', '$1=<redacted>'
+    $safe = ($safe -replace '\s+', ' ').Trim()
+    if ([string]::IsNullOrWhiteSpace($safe)) {
+        return 'El intérprete terminó sin diagnóstico adicional.'
+    }
+    if ($safe.Length -gt 800) {
+        $safe = $safe.Substring($safe.Length - 800)
+    }
+    return $safe
+}
+
 function Test-PythonModule([string]$Python, [string]$Module) {
-    $probe = "import importlib; importlib.import_module('$Module')"
-    & $Python -c $probe 1>$null 2>$null
-    return $LASTEXITCODE -eq 0
+    if ($Module -notmatch '^[A-Za-z0-9_.]+$') {
+        return [pscustomobject]@{
+            ok = $false
+            module = $Module
+            exitCode = -1
+            summary = 'El nombre del módulo no tiene un formato válido.'
+        }
+    }
+
+    $probePath = Join-Path ([System.IO.Path]::GetTempPath()) ('milyvoice-import-{0}.py' -f ([guid]::NewGuid().ToString('N')))
+    $process = $null
+    try {
+        $utf8 = New-Object System.Text.UTF8Encoding($false)
+        [System.IO.File]::WriteAllText(
+            $probePath,
+            ("import importlib`r`nimportlib.import_module('{0}')`r`n" -f $Module),
+            $utf8
+        )
+        $startInfo = New-Object System.Diagnostics.ProcessStartInfo
+        $startInfo.FileName = $Python
+        $startInfo.Arguments = ('"{0}"' -f $probePath)
+        $startInfo.UseShellExecute = $false
+        $startInfo.RedirectStandardOutput = $true
+        $startInfo.RedirectStandardError = $true
+        $startInfo.CreateNoWindow = $true
+
+        $process = New-Object System.Diagnostics.Process
+        $process.StartInfo = $startInfo
+        if (-not $process.Start()) {
+            return [pscustomobject]@{
+                ok = $false
+                module = $Module
+                exitCode = -1
+                summary = 'No se pudo iniciar el intérprete privado.'
+            }
+        }
+        $stdout = $process.StandardOutput.ReadToEnd()
+        $stderr = $process.StandardError.ReadToEnd()
+        $process.WaitForExit()
+        $summary = if (-not [string]::IsNullOrWhiteSpace($stderr)) { $stderr } else { $stdout }
+        return [pscustomobject]@{
+            ok = ($process.ExitCode -eq 0)
+            module = $Module
+            exitCode = [int]$process.ExitCode
+            summary = (ConvertTo-SafeImportSummary $summary)
+        }
+    } catch {
+        return [pscustomobject]@{
+            ok = $false
+            module = $Module
+            exitCode = -1
+            summary = (ConvertTo-SafeImportSummary ([string]$_.Exception.Message))
+        }
+    } finally {
+        if ($process -ne $null) { $process.Dispose() }
+        Remove-Item -LiteralPath $probePath -Force -ErrorAction SilentlyContinue
+    }
 }
 
 try {
@@ -294,10 +367,17 @@ try {
     if ($optionalRuntimeModules.Count -eq 0) { $optionalRuntimeModules = @($DefaultOptionalRuntimeModules) }
 
     Set-BootstrapStage 'RUNTIME_IMPORT' 'Comprobando dependencias base del runtime privado.'
+    $script:RuntimeImportFailures = @()
     $missingRequired = @()
     foreach ($module in $requiredRuntimeModules) {
-        if (-not (Test-PythonModule $nextPython $module)) {
+        $probeResult = Test-PythonModule $nextPython $module
+        if (-not $probeResult.ok) {
             $missingRequired += $module
+            $script:RuntimeImportFailures += [ordered]@{
+                module = [string]$probeResult.module
+                exitCode = [int]$probeResult.exitCode
+                summary = [string]$probeResult.summary
+            }
         }
     }
     if ($missingRequired.Count -gt 0) {
@@ -307,7 +387,8 @@ try {
     # Los adapters opcionales se diagnostican, pero jamás bloquean la instalación.
     $script:OptionalRuntimeUnavailable = @()
     foreach ($module in $optionalRuntimeModules) {
-        if (-not (Test-PythonModule $nextPython $module)) {
+        $probeResult = Test-PythonModule $nextPython $module
+        if (-not $probeResult.ok) {
             $script:OptionalRuntimeUnavailable += $module
         }
     }

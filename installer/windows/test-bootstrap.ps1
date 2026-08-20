@@ -78,6 +78,13 @@ if ($RequireRuntime) {
     } finally {
         Remove-Item $expanded -Recurse -Force -ErrorAction SilentlyContinue
     }
+
+    # El fixture de diagnóstico provoca a propósito un proceso nativo con exit
+    # code distinto de cero para verificar que el bootstrap capture el error.
+    # Si el .ps1 falla realmente, ErrorActionPreference=Stop propaga la excepción;
+    # no debemos reinterpretar el LASTEXITCODE nativo que deja su prueba interna.
+    & (Join-Path $Root 'installer\windows\test-runtime-import-diagnostics.ps1')
 }
 
 Write-Host 'BOOTSTRAP POLICY OK' -ForegroundColor Green
+exit 0
