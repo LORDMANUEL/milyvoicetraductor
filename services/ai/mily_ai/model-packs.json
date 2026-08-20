@@ -19,23 +19,8 @@
       "commercialUse": true,
       "licenseNote": "Moonshine Voice y sus modelos en inglés se publican bajo MIT; Marian Tiny EN→ES se mantiene bajo su licencia declarada. El pack usa el downloader oficial de Moonshine y hashes locales antes de activarse.",
       "components": {
-        "asr": {
-          "provider": "moonshine",
-          "runtimeVersion": "0.1.0",
-          "language": "en",
-          "modelArch": 2,
-          "estimatedRamMb": 430
-        },
-        "translation": {
-          "provider": "marian-ct2",
-          "repoId": "Helsinki-NLP/opus-mt_tiny_eng-spa",
-          "revision": "691fd47381a57d0de256a0e0b201bd83d1f48ba0",
-          "quantization": "int8",
-          "sourceLanguage": "en",
-          "targetLanguage": "es",
-          "estimatedRamMb": 190,
-          "allowPatterns": ["config.json", "generation_config.json", "model.safetensors", "source.spm", "target.spm", "special_tokens_map.json", "tokenizer_config.json", "vocab.json"]
-        }
+        "asr": {"provider": "moonshine", "runtimeVersion": "0.1.0", "language": "en", "modelArch": 2, "estimatedRamMb": 430},
+        "translation": {"provider": "marian-ct2", "repoId": "Helsinki-NLP/opus-mt_tiny_eng-spa", "revision": "691fd47381a57d0de256a0e0b201bd83d1f48ba0", "quantization": "int8", "sourceLanguage": "en", "targetLanguage": "es", "estimatedRamMb": 190, "allowPatterns": ["config.json", "generation_config.json", "model.safetensors", "source.spm", "target.spm", "special_tokens_map.json", "tokenizer_config.json", "vocab.json"]}
       }
     },
     {
@@ -62,6 +47,43 @@
     },
     {
       "schemaVersion": 2,
+      "id": "sherpa-zipformer-en-es",
+      "version": "1.0.0",
+      "title": "Sherpa Lite EN→ES (Zipformer 20M INT8 + Marian Tiny INT8)",
+      "tier": "lite",
+      "routes": ["en-es"],
+      "ramMb": 620,
+      "vramMb": 0,
+      "recommendedRamGb": 2,
+      "engine": "sherpa-onnx-local",
+      "format": "sherpa-onnx-online-int8+ctranslate2-int8",
+      "supportedBackends": ["cpu"],
+      "bundled": false,
+      "externalAllowed": false,
+      "commercialUse": true,
+      "licenseNote": "Zipformer EN de csukuangfj/sherpa-onnx y Marian Tiny EN→ES se ejecutan localmente con snapshots fijados; el gate de release verifica inferencia real, RAM, RTF y latencia.",
+      "components": {
+        "asr": {
+          "provider": "sherpa-onnx",
+          "repoId": "csukuangfj/sherpa-onnx-streaming-zipformer-en-20M-2023-02-17",
+          "revision": "d42f2d9f7ca24806fb667456a18a9f1b60f70d16",
+          "language": "en",
+          "sherpaMode": "online-transducer",
+          "maxThreads": 2,
+          "sampleRate": 16000,
+          "featureDim": 80,
+          "encoder": "encoder-epoch-99-avg-1.int8.onnx",
+          "decoder": "decoder-epoch-99-avg-1.onnx",
+          "joiner": "joiner-epoch-99-avg-1.int8.onnx",
+          "tokens": "tokens.txt",
+          "estimatedRamMb": 150,
+          "allowPatterns": ["encoder-epoch-99-avg-1.int8.onnx", "decoder-epoch-99-avg-1.onnx", "joiner-epoch-99-avg-1.int8.onnx", "tokens.txt"]
+        },
+        "translation": {"provider": "marian-ct2", "repoId": "Helsinki-NLP/opus-mt_tiny_eng-spa", "revision": "691fd47381a57d0de256a0e0b201bd83d1f48ba0", "quantization": "int8", "sourceLanguage": "en", "targetLanguage": "es", "estimatedRamMb": 190, "allowPatterns": ["config.json", "generation_config.json", "model.safetensors", "source.spm", "target.spm", "special_tokens_map.json", "tokenizer_config.json", "vocab.json"]}
+      }
+    },
+    {
+      "schemaVersion": 2,
       "id": "lite-zh-es",
       "version": "1.0.1",
       "title": "Rápido ZH→ES (Whisper Tiny + Marian ZH→EN→ES Quality INT8)",
@@ -78,34 +100,13 @@
       "commercialUse": true,
       "licenseNote": "Systran/faster-whisper-tiny declara MIT; Helsinki-NLP/opus-mt-zh-en declara CC-BY-4.0; Helsinki-NLP/opus-mt-en-es declara Apache-2.0. Se fijan por revisión. La segunda etapa estándar sustituye al estudiante Tiny para evitar expansión semántica y repeticiones en ZH→ES.",
       "components": {
-        "asr": {
-          "provider": "faster-whisper",
-          "repoId": "Systran/faster-whisper-tiny",
-          "revision": "d90ca5fe260221311c53c58e660288d3deb8d356",
-          "estimatedRamMb": 360
-        },
+        "asr": {"provider": "faster-whisper", "repoId": "Systran/faster-whisper-tiny", "revision": "d90ca5fe260221311c53c58e660288d3deb8d356", "estimatedRamMb": 360},
         "translation": {
           "provider": "marian-cascade-ct2",
           "estimatedRamMb": 650,
           "stages": [
-            {
-              "provider": "marian-ct2",
-              "repoId": "Helsinki-NLP/opus-mt-zh-en",
-              "revision": "cf109095479db38d6df799875e34039d4938aaa6",
-              "quantization": "int8",
-              "sourceLanguage": "zh",
-              "targetLanguage": "en",
-              "allowPatterns": ["config.json", "generation_config.json", "pytorch_model.bin", "source.spm", "target.spm", "tokenizer_config.json", "vocab.json"]
-            },
-            {
-              "provider": "marian-ct2",
-              "repoId": "Helsinki-NLP/opus-mt-en-es",
-              "revision": "5bc4493d463cf000c1f0b50f8d56886a392ed4ab",
-              "quantization": "int8",
-              "sourceLanguage": "en",
-              "targetLanguage": "es",
-              "allowPatterns": ["config.json", "generation_config.json", "pytorch_model.bin", "source.spm", "target.spm", "tokenizer_config.json", "vocab.json"]
-            }
+            {"provider": "marian-ct2", "repoId": "Helsinki-NLP/opus-mt-zh-en", "revision": "cf109095479db38d6df799875e34039d4938aaa6", "quantization": "int8", "sourceLanguage": "zh", "targetLanguage": "en", "allowPatterns": ["config.json", "generation_config.json", "pytorch_model.bin", "source.spm", "target.spm", "tokenizer_config.json", "vocab.json"]},
+            {"provider": "marian-ct2", "repoId": "Helsinki-NLP/opus-mt-en-es", "revision": "5bc4493d463cf000c1f0b50f8d56886a392ed4ab", "quantization": "int8", "sourceLanguage": "en", "targetLanguage": "es", "allowPatterns": ["config.json", "generation_config.json", "pytorch_model.bin", "source.spm", "target.spm", "tokenizer_config.json", "vocab.json"]}
           ]
         }
       }
