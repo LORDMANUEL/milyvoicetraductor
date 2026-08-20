@@ -11,7 +11,6 @@ from .cpu_budget import CpuBudget
 from .marian_cascade import CTranslate2MarianCascadeTranslator
 from .marian_realtime import CTranslate2RealtimeMarianTranslator
 from .moonshine_provider import MoonshineStreamingAsr
-from .optional_providers import SherpaOnnxAsr
 from .providers import (
     AsrProvider,
     FasterWhisperAsr,
@@ -20,6 +19,7 @@ from .providers import (
     QwenTranslator,
     Translator,
 )
+from .sherpa_streaming_provider import SherpaStreamingAsr
 from .vosk_provider import VoskAsr
 from .whispercpp_provider import BundledWhisperCppBridgeAsr
 
@@ -94,7 +94,7 @@ def _asr_builder(cls):
 ASR_BUILDERS: dict[str, AsrBuilder] = {
     "faster-whisper": _asr_builder(FasterWhisperAsr),
     "moonshine": _asr_builder(MoonshineStreamingAsr),
-    "sherpa-onnx": _asr_builder(SherpaOnnxAsr),
+    "sherpa-onnx": _asr_builder(SherpaStreamingAsr),
     "whisper-cpp": _asr_builder(BundledWhisperCppBridgeAsr),
     "vosk": _asr_builder(VoskAsr),
     "google-chirp": _asr_builder(GoogleChirpV2Asr),
@@ -208,6 +208,14 @@ def build_asr_provider(
     word_timestamps: bool,
 ) -> AsrProvider:
     provider = str(component.get("provider", "")).strip().lower()
+    if provider == "sherpa-onnx":
+        return SherpaStreamingAsr(
+            Path(model_path),
+            _asr_compute_profile(provider, compute_profile),
+            cpu_budget=cpu_budget,
+            word_timestamps=bool(word_timestamps),
+            component=component,
+        )
     builder = ASR_BUILDERS.get(provider)
     if builder is None:
         raise ProviderConfigurationError(
