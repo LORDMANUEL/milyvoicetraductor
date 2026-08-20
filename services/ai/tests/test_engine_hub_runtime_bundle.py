@@ -40,7 +40,9 @@ class EngineHubRuntimeBundleTests(unittest.TestCase):
                 self.assertIn(module, self.builder)
 
     def test_runtime_manifest_records_engine_hub_contents(self):
-        self.assertIn("schemaVersion = 2", self.builder)
+        self.assertIn("schemaVersion = 3", self.builder)
+        self.assertIn("requiredModules = $RequiredRuntimeModules", self.builder)
+        self.assertIn("optionalModules = $OptionalRuntimeModules", self.builder)
         self.assertIn("engineHubRuntimes", self.builder)
         for runtime in (
             "faster-whisper",

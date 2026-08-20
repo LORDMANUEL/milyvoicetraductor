@@ -80,7 +80,9 @@ site = (ROOT / "apps/site/index.html").read_text(encoding="utf-8")
 for marker in ("MilyVoiceTraductor 2.0.1", "Runtime privado"):
     if marker not in site:
         FAILURES.append(f"Sitio: falta {marker}")
-for stale in ("2.0 RC", "Candidata actual", "v2.0.0/MilyVoiceTraductor_2.0.0_x64-setup.exe"):
+# Los releases históricos se permiten dentro del archivo de versiones de Pages.
+# Solo se bloquea copy que presente una candidata antigua como release actual.
+for stale in ("2.0 RC", "Candidata actual"):
     if stale in site:
         FAILURES.append(f"Sitio: referencia obsoleta prohibida: {stale}")
 if FAILURES:

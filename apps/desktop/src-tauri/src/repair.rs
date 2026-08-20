@@ -1,7 +1,7 @@
-#[cfg(any(windows, test))]
-use serde::Deserialize;
 #[cfg(windows)]
 use mily_logging::{LogService, RepairStatus};
+#[cfg(any(windows, test))]
+use serde::Deserialize;
 #[cfg(any(windows, test))]
 use std::path::{Path, PathBuf};
 #[cfg(windows)]

@@ -32,7 +32,9 @@ fn sanitize_identifier(input: &str, fallback: &str) -> String {
     let value: String = input
         .trim()
         .chars()
-        .filter(|character| character.is_ascii_alphanumeric() || matches!(character, '_' | '-' | '.'))
+        .filter(|character| {
+            character.is_ascii_alphanumeric() || matches!(character, '_' | '-' | '.')
+        })
         .take(96)
         .collect();
     if value.is_empty() {
@@ -93,11 +95,7 @@ impl LogService {
     /// Persiste una línea sanitizada y rota el archivo cuando supera el límite.
     pub fn write(&self, level: &str, message: &str) -> Result<(), LogError> {
         fs::create_dir_all(&self.directory)?;
-        self.rotate_if_needed(
-            "milyvoice.log",
-            "milyvoice-",
-            ".log",
-        )?;
+        self.rotate_if_needed("milyvoice.log", "milyvoice-", ".log")?;
         let log_path = self.directory.join("milyvoice.log");
         let mut file = OpenOptions::new()
             .create(true)
@@ -137,11 +135,7 @@ impl LogService {
         action: &str,
     ) -> Result<RepairEvent, LogError> {
         fs::create_dir_all(&self.directory)?;
-        self.rotate_if_needed(
-            "repair-history.jsonl",
-            "repair-history-",
-            ".jsonl",
-        )?;
+        self.rotate_if_needed("repair-history.jsonl", "repair-history-", ".jsonl")?;
         let event = RepairEvent {
             schema_version: 1,
             incident_id: sanitize_identifier(incident_id, "incident-unknown"),
