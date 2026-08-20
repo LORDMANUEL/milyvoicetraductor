@@ -6,12 +6,19 @@ se descargan/validan como datos y se liberan explícitamente al cambiar de pack.
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 from .cpu_budget import CpuBudget
 from .marian_realtime import CTranslate2RealtimeMarianTranslator
 from .optional_providers import OptionalProviderRuntimeError
 from .providers import Translator
+from .translation_quality import (
+    analyze_source_target_fidelity,
+    analyze_translation_quality,
+)
+
+_CLAUSE_SEPARATOR_RE = re.compile(r"\s*[,;:]+\s*")
 
 
 class CTranslate2MarianCascadeTranslator(Translator):
@@ -70,6 +77,50 @@ class CTranslate2MarianCascadeTranslator(Translator):
         ]
         self.fallback_reason = "; ".join(reason for reason in reasons if reason)[:80]
 
+    @staticmethod
+    def _pivot_clauses(pivot: str) -> list[str]:
+        """Divide solo compuestos claros; nunca inventa ni reordena contenido."""
+
+        clauses = [part.strip() for part in _CLAUSE_SEPARATOR_RE.split(pivot) if part.strip()]
+        if not 2 <= len(clauses) <= 4:
+            return []
+        if any(len(clause.split()) < 2 for clause in clauses):
+            return []
+        return clauses
+
+    def _translate_pivot_by_verified_clauses(self, pivot: str) -> str | None:
+        """Rescata un compuesto cuando Marian falla la frase completa.
+
+        Cada cláusula pasa por el mismo traductor endurecido. La concatenación se
+        vuelve a validar contra el pivote COMPLETO, por lo que no se relajan números,
+        negaciones ni guardas de repetición. Si algo no cuadra, no se usa el rescate.
+        """
+
+        clauses = self._pivot_clauses(pivot)
+        if not clauses:
+            return None
+
+        translated_clauses: list[str] = []
+        for clause in clauses:
+            translated = self._second.translate(clause, self.pivot_language).strip()
+            if not translated:
+                return None
+            translated_clauses.append(translated.rstrip(" .;,:"))
+
+        combined = ". ".join(translated_clauses).strip()
+        if combined and not combined.endswith("."):
+            combined += "."
+        quality = analyze_translation_quality(combined)
+        fidelity = analyze_source_target_fidelity(
+            pivot,
+            combined,
+            self.pivot_language,
+            self.target_language,
+        )
+        if quality.passed and fidelity.passed:
+            return combined
+        return None
+
     def translate(self, text: str, source_language: str) -> str:
         if not text.strip():
             return ""
@@ -81,7 +132,14 @@ class CTranslate2MarianCascadeTranslator(Translator):
         pivot = self._first.translate(text, self.source_language)
         if not pivot.strip():
             return ""
-        translated = self._second.translate(pivot, self.pivot_language)
+        try:
+            translated = self._second.translate(pivot, self.pivot_language)
+        except OptionalProviderRuntimeError as exc:
+            if exc.code not in {"MARIAN_FIDELITY", "MARIAN_REPETITION"}:
+                raise
+            translated = self._translate_pivot_by_verified_clauses(pivot)
+            if translated is None:
+                raise
         self._sync_status()
         return translated
 
