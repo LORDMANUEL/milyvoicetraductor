@@ -14,7 +14,7 @@ $ConfigRoot = Join-Path $AppRoot 'config'
 $CacheRoot = Join-Path $AppRoot 'cache'
 $ModelsRoot = Join-Path $AppRoot 'models'
 $RuntimeZip = Join-Path $Root 'dist\runtime\milyvoice-python-runtime.zip'
-$ReportPath = Join-Path $Root 'dist\performance\MilyVoiceTraductor-2.0.1-WhisperTinyLiteBench.json'
+$ReportPath = Join-Path $Root 'dist\performance\MilyVoiceTraductor-2.1.0-WhisperTinyLiteBench.json'
 
 Remove-Item $FixtureRoot -Recurse -Force -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Force -Path $RuntimeRoot,$EngineApp,$ConfigRoot,$CacheRoot,$ModelsRoot,(Split-Path $ReportPath) | Out-Null
