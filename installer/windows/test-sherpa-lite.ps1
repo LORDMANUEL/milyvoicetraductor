@@ -14,7 +14,7 @@ $ConfigRoot = Join-Path $AppRoot 'config'
 $CacheRoot = Join-Path $AppRoot 'cache'
 $ModelsRoot = Join-Path $AppRoot 'models'
 $RuntimeZip = Join-Path $Root 'dist\runtime\milyvoice-python-runtime.zip'
-$ReportPath = Join-Path $Root 'dist\performance\MilyVoiceTraductor-2.0.1-SherpaLiteBench.json'
+$ReportPath = Join-Path $Root 'dist\performance\MilyVoiceTraductor-2.1.0-SherpaLiteBench.json'
 $Pack = 'sherpa-zipformer-en-es'
 $PackVersion = '1.0.0'
 
