@@ -50,7 +50,7 @@ for marker in (
     "MilyVoiceTraductor-2.0.1-TargetMachineSimulation.json",
     "MilyVoiceTraductor-2.0.1-MoonshineLiteBench.json",
     "MilyVoiceTraductor-2.0.1-WhisperTinyLiteBench.json",
-    "MilyVoiceTraductor-2.0.1-ZhEsLiteBench.json",
+    "MilyVoiceTraductor-2.0.1-SherpaLiteBench.json",
 ):
     if marker not in ci:
         FAILURES.append(f"CI: falta {marker}")
@@ -65,7 +65,7 @@ required_publish_markers = (
     "release/MilyVoiceTraductor-2.0.1-TargetMachineSimulation.json",
     "release/MilyVoiceTraductor-2.0.1-MoonshineLiteBench.json",
     "release/MilyVoiceTraductor-2.0.1-WhisperTinyLiteBench.json",
-    "release/MilyVoiceTraductor-2.0.1-ZhEsLiteBench.json",
+    "release/MilyVoiceTraductor-2.0.1-SherpaLiteBench.json",
 )
 for marker in required_publish_markers:
     if marker not in publish:
