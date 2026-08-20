@@ -35,6 +35,13 @@ _CONTRACTION_EXPANSIONS = (
     (re.compile(r"\bcouldn['’]t\b", re.IGNORECASE), "could not"),
     (re.compile(r"\bmustn['’]t\b", re.IGNORECASE), "must not"),
 )
+_IDENTIFIER_NUMBER_RE = re.compile(
+    r"\b(?:order|id|code|ticket|case|serial|vin|part)"
+    r"(?:\s+(?:number|no\.?))?\s*(?:#\s*)?"
+    r"(\d+(?:[.,]\d+)?)\b",
+    re.IGNORECASE,
+)
+_NUMBER_RE = re.compile(r"(?<!\w)\d+(?:[.,]\d+)?(?!\w)")
 
 
 class CTranslate2RealtimeMarianTranslator(_BaseMarianTranslator):
@@ -93,11 +100,7 @@ class CTranslate2RealtimeMarianTranslator(_BaseMarianTranslator):
 
     @staticmethod
     def _quality_rescue_source(text: str, source_language: str) -> str:
-        """Expande contracciones inglesas solo para el último decode de rescate.
-
-        No altera el texto que se usa para validar fidelidad. Sirve para que Marian
-        vea la negación de forma inequívoca si los tres pases realtime la perdieron.
-        """
+        """Expande contracciones inglesas solo para el último decode de rescate."""
 
         if source_language != "en":
             return text
@@ -105,6 +108,48 @@ class CTranslate2RealtimeMarianTranslator(_BaseMarianTranslator):
         for pattern, replacement in _CONTRACTION_EXPANSIONS:
             expanded = pattern.sub(replacement, expanded)
         return expanded
+
+    @staticmethod
+    def _restore_exact_identifiers(source: str, target: str) -> str:
+        """Restaura IDs numéricos que el modelo verbalizó sin inventar contenido.
+
+        Marian puede traducir ``order 1038`` como ``pedido mil treinta y ocho``.
+        Para un identificador eso es inaceptable: el valor debe permanecer copiable
+        exactamente. Solo añadimos el literal que YA existe en la fuente y únicamente
+        cuando la salida no contiene otros dígitos contradictorios. La guarda de
+        fidelidad completa se ejecuta de nuevo después de esta normalización.
+        """
+
+        identifiers = []
+        for match in _IDENTIFIER_NUMBER_RE.finditer(str(source or "")):
+            value = match.group(1)
+            if value not in identifiers:
+                identifiers.append(value)
+        if not identifiers or not str(target or "").strip():
+            return target
+
+        source_numbers = set(_NUMBER_RE.findall(str(source or "")))
+        target_numbers = set(_NUMBER_RE.findall(str(target or "")))
+        if target_numbers - source_numbers:
+            return target
+
+        missing = [value for value in identifiers if value not in target_numbers]
+        if not missing:
+            return target
+
+        suffix = " ".join(f"[{value}]" for value in missing)
+        return f"{target.rstrip()} {suffix}".strip()
+
+    def _validated_candidate(
+        self,
+        source: str,
+        output: str,
+        source_language: str,
+    ) -> tuple[str, object, object]:
+        repaired = self._restore_exact_identifiers(source, output)
+        quality = analyze_translation_quality(repaired)
+        fidelity = self._fidelity(source, repaired, source_language)
+        return repaired, quality, fidelity
 
     def _safe_repetition_prefixes(
         self,
@@ -123,12 +168,13 @@ class CTranslate2RealtimeMarianTranslator(_BaseMarianTranslator):
                 prefix = builder(output)
                 if not prefix:
                     continue
-                if not analyze_translation_quality(prefix).passed:
+                repaired = self._restore_exact_identifiers(source, prefix)
+                if not analyze_translation_quality(repaired).passed:
                     continue
-                if not self._fidelity(source, prefix, source_language).passed:
+                if not self._fidelity(source, repaired, source_language).passed:
                     continue
-                if prefix not in candidates:
-                    candidates.append(prefix)
+                if repaired not in candidates:
+                    candidates.append(repaired)
         return candidates
 
     def translate(self, text: str, source_language: str) -> str:
@@ -147,25 +193,24 @@ class CTranslate2RealtimeMarianTranslator(_BaseMarianTranslator):
             repetition_penalty=self.repetition_penalty,
             tighter_limit=False,
         )
-        quality = analyze_translation_quality(translated)
-        fidelity = self._fidelity(text, translated, effective_source)
+        translated, quality, fidelity = self._validated_candidate(
+            text, translated, effective_source
+        )
         if quality.passed and fidelity.passed:
             return translated
 
-        # El segundo pase solo se paga cuando el greedy falla una guarda barata.
         retry = self._decode(
             text,
             beam_size=2,
             repetition_penalty=1.20,
             tighter_limit=True,
         )
-        retry_quality = analyze_translation_quality(retry)
-        retry_fidelity = self._fidelity(text, retry, effective_source)
+        retry, retry_quality, retry_fidelity = self._validated_candidate(
+            text, retry, effective_source
+        )
         if retry_quality.passed and retry_fidelity.passed:
             return retry
 
-        # Una repetición puede ocurrir dentro de una sola oración. En ese caso se
-        # conserva únicamente un prefijo que siga preservando números/negaciones.
         prefixes = self._safe_repetition_prefixes(
             text,
             effective_source,
@@ -175,7 +220,6 @@ class CTranslate2RealtimeMarianTranslator(_BaseMarianTranslator):
         if prefixes:
             return max(prefixes, key=len)
 
-        # Tercer pase: bloqueo fuerte de bigramas y longitud corta para cortar loops.
         rescue = self._decode(
             text,
             beam_size=3,
@@ -184,8 +228,9 @@ class CTranslate2RealtimeMarianTranslator(_BaseMarianTranslator):
             no_repeat_ngram_size=2,
             severe_limit=True,
         )
-        rescue_quality = analyze_translation_quality(rescue)
-        rescue_fidelity = self._fidelity(text, rescue, effective_source)
+        rescue, rescue_quality, rescue_fidelity = self._validated_candidate(
+            text, rescue, effective_source
+        )
         if rescue_quality.passed and rescue_fidelity.passed:
             return rescue
 
@@ -197,10 +242,6 @@ class CTranslate2RealtimeMarianTranslator(_BaseMarianTranslator):
         if rescue_prefixes:
             return max(rescue_prefixes, key=len)
 
-        # Último recurso de FIDELIDAD: Marian OPUS usa beam=4 como configuración de
-        # calidad. Se ejecuta únicamente tras fallar los tres pases anteriores. No
-        # relaja ninguna guarda: el resultado debe pasar repetición y fidelidad contra
-        # el texto ORIGINAL antes de exponerse.
         quality_source = self._quality_rescue_source(text, effective_source)
         quality_rescue = self._decode(
             quality_source,
@@ -209,11 +250,8 @@ class CTranslate2RealtimeMarianTranslator(_BaseMarianTranslator):
             tighter_limit=False,
             no_repeat_ngram_size=3,
         )
-        quality_rescue_quality = analyze_translation_quality(quality_rescue)
-        quality_rescue_fidelity = self._fidelity(
-            text,
-            quality_rescue,
-            effective_source,
+        quality_rescue, quality_rescue_quality, quality_rescue_fidelity = (
+            self._validated_candidate(text, quality_rescue, effective_source)
         )
         if quality_rescue_quality.passed and quality_rescue_fidelity.passed:
             return quality_rescue
