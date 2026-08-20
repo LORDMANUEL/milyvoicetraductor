@@ -111,16 +111,16 @@ class CTranslate2RealtimeMarianTranslator(_BaseMarianTranslator):
 
     @staticmethod
     def _restore_exact_identifiers(source: str, target: str) -> str:
-        """Restaura IDs numéricos que el modelo verbalizó sin inventar contenido.
+        """Restaura IDs numéricos verbalizados sin aceptar números contradictorios.
 
         Marian puede traducir ``order 1038`` como ``pedido mil treinta y ocho``.
-        Para un identificador eso es inaceptable: el valor debe permanecer copiable
-        exactamente. Solo añadimos el literal que YA existe en la fuente y únicamente
-        cuando la salida no contiene otros dígitos contradictorios. La guarda de
-        fidelidad completa se ejecuta de nuevo después de esta normalización.
+        Un identificador debe seguir siendo copiable literalmente. Esta normalización
+        solo añade un valor que ya existe en la fuente y se rehúsa a actuar cuando la
+        salida contiene cualquier dígito ajeno a la fuente. Después se vuelven a
+        ejecutar todas las guardas de calidad y fidelidad.
         """
 
-        identifiers = []
+        identifiers: list[str] = []
         for match in _IDENTIFIER_NUMBER_RE.finditer(str(source or "")):
             value = match.group(1)
             if value not in identifiers:
@@ -168,13 +168,15 @@ class CTranslate2RealtimeMarianTranslator(_BaseMarianTranslator):
                 prefix = builder(output)
                 if not prefix:
                     continue
-                repaired = self._restore_exact_identifiers(source, prefix)
-                if not analyze_translation_quality(repaired).passed:
+                # Un prefijo es contenido sintéticamente recortado, no una salida
+                # completa del modelo. Nunca se le restauran IDs: debe preservar por
+                # sí mismo todos los datos críticos o se obliga a otro decode.
+                if not analyze_translation_quality(prefix).passed:
                     continue
-                if not self._fidelity(source, repaired, source_language).passed:
+                if not self._fidelity(source, prefix, source_language).passed:
                     continue
-                if repaired not in candidates:
-                    candidates.append(repaired)
+                if prefix not in candidates:
+                    candidates.append(prefix)
         return candidates
 
     def translate(self, text: str, source_language: str) -> str:
