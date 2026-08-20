@@ -88,9 +88,15 @@ class CTranslate2MarianCascadeTranslator(Translator):
     def warm_up(self) -> None:
         if self._warmed:
             return
-        # Frase corta real en mandarín para que ambos modelos y tokenizadores
-        # queden preparados antes de iniciar audio realtime.
-        self.translate("你好。", self.source_language)
+        # Calienta cada etapa con una frase útil de SU idioma de entrada. No se
+        # encadena la salida sintética del primer modelo: un saludo ZH demasiado
+        # corto puede producir un pivote degenerado y disparar correctamente las
+        # guardas de repetición EN→ES antes de que empiece el benchmark real.
+        self._first.translate("请确认今天的会议安排。", self.source_language)
+        self._second.translate(
+            "Please confirm today's meeting schedule.", self.pivot_language
+        )
+        self._sync_status()
         self._warmed = True
 
     def unload(self) -> None:
