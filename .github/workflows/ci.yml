@@ -238,10 +238,10 @@ jobs:
           $installer = Get-ChildItem "target/release/bundle/nsis/*-setup.exe" | Select-Object -First 1
           if (-not $installer) { throw "No se encontró el instalador NSIS generado." }
           $extension = Get-Item "dist/MilyVoiceTraductor-Chromium-Extension.zip"
-          $targetSimulation = Get-Item "dist/performance/MilyVoiceTraductor-2.0.1-TargetMachineSimulation.json"
-          $moonshineBench = Get-Item "dist/performance/MilyVoiceTraductor-2.0.1-MoonshineLiteBench.json"
-          $whisperTinyBench = Get-Item "dist/performance/MilyVoiceTraductor-2.0.1-WhisperTinyLiteBench.json"
-          $sherpaBench = Get-Item "dist/performance/MilyVoiceTraductor-2.0.1-SherpaLiteBench.json"
+          $targetSimulation = Get-Item "dist/performance/MilyVoiceTraductor-2.1.0-TargetMachineSimulation.json"
+          $moonshineBench = Get-Item "dist/performance/MilyVoiceTraductor-2.1.0-MoonshineLiteBench.json"
+          $whisperTinyBench = Get-Item "dist/performance/MilyVoiceTraductor-2.1.0-WhisperTinyLiteBench.json"
+          $sherpaBench = Get-Item "dist/performance/MilyVoiceTraductor-2.1.0-SherpaLiteBench.json"
           Copy-Item $installer.FullName "dist/release/$($installer.Name)"
           Copy-Item $extension.FullName "dist/release/$($extension.Name)"
           Copy-Item $targetSimulation.FullName "dist/release/$($targetSimulation.Name)"
@@ -292,7 +292,7 @@ jobs:
         if: success()
         uses: actions/upload-artifact@v6
         with:
-          name: MilyVoiceTraductor-Full-2.0.1-Windows-x64-${{ github.sha }}
+          name: MilyVoiceTraductor-Full-2.1.0-Windows-x64-${{ github.sha }}
           path: dist/release/*
           retention-days: 30
           compression-level: 0

@@ -7,7 +7,7 @@ Set-StrictMode -Version Latest
 $Root = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 $env:PYTHONPATH = Join-Path $Root 'services\ai'
 $PerformanceRoot = Join-Path $Root 'dist\performance'
-$ReportPath = Join-Path $PerformanceRoot 'MilyVoiceTraductor-2.0.1-TargetMachineSimulation.json'
+$ReportPath = Join-Path $PerformanceRoot 'MilyVoiceTraductor-2.1.0-TargetMachineSimulation.json'
 New-Item -ItemType Directory -Force $PerformanceRoot | Out-Null
 Remove-Item $ReportPath -Force -ErrorAction SilentlyContinue
 
@@ -22,7 +22,7 @@ import sys
 out = Path(sys.argv[1])
 report = {
     'schemaVersion': 1,
-    'productVersion': '2.0.1',
+    'productVersion': '2.1.0',
     'scenario': {
         'hostRamMb': 8192,
         'windowsMb': 4096,

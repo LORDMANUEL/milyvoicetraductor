@@ -28,7 +28,7 @@ class EngineHubCiReleasePolicyTests(unittest.TestCase):
     def test_target_machine_simulation_is_explicit_and_published(self):
         self.assertIn("Engine Hub target-machine simulation", self.workflow)
         self.assertIn("test-engine-hub-target-machine.ps1", self.workflow)
-        report = "MilyVoiceTraductor-2.0.1-TargetMachineSimulation.json"
+        report = "MilyVoiceTraductor-2.1.0-TargetMachineSimulation.json"
         self.assertIn(report, self.workflow)
         self.assertIn(report, self.publish)
         self.assertTrue((WINDOWS / "test-engine-hub-target-machine.ps1").is_file())
@@ -91,17 +91,17 @@ class EngineHubCiReleasePolicyTests(unittest.TestCase):
 
     def test_release_bundle_requires_only_stable_english_benchmark_reports(self):
         required = (
-            "MilyVoiceTraductor-2.0.1-TargetMachineSimulation.json",
-            "MilyVoiceTraductor-2.0.1-MoonshineLiteBench.json",
-            "MilyVoiceTraductor-2.0.1-WhisperTinyLiteBench.json",
-            "MilyVoiceTraductor-2.0.1-SherpaLiteBench.json",
+            "MilyVoiceTraductor-2.1.0-TargetMachineSimulation.json",
+            "MilyVoiceTraductor-2.1.0-MoonshineLiteBench.json",
+            "MilyVoiceTraductor-2.1.0-WhisperTinyLiteBench.json",
+            "MilyVoiceTraductor-2.1.0-SherpaLiteBench.json",
         )
         for filename in required:
             with self.subTest(filename=filename):
                 self.assertIn(filename, self.workflow)
                 self.assertIn(filename, self.publish)
 
-        mandarin_report = "MilyVoiceTraductor-2.0.1-ZhEsLiteBench.json"
+        mandarin_report = "MilyVoiceTraductor-2.1.0-ZhEsLiteBench.json"
         release_bundle = self.workflow[
             self.workflow.index("Prepare release bundle and SHA-256 checksums"):
             self.workflow.index("Collect sanitized diagnostics")
@@ -109,11 +109,11 @@ class EngineHubCiReleasePolicyTests(unittest.TestCase):
         self.assertNotIn(mandarin_report, release_bundle)
         self.assertNotIn(mandarin_report, self.publish)
         self.assertNotIn(
-            'Get-Item "dist/performance/MilyVoiceTraductor-2.0.1-MegaBench.json"',
+            'Get-Item "dist/performance/MilyVoiceTraductor-2.1.0-MegaBench.json"',
             self.workflow,
         )
         self.assertNotIn(
-            "release/MilyVoiceTraductor-2.0.1-MegaBench.json",
+            "release/MilyVoiceTraductor-2.1.0-MegaBench.json",
             self.publish,
         )
 

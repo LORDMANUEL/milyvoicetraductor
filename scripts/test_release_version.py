@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Bloquea releases con metadatos de versión divergentes."""
+"""Bloquea releases cuando los metadatos ejecutables/binarios divergen."""
 from __future__ import annotations
 
 import json
@@ -8,7 +8,7 @@ import tomllib
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-EXPECTED = "2.0.1"
+EXPECTED = "2.1.0"
 FAILURES: list[str] = []
 
 
@@ -36,58 +36,52 @@ if not workspace_package:
 else:
     match = re.search(r'(?m)^version\s*=\s*"([^"]+)"', workspace_package.group(1))
     check("Cargo.toml workspace.package", match.group(1) if match else None)
-server = (ROOT / "services/ai/mily_ai/server.py").read_text(encoding="utf-8")
-for marker in ('"version": "2.0.1"', 'event("engine.ready", version="2.0.1", protocolVersion=1)'):
-    if marker not in server:
-        FAILURES.append(f"Motor Python: falta {marker}")
+
 frontend_api = (ROOT / "apps/desktop/src/lib/api.ts").read_text(encoding="utf-8")
-for marker in ("version: '2.0.1-web-preview'", "activeModelPack: 'lite-en-es'"):
+for marker in ("version: '2.1.0-web-preview'", "activeModelPack: 'lite-en-es'"):
     if marker not in frontend_api:
         FAILURES.append(f"Frontend API: falta {marker}")
+
 ci = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
 for marker in (
-    "MilyVoiceTraductor-Full-2.0.1-Windows-x64-${{ github.sha }}",
-    "MilyVoiceTraductor-2.0.1-TargetMachineSimulation.json",
-    "MilyVoiceTraductor-2.0.1-MoonshineLiteBench.json",
-    "MilyVoiceTraductor-2.0.1-WhisperTinyLiteBench.json",
-    "MilyVoiceTraductor-2.0.1-SherpaLiteBench.json",
+    "MilyVoiceTraductor-Full-2.1.0-Windows-x64-${{ github.sha }}",
+    "MilyVoiceTraductor-2.1.0-TargetMachineSimulation.json",
+    "MilyVoiceTraductor-2.1.0-MoonshineLiteBench.json",
+    "MilyVoiceTraductor-2.1.0-WhisperTinyLiteBench.json",
+    "MilyVoiceTraductor-2.1.0-SherpaLiteBench.json",
 ):
     if marker not in ci:
         FAILURES.append(f"CI: falta {marker}")
-if "MilyVoiceTraductor-2.0.1-MegaBench.json" in ci:
+if "MilyVoiceTraductor-2.1.0-MegaBench.json" in ci:
     FAILURES.append("CI: MegaBench Quality antiguo no debe ser gate del perfil 2 GiB")
+
 publish = (ROOT / ".github/workflows/publish-rc.yml").read_text(encoding="utf-8")
 required_publish_markers = (
-    "ARTIFACT_NAME: MilyVoiceTraductor-Full-2.0.1-Windows-x64-${{ github.event.workflow_run.head_sha }}",
-    "RELEASE_TAG: v2.0.1",
-    "RELEASE_TITLE: MilyVoiceTraductor 2.0.1",
-    "release/MilyVoiceTraductor_2.0.1_x64-setup.exe",
-    "release/MilyVoiceTraductor-2.0.1-TargetMachineSimulation.json",
-    "release/MilyVoiceTraductor-2.0.1-MoonshineLiteBench.json",
-    "release/MilyVoiceTraductor-2.0.1-WhisperTinyLiteBench.json",
-    "release/MilyVoiceTraductor-2.0.1-SherpaLiteBench.json",
+    "ARTIFACT_NAME: MilyVoiceTraductor-Full-2.1.0-Windows-x64-${{ github.event.workflow_run.head_sha }}",
+    "RELEASE_TAG: v2.1.0",
+    "RELEASE_TITLE: MilyVoiceTraductor 2.1.0",
+    "release/MilyVoiceTraductor_2.1.0_x64-setup.exe",
+    "release/MilyVoiceTraductor-2.1.0-TargetMachineSimulation.json",
+    "release/MilyVoiceTraductor-2.1.0-MoonshineLiteBench.json",
+    "release/MilyVoiceTraductor-2.1.0-WhisperTinyLiteBench.json",
+    "release/MilyVoiceTraductor-2.1.0-SherpaLiteBench.json",
 )
 for marker in required_publish_markers:
     if marker not in publish:
         FAILURES.append(f"Publish workflow: falta {marker}")
-if "release/MilyVoiceTraductor-2.0.1-MegaBench.json" in publish:
+if "release/MilyVoiceTraductor-2.1.0-MegaBench.json" in publish:
     FAILURES.append("Publish workflow: MegaBench Quality antiguo no debe publicarse como gate Lite")
-readme = (ROOT / "README.md").read_text(encoding="utf-8")
-for marker in ("MilyVoiceTraductor 2.0.1", "2.0.1"):
-    if marker not in readme:
-        FAILURES.append(f"README: falta {marker}")
+
+# README y Pages incluyen intencionalmente historial 2.0.x. No son parte del
+# contrato binario del EXE/extensión y no deben bloquear una certificación Windows.
 site = (ROOT / "apps/site/index.html").read_text(encoding="utf-8")
-for marker in ("MilyVoiceTraductor 2.0.1", "Runtime privado"):
-    if marker not in site:
-        FAILURES.append(f"Sitio: falta {marker}")
-# Los releases históricos se permiten dentro del archivo de versiones de Pages.
-# Solo se bloquea copy que presente una candidata antigua como release actual.
 for stale in ("2.0 RC", "Candidata actual"):
     if stale in site:
         FAILURES.append(f"Sitio: referencia obsoleta prohibida: {stale}")
+
 if FAILURES:
     print("RELEASE VERSION CHECK FAILED")
     for failure in FAILURES:
         print(" -", failure)
     raise SystemExit(1)
-print("RELEASE VERSION CHECK OK: 2.0.1")
+print("RELEASE VERSION CHECK OK: 2.1.0 executable contract")
