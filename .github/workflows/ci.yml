@@ -193,6 +193,10 @@ jobs:
       - name: Tauri NSIS bundle
         if: success()
         run: npm run --prefix apps/desktop tauri -- build
+      - name: Verify clean first run does not download models
+        if: success()
+        shell: pwsh
+        run: .\installer\windows\test-first-run-no-model-download.ps1
       - name: Exercise generated NSIS installer
         if: success()
         shell: pwsh
