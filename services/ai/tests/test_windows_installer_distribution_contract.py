@@ -57,6 +57,12 @@ class WindowsInstallerDistributionContractTests(unittest.TestCase):
         self.assertIn("pack.resourceAllowed", models)
         self.assertIn("El modelo se descargará desde la aplicación", bootstrap)
 
+    def test_first_launch_without_model_opens_engine_hub_inside_the_app(self) -> None:
+        app = (ROOT / "apps/desktop/src/App.svelte").read_text(encoding="utf-8")
+        self.assertIn("onboarding.modelState !== 'ready'", app)
+        self.assertIn("activePage = 'models'", app)
+        self.assertIn("onboarding.modelState === 'ready' ? 'live' : 'models'", app)
+
 
 if __name__ == "__main__":
     unittest.main()
