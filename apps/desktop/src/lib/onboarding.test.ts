@@ -19,10 +19,11 @@ function state(overrides: Partial<OnboardingStatus> = {}): OnboardingStatus {
   };
 }
 
-describe('automatic onboarding', () => {
-  it('starts automatically when the model is missing', () => {
-    expect(needsOnboarding(state({ modelState: 'notInstalled', modelPhase: 'idle' }))).toBe(true);
-    expect(onboardingStep(state({ modelState: 'notInstalled', modelPhase: 'idle' }))).toBe('model');
+describe('runtime-first onboarding', () => {
+  it('opens the application when the runtime is ready even if no model is installed', () => {
+    const withoutModel = state({ modelState: 'notInstalled', modelPhase: 'idle' });
+    expect(needsOnboarding(withoutModel)).toBe(false);
+    expect(onboardingStep(withoutModel)).toBe('ready');
   });
 
   it('stays in recovery when the embedded runtime is broken', () => {

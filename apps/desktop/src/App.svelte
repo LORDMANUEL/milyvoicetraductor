@@ -20,6 +20,7 @@
   let activePage: PageId = 'panel';
   let loading = true;
   let error = '';
+  let initialRouteResolved = false;
   let status: AppStatus = { version: '1.0.0-rc.1', engine: 'notInstalled', models: 'notInstalled', installedModels: 0, extensionConnected: false, activeModelPack: null };
   let onboarding: OnboardingStatus = { runtimeReady: false, bridgeReady: false, extensionDetected: false, modelState: 'notInstalled', downloadedBytes: 0, totalBytes: null, bootstrapState: 'unknown', errorCode: null, errorMessage: null };
   let system: SystemSnapshot = { operatingSystem: 'Cargando…', architecture: '', cpuBrand: '', logicalCpus: 0, totalMemoryMb: 0, gpu: null };
@@ -34,6 +35,14 @@
         desktopApi.getAppStatus(), desktopApi.getOnboardingStatus(), desktopApi.getSystemInfo(),
         desktopApi.getCacheStatus(), desktopApi.getConfig()
       ]);
+
+      // Primer arranque: el shell se abre antes de descargar modelos. Si no hay
+      // un pack listo, aterrizamos dentro de Engine Hub para que el usuario vea
+      // únicamente la compatibilidad real de su equipo antes de descargar.
+      if (!initialRouteResolved) {
+        initialRouteResolved = true;
+        if (onboarding.modelState !== 'ready') activePage = 'models';
+      }
     } catch {
       error = 'No se pudo cargar el estado local. Revisa Diagnóstico y reparación.';
     } finally {
@@ -43,7 +52,9 @@
 
   async function finishOnboarding() {
     await load();
-    if (!needsOnboarding(onboarding)) activePage = 'live';
+    if (!needsOnboarding(onboarding)) {
+      activePage = onboarding.modelState === 'ready' ? 'live' : 'models';
+    }
   }
 
   async function saveConfig(value: AppConfig) {
