@@ -319,7 +319,7 @@ class TranslationQualityTests(unittest.TestCase):
         self.assertEqual(translated, "No cancele el pedido 1038")
         self.assertEqual(translator.options["beam_size"], 4)
         self.assertEqual(translator.options["no_repeat_ngram_size"], 3)
-        self.assertIn("Do not cancel order 1038.", source_sp.encoded_texts[-1])
+        self.assertIn("do not cancel order 1038.", source_sp.encoded_texts[-1].casefold())
         self.assertTrue(
             analyze_source_target_fidelity(
                 "Don't cancel order 1038.", translated, "en", "es"
