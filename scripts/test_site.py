@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Prueba estática sin dependencias para la landing pública de GitHub Pages."""
+"""Prueba estática sin dependencias para la landing estable 2.0.2."""
 from pathlib import Path
 import sys
 
@@ -8,8 +8,8 @@ index = ROOT / "apps" / "site" / "index.html"
 styles = ROOT / "apps" / "site" / "styles.css"
 logo = ROOT / "apps" / "site" / "assets" / "logo.svg"
 
-WINDOWS_DOWNLOAD = "https://github.com/LORDMANUEL/milyvoicetraductor/releases/download/v2.0.1/MilyVoiceTraductor_2.0.1_x64-setup.exe"
-CHROMIUM_DOWNLOAD = "https://github.com/LORDMANUEL/milyvoicetraductor/releases/download/v2.0.1/MilyVoiceTraductor-Chromium-Extension.zip"
+WINDOWS_DOWNLOAD = "https://github.com/LORDMANUEL/milyvoicetraductor/releases/download/v2.0.2/MilyVoiceTraductor_2.0.2_x64-setup.exe"
+CHROMIUM_DOWNLOAD = "https://github.com/LORDMANUEL/milyvoicetraductor/releases/download/v2.0.2/MilyVoiceTraductor-Chromium-Extension.zip"
 
 errors: list[str] = []
 if not index.exists():
@@ -17,14 +17,16 @@ if not index.exists():
 else:
     html = index.read_text(encoding="utf-8")
     for required in [
-        "MilyVoiceTraductor 2.0.1",
+        "MilyVoiceTraductor 2.0.2",
+        "2.0.2 ESTABLE",
         'id="privacidad"',
         'id="compute"',
         'id="estado"',
         "Sin telemetría",
         "MilyCompute",
         "MegaBench",
-        "2.0.1 · Runtime privado",
+        "2.0.2 · Runtime privado",
+        "Gestor de modelos",
         WINDOWS_DOWNLOAD,
         CHROMIUM_DOWNLOAD,
     ]:
@@ -37,6 +39,7 @@ else:
         "permanece RC",
         "releases/download/v2.0.0/",
         "2.0.0 · Runtime privado",
+        "Descargar Windows 2.0.1",
     ]:
         if stale in html:
             errors.append(f"Contenido obsoleto prohibido: {stale}")
@@ -55,4 +58,4 @@ if errors:
     for error in errors:
         print(f"- {error}")
     sys.exit(1)
-print("SITE CHECK OK: MilyVoice 2.0.1, MilyCompute, MegaBench, privacidad y descargas presentes.")
+print("SITE CHECK OK: MilyVoice 2.0.2 estable, primer arranque, MilyCompute, MegaBench, privacidad y descargas presentes.")

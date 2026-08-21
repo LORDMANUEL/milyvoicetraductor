@@ -193,6 +193,10 @@ jobs:
       - name: Tauri NSIS bundle
         if: success()
         run: npm run --prefix apps/desktop tauri -- build
+      - name: Verify failed bootstrap makes NSIS fail
+        if: success()
+        shell: pwsh
+        run: .\installer\windows\test-nsis-bootstrap-failure.ps1
       - name: Verify clean first run does not download models
         if: success()
         shell: pwsh
@@ -212,7 +216,7 @@ jobs:
           $installer = Get-ChildItem "target/release/bundle/nsis/*-setup.exe" | Select-Object -First 1
           if (-not $installer) { throw "No se encontró el instalador NSIS generado." }
           $extension = Get-Item "dist/MilyVoiceTraductor-Chromium-Extension.zip"
-          $megaBench = Get-Item "dist/performance/MilyVoiceTraductor-2.0.1-MegaBench.json"
+          $megaBench = Get-Item "dist/performance/MilyVoiceTraductor-2.0.2-MegaBench.json"
           Copy-Item $installer.FullName "dist/release/$($installer.Name)"
           Copy-Item $extension.FullName "dist/release/$($extension.Name)"
           Copy-Item $megaBench.FullName "dist/release/$($megaBench.Name)"
@@ -225,7 +229,7 @@ jobs:
         if: success()
         uses: actions/upload-artifact@v6
         with:
-          name: MilyVoiceTraductor-Full-2.0.1-Windows-x64-${{ github.sha }}
+          name: MilyVoiceTraductor-Full-2.0.2-Windows-x64-${{ github.sha }}
           path: dist/release/*
           retention-days: 30
           compression-level: 0

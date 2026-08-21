@@ -20,7 +20,7 @@
   let loading = true;
   let error = '';
   let initialRouteResolved = false;
-  let status: AppStatus = { version: '1.0.0-rc.1', engine: 'notInstalled', models: 'notInstalled', installedModels: 0, extensionConnected: false, activeModelPack: null };
+  let status: AppStatus = { version: '2.0.2', engine: 'notInstalled', models: 'notInstalled', installedModels: 0, extensionConnected: false, activeModelPack: null };
   let onboarding: OnboardingStatus = { runtimeReady: false, bridgeReady: false, extensionDetected: false, modelState: 'notInstalled', downloadedBytes: 0, totalBytes: null, bootstrapState: 'unknown', errorCode: null, errorMessage: null };
   let system: SystemSnapshot = { operatingSystem: 'Cargando…', architecture: '', cpuBrand: '', logicalCpus: 0, totalMemoryMb: 0, gpu: null };
   let cache: CacheStatus = { bytes: 0, entries: 0, maxBytes: 256 * 1024 * 1024 };
