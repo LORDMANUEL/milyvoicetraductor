@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - hardening/complete-2.1-runtime-reproducibility
+  pull_request:
+    branches:
+      - main
 
 permissions:
   contents: read
