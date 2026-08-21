@@ -12,18 +12,27 @@ class StableModelManagerContractTests(unittest.TestCase):
     def setUp(self) -> None:
         self.source = MODELS_PAGE.read_text(encoding="utf-8")
 
-    def test_install_button_is_disabled_while_any_model_operation_is_running(self) -> None:
+    def _function_block(self, function_name: str) -> str:
+        start = self.source.index(f"async function {function_name}")
+        next_function = self.source.find("\n  async function ", start + 1)
+        return self.source[start : next_function if next_function != -1 else len(self.source)]
+
+    def test_install_button_serializes_operations_but_allows_repair_of_active_corrupt_pack(self) -> None:
         self.assertIn(
-            "disabled={pack.active || Boolean(busy)}",
+            "disabled={Boolean(busy) || (pack.active && lastFailedPack !== pack.id)}",
             self.source,
-            "Otra instalación no debe poder arrancar mientras verify/remove/rollback/install está en curso.",
+            "Una operación debe bloquear las demás, pero un pack activo que falló SHA debe poder reinstalarse.",
         )
+
+    def test_verify_failure_marks_pack_as_repairable_hash_mismatch(self) -> None:
+        block = self._function_block("verify")
+        self.assertIn("lastErrorCode = 'MODEL_HASH_MISMATCH';", block)
+        self.assertIn("lastFailedPack = pack.id;", block)
+        self.assertIn("if (ok)", block)
 
     def test_every_operation_clears_previous_public_error_before_starting(self) -> None:
         for function_name in ("install", "verify", "remove", "rollback"):
-            start = self.source.index(f"async function {function_name}")
-            next_function = self.source.find("\n  async function ", start + 1)
-            block = self.source[start : next_function if next_function != -1 else len(self.source)]
+            block = self._function_block(function_name)
             self.assertIn(
                 "lastErrorCode = '';",
                 block,
