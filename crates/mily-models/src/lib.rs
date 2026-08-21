@@ -71,6 +71,7 @@ fn valid_public_model_code(code: &str) -> bool {
             | "MODEL_PERMISSION_ERROR"
             | "MODEL_CONVERSION_ERROR"
             | "MODEL_LICENSE_BLOCKED"
+            | "MODEL_OPERATION_BUSY"
     )
 }
 
