@@ -5,11 +5,13 @@ from __future__ import annotations
 import errno
 import hashlib
 import json
+import os
 import shutil
 import socket
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterator
 
 
 @dataclass(slots=True)
@@ -21,6 +23,59 @@ class ModelOperationError(RuntimeError):
 
     def __str__(self) -> str:
         return self.message
+
+
+@contextmanager
+def _model_operation_lock(models_dir: Path) -> Iterator[None]:
+    """Exclusión mutua no bloqueante entre Desktop, API y procesos CLI.
+
+    El lock vive fuera de los packs para no contaminar manifests. El SO libera
+    automáticamente el bloqueo si el proceso termina inesperadamente.
+    """
+
+    root = Path(models_dir)
+    root.mkdir(parents=True, exist_ok=True)
+    lock_path = root / ".operation.lock"
+    handle = lock_path.open("a+b")
+    try:
+        handle.seek(0, os.SEEK_END)
+        if handle.tell() == 0:
+            handle.write(b"\0")
+            handle.flush()
+        handle.seek(0)
+
+        busy = ModelOperationError(
+            "MODEL_OPERATION_BUSY",
+            "Otra operación de modelos ya está en curso. Espera a que termine y vuelve a intentarlo.",
+        )
+
+        if os.name == "nt":
+            import msvcrt
+
+            try:
+                msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+            except OSError as exc:
+                if getattr(exc, "errno", None) in (errno.EACCES, errno.EAGAIN, 13):
+                    raise busy from exc
+                raise
+            try:
+                yield
+            finally:
+                handle.seek(0)
+                msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+        else:
+            import fcntl
+
+            try:
+                fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except (BlockingIOError, PermissionError) as exc:
+                raise busy from exc
+            try:
+                yield
+            finally:
+                fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+    finally:
+        handle.close()
 
 
 def classify_model_exception(exc: BaseException) -> ModelOperationError:
