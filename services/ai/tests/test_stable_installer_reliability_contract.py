@@ -37,6 +37,18 @@ class StableInstallerReliabilityContractTests(unittest.TestCase):
             self.assertIn("runtimeImportFailures", text)
             self.assertIn("milyvoice_missing_fixture", text)
 
+    def test_ci_must_execute_a_real_nsis_bootstrap_failure_path(self) -> None:
+        fixture = ROOT / "installer/windows/test-nsis-bootstrap-failure.ps1"
+        self.assertTrue(fixture.is_file(), "Falta prueba real de NSIS cuando bootstrap falla.")
+        ci = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+        self.assertIn("Verify failed bootstrap makes NSIS fail", ci)
+        self.assertIn("test-nsis-bootstrap-failure.ps1", ci)
+        if fixture.is_file():
+            text = fixture.read_text(encoding="utf-8")
+            self.assertIn("LOCALAPPDATA", text)
+            self.assertIn("ExitCode", text)
+            self.assertIn("devolvió éxito", text)
+
 
 if __name__ == "__main__":
     unittest.main()
