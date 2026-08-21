@@ -14,12 +14,17 @@
   let lastFailedPack = '';
 
   async function load() {
-    const [catalog, hardware] = await Promise.all([
-      desktopApi.getModelCatalog(),
-      desktopApi.getHardwareAdvisor()
-    ]);
-    packs = catalog;
-    advisor = hardware;
+    try {
+      const [catalog, hardware] = await Promise.all([
+        desktopApi.getModelCatalog(),
+        desktopApi.getHardwareAdvisor()
+      ]);
+      packs = catalog;
+      advisor = hardware;
+    } catch (error) {
+      lastErrorCode = modelErrorCode(error);
+      message = modelErrorMessage(error);
+    }
   }
 
   async function install(pack: ModelPackInfo) {
@@ -43,6 +48,7 @@
 
   async function verify(pack: ModelPackInfo) {
     busy = `verify:${pack.id}`;
+    lastErrorCode = '';
     message = 'Verificando integridad SHA-256 del pack local…';
     try {
       const ok = await desktopApi.verifyModel(pack.id, pack.version);
@@ -60,6 +66,7 @@
   async function remove(pack: ModelPackInfo) {
     if (pack.active) return;
     busy = `remove:${pack.id}`;
+    lastErrorCode = '';
     message = 'Eliminando pack local…';
     try {
       await desktopApi.removeModel(pack.id, pack.version);
@@ -76,6 +83,7 @@
 
   async function rollback() {
     busy = 'rollback';
+    lastErrorCode = '';
     try {
       await desktopApi.rollbackModel();
       message = 'Se restauró el pack anterior.';
@@ -157,7 +165,7 @@
           <span>{pack.commercialUse ? 'Perfil permisivo/comercial' : 'Uso no comercial según modelo'}</span>
         </div>
         <div class="button-row">
-          <button class="primary" onclick={() => install(pack)} disabled={pack.active || busy === pack.id}>
+          <button class="primary" onclick={() => install(pack)} disabled={pack.active || Boolean(busy)}>
             {busy === pack.id
               ? 'Preparando…'
               : pack.active
