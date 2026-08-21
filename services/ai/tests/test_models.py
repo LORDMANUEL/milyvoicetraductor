@@ -121,6 +121,26 @@ class ModelManagerTests(unittest.TestCase):
             self.assertEqual(restored.id, "business-qwen")
             self.assertTrue(restored.active)
 
+    def test_rollback_rejects_corrupted_previous_pack_and_keeps_current_active(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            catalog = ModelCatalog(Path(tmp) / "models")
+            installer = HuggingFacePackInstaller(catalog)
+            fake_hub = types.SimpleNamespace(snapshot_download=self.fake_snapshot)
+            with patch.dict(sys.modules, {"huggingface_hub": fake_hub}):
+                previous = installer.install("business-qwen")
+                current = installer.install("lite-nllb")
+
+            corrupted = previous.path / "components" / "asr" / "config.json"
+            corrupted.write_text("corrupt", encoding="utf-8")
+            self.assertFalse(installer.verify(previous.id, previous.version))
+            self.assertEqual(catalog.active_pack().id, current.id)
+
+            with self.assertRaises(ModelOperationError) as caught:
+                installer.rollback()
+
+            self.assertEqual(caught.exception.code, "MODEL_HASH_MISMATCH")
+            self.assertEqual(catalog.active_pack().id, current.id)
+
     def test_disk_full_has_specific_public_code(self):
         error = classify_model_exception(OSError(errno.ENOSPC, "disk full"))
         self.assertEqual(error.code, "MODEL_NO_SPACE")
