@@ -20,7 +20,7 @@ function state(overrides: Partial<OnboardingStatus> = {}): OnboardingStatus {
 }
 
 describe('automatic onboarding', () => {
-  it('opens the application when runtime is ready even if no model is installed', () => {
+  it('opens the application when runtime and bridge are ready even if no model is installed', () => {
     const modelPending = state({ modelState: 'notInstalled', modelPhase: 'idle' });
     expect(needsOnboarding(modelPending)).toBe(false);
     expect(onboardingStep(modelPending)).toBe('ready');
@@ -32,7 +32,13 @@ describe('automatic onboarding', () => {
     expect(onboardingStep(broken)).toBe('runtime');
   });
 
-  it('does not block the application after the runtime is ready', () => {
+  it('stays in recovery when the Native Messaging bridge is missing', () => {
+    const brokenBridge = state({ bridgeReady: false });
+    expect(needsOnboarding(brokenBridge)).toBe(true);
+    expect(onboardingStep(brokenBridge)).toBe('runtime');
+  });
+
+  it('does not block the application only because the browser extension is not detected', () => {
     expect(needsOnboarding(state({ extensionDetected: false }))).toBe(false);
     expect(onboardingStep(state({ extensionDetected: false }))).toBe('ready');
   });
