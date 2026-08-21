@@ -9,6 +9,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
 EXPECTED = "2.0.2"
+RUST_TOOLCHAIN = "1.98.0"
 
 
 class StableRelease202ContractTests(unittest.TestCase):
@@ -58,6 +59,14 @@ class StableRelease202ContractTests(unittest.TestCase):
         self.assertIn("MilyVoiceTraductor {version}", about)
         self.assertIn("Native Messaging", help_page)
         self.assertIn("sin copiar tokens", help_page)
+
+    def test_release_ci_pins_the_rust_toolchain_on_linux_and_windows(self) -> None:
+        ci = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+        self.assertGreaterEqual(
+            ci.count(f'toolchain: "{RUST_TOOLCHAIN}"'),
+            2,
+            "Rust debe quedar fijado tanto en Linux como en Windows para evitar que stable cambie el candidato.",
+        )
 
     def test_release_artifacts_and_docs_are_2_0_2(self) -> None:
         ci = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
