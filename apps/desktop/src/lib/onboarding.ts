@@ -3,15 +3,16 @@ import type { OnboardingStatus } from '../types';
 export type OnboardingStep = 'runtime' | 'model' | 'ready';
 
 /**
- * El onboarding bloquea únicamente si el runtime privado no está listo o si
- * el bootstrap falló. Los modelos se administran después, dentro de Model Manager.
+ * El onboarding bloquea únicamente cuando falta infraestructura incluida por
+ * el instalador: runtime/bridge o bootstrap válido. Los modelos y la extensión
+ * del navegador se administran después y nunca bloquean el shell principal.
  */
 export function needsOnboarding(status: OnboardingStatus): boolean {
-  return !status.runtimeReady || status.bootstrapState === 'failed';
+  return !status.runtimeReady || !status.bridgeReady || status.bootstrapState === 'failed';
 }
 
 export function onboardingStep(status: OnboardingStatus): OnboardingStep {
-  if (!status.runtimeReady || status.bootstrapState === 'failed') return 'runtime';
+  if (!status.runtimeReady || !status.bridgeReady || status.bootstrapState === 'failed') return 'runtime';
   return 'ready';
 }
 
