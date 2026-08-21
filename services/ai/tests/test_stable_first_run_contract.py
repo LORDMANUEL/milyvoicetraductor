@@ -18,6 +18,13 @@ class StableFirstRunContractTests(unittest.TestCase):
         self.assertIn("onboarding.modelState !== 'ready'", app)
         self.assertIn("activePage = 'models'", app)
 
+    def test_bridge_readiness_requires_binary_and_native_manifest(self) -> None:
+        commands = (ROOT / "apps/desktop/src-tauri/src/commands/mod.rs").read_text(encoding="utf-8")
+        self.assertIn('let bridge_root = state.paths.data_dir.join("bridge");', commands)
+        self.assertIn('bridge_root.join(bridge_name).is_file()', commands)
+        self.assertIn('bridge_root.join("com.milyvoice.traductor.json").is_file()', commands)
+        self.assertIn('bridge_binary_ready && native_manifest_ready', commands)
+
     def test_real_nsis_verifies_first_launch_without_implicit_model_download(self) -> None:
         nsis_test = (ROOT / "installer/windows/test-first-run-no-model-download.ps1").read_text(encoding="utf-8")
         ci = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
