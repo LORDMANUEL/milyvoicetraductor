@@ -44,6 +44,21 @@ class StableRelease202ContractTests(unittest.TestCase):
         self.assertNotIn("version: '1.0.0-rc.1'", app)
         self.assertIn(f"version: '{EXPECTED}'", app)
 
+    def test_desktop_surfaces_do_not_expose_stale_release_or_manual_pairing(self) -> None:
+        live = (ROOT / "apps/desktop/src/pages/LiveTranslation.svelte").read_text(encoding="utf-8")
+        about = (ROOT / "apps/desktop/src/pages/About.svelte").read_text(encoding="utf-8")
+        help_page = (ROOT / "apps/desktop/src/pages/Help.svelte").read_text(encoding="utf-8")
+
+        for path, source in (("LiveTranslation", live), ("About", about), ("Help", help_page)):
+            self.assertNotIn("1.0.5", source, f"{path} todavía muestra una versión histórica dentro del EXE 2.0.2")
+            self.assertNotIn("pega el token", source.lower(), f"{path} todavía instruye emparejamiento manual obsoleto")
+            self.assertNotIn("configura el puerto", source.lower(), f"{path} todavía instruye configuración manual de puerto")
+
+        self.assertIn("appStatus?.version", live)
+        self.assertIn("MilyVoiceTraductor {version}", about)
+        self.assertIn("Native Messaging", help_page)
+        self.assertIn("sin copiar tokens", help_page)
+
     def test_release_artifacts_and_docs_are_2_0_2(self) -> None:
         ci = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
         self.assertIn("MilyVoiceTraductor-Full-2.0.2-Windows-x64-${{ github.sha }}", ci)
