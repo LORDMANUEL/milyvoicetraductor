@@ -9,6 +9,10 @@ permissions:
   actions: read
   contents: write
 
+concurrency:
+  group: publish-stable-v2.0.2
+  cancel-in-progress: false
+
 jobs:
   publish:
     name: Publish verified 2.0.2 stable downloads
@@ -44,19 +48,36 @@ jobs:
           test -f release/MilyVoiceTraductor-Chromium-Extension.zip
           test -f release/MilyVoiceTraductor-2.0.2-MegaBench.json
           test -f release/SHA256SUMS.txt
+          test "$(find release -maxdepth 1 -type f | wc -l)" -eq 4
           cd release
           sha256sum -c SHA256SUMS.txt
 
-      - name: Create or update the public stable 2.0.2 release
+      - name: Create once or verify immutable stable 2.0.2 release
         shell: bash
         run: |
           set -euo pipefail
           if gh release view "$RELEASE_TAG" --repo "$REPOSITORY" >/dev/null 2>&1; then
-            gh release edit "$RELEASE_TAG" --repo "$REPOSITORY" \
-              --title "$RELEASE_TITLE" \
-              --notes-file docs/release/RELEASE_NOTES_2.0.2.md \
-              --latest
-            gh release upload "$RELEASE_TAG" release/* --repo "$REPOSITORY" --clobber
+            existing_target="$(gh release view "$RELEASE_TAG" --repo "$REPOSITORY" --json targetCommitish --jq '.targetCommitish')"
+            test "$existing_target" = "$VERIFIED_SHA"
+
+            release_state="$(gh release view "$RELEASE_TAG" --repo "$REPOSITORY" --json isDraft,isPrerelease --jq '[.isDraft,.isPrerelease] | @tsv')"
+            test "$release_state" = $'false\tfalse'
+
+            rm -rf existing-release
+            mkdir -p existing-release
+            gh release download "$RELEASE_TAG" --repo "$REPOSITORY" --dir existing-release
+
+            test -f existing-release/MilyVoiceTraductor_2.0.2_x64-setup.exe
+            test -f existing-release/MilyVoiceTraductor-Chromium-Extension.zip
+            test -f existing-release/MilyVoiceTraductor-2.0.2-MegaBench.json
+            test -f existing-release/SHA256SUMS.txt
+            test "$(find existing-release -maxdepth 1 -type f | wc -l)" -eq 4
+            (
+              cd existing-release
+              sha256sum -c SHA256SUMS.txt
+            )
+            cmp release/SHA256SUMS.txt existing-release/SHA256SUMS.txt
+            echo "v2.0.2 ya existe y coincide exactamente con el SHA/artefacto verificado; no se modifica."
           else
             gh release create "$RELEASE_TAG" release/* --repo "$REPOSITORY" \
               --target "$VERIFIED_SHA" \
@@ -65,7 +86,7 @@ jobs:
               --latest
           fi
 
-      - name: Confirm stable release assets
+      - name: Confirm stable release assets and target
         shell: bash
         run: |
           set -euo pipefail
@@ -74,4 +95,7 @@ jobs:
           grep -Fxq 'MilyVoiceTraductor-Chromium-Extension.zip' <<<"$assets"
           grep -Fxq 'MilyVoiceTraductor-2.0.2-MegaBench.json' <<<"$assets"
           grep -Fxq 'SHA256SUMS.txt' <<<"$assets"
-          gh release view "$RELEASE_TAG" --repo "$REPOSITORY" --json url,isPrerelease --jq '{url:.url,isPrerelease:.isPrerelease}'
+          meta="$(gh release view "$RELEASE_TAG" --repo "$REPOSITORY" --json url,isPrerelease,targetCommitish --jq '{url:.url,isPrerelease:.isPrerelease,targetCommitish:.targetCommitish}')"
+          grep -Fq "\"targetCommitish\":\"$VERIFIED_SHA\"" <<<"$meta"
+          grep -Fq '"isPrerelease":false' <<<"$meta"
+          echo "$meta"
