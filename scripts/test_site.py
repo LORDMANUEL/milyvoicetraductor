@@ -8,13 +8,23 @@ index = ROOT / "apps" / "site" / "index.html"
 styles = ROOT / "apps" / "site" / "styles.css"
 logo = ROOT / "apps" / "site" / "assets" / "logo.svg"
 history = ROOT / "docs" / "release" / "VERSION_HISTORY.md"
+release_notes = ROOT / "docs" / "release" / "RELEASE_NOTES_2.0.2.md"
 
-STABLE_VERSION = "2.0.1"
+STABLE_VERSION = "2.0.2"
 BETA_VERSION = "2.1.0"
 STABLE_INSTALLER = (
     "https://github.com/LORDMANUEL/milyvoicetraductor/releases/download/"
-    "v2.0.1/MilyVoiceTraductor_2.0.1_x64-setup.exe"
+    "v2.0.2/MilyVoiceTraductor_2.0.2_x64-setup.exe"
 )
+STABLE_EXTENSION = (
+    "https://github.com/LORDMANUEL/milyvoicetraductor/releases/download/"
+    "v2.0.2/MilyVoiceTraductor-Chromium-Extension.zip"
+)
+STABLE_MEGABENCH = (
+    "https://github.com/LORDMANUEL/milyvoicetraductor/releases/download/"
+    "v2.0.2/MilyVoiceTraductor-2.0.2-MegaBench.json"
+)
+STABLE_RELEASE = "https://github.com/LORDMANUEL/milyvoicetraductor/releases/tag/v2.0.2"
 BETA_INSTALLER = (
     "https://github.com/LORDMANUEL/milyvoicetraductor/releases/download/"
     "v2.1.0/MilyVoiceTraductor_2.1.0_x64-setup.exe"
@@ -25,6 +35,7 @@ BETA_EXTENSION = (
 )
 BETA_RELEASE = "https://github.com/LORDMANUEL/milyvoicetraductor/releases/tag/v2.1.0"
 HISTORICAL_DOWNLOADS = [
+    "https://github.com/LORDMANUEL/milyvoicetraductor/releases/download/v2.0.1/MilyVoiceTraductor_2.0.1_x64-setup.exe",
     "https://github.com/LORDMANUEL/milyvoicetraductor/releases/download/v2.0.0/MilyVoiceTraductor_2.0.0_x64-setup.exe",
     "https://github.com/LORDMANUEL/milyvoicetraductor/releases/download/v1.0.5/MilyVoiceTraductor_1.0.5_x64-setup.exe",
     "https://github.com/LORDMANUEL/milyvoicetraductor/releases/download/v1.0.0-rc.1/MilyVoiceTraductor_1.0.0-rc.1_x64-setup.exe",
@@ -36,10 +47,11 @@ if not index.exists():
 else:
     html = index.read_text(encoding="utf-8")
     required_content = [
-        "2.0.1 ESTABLE",
+        "2.0.2 ESTABLE",
         "2.1.0 BETA",
-        "MilyVoiceTraductor 2.0.1",
+        "MilyVoiceTraductor 2.0.2",
         "MilyVoiceTraductor 2.1.0 Beta",
+        "MilyVoiceTraductor 2.0.1",
         'id="privacidad"',
         'id="compute"',
         'id="beta"',
@@ -56,7 +68,11 @@ else:
         "MilyVoiceTraductor 2.0.0",
         "MilyVoiceTraductor 1.0.5",
         "MilyVoiceTraductor 1.0.0 RC1",
+        "Los modelos no se descargan durante la instalación",
         STABLE_INSTALLER,
+        STABLE_EXTENSION,
+        STABLE_MEGABENCH,
+        STABLE_RELEASE,
         BETA_INSTALLER,
         BETA_EXTENSION,
         BETA_RELEASE,
@@ -68,6 +84,9 @@ else:
             errors.append(f"Falta contenido requerido: {required}")
 
     for stale in [
+        "2.0.1 ESTABLE",
+        "Descargar estable 2.0.1",
+        "La versión recomendada sigue siendo 2.0.1",
         "2.1.0 ESTABLE",
         "Descargar estable 2.1.0",
         "La versión estable recomendada es v2.1.0",
@@ -84,15 +103,18 @@ else:
         if forbidden in lowered:
             errors.append(f"Tracker externo prohibido: {forbidden}")
 
-for asset in [styles, logo, history]:
+for asset in [styles, logo, history, release_notes]:
     if not asset.exists():
         errors.append(f"Falta asset/registro: {asset.relative_to(ROOT)}")
 
 if history.exists():
     registry = history.read_text(encoding="utf-8")
     for required in [
-        "v2.0.1",
+        "v2.0.2",
         "Estable actual",
+        "cfd3946644c41242e6345c2c593f4edb7a1047b4",
+        "83a68fb38389b34ec37de7407c5b014097991e0a",
+        "v2.0.1",
         "v2.1.0",
         "Beta pública",
         "v2.0.0",
@@ -111,5 +133,5 @@ if errors:
         print("-", error)
     sys.exit(1)
 print(
-    "SITE CHECK OK: 2.0.1 estable, 2.1.0 beta, historial y referencias de I+D presentes."
+    "SITE CHECK OK: 2.0.2 estable, 2.1.0 beta, historial y referencias de I+D presentes."
 )
