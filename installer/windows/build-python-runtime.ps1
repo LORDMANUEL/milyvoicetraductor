@@ -16,9 +16,7 @@ $RuntimeHash = "$RuntimeZip.sha256"
 $DownloadUrl = "https://www.python.org/ftp/python/$PythonVersion/python-$PythonVersion-embeddable-amd64.zip"
 
 # CTranslate2 y otros wheels nativos de Windows dependen del Visual C++ Runtime.
-# El runner de GitHub lo tiene instalado, pero una PC limpia puede no tenerlo.
-# Para que el runtime sea realmente privado/autónomo, copiamos el CRT al lado de
-# python.exe (app-local deployment) en vez de depender del estado del sistema.
+# Para que el runtime sea privado/autónomo, copiamos el CRT al lado de python.exe.
 $RequiredAppLocalVisualCppDlls = @(
     'concrt140.dll',
     'msvcp140.dll',
@@ -32,10 +30,6 @@ $OptionalAppLocalVisualCppDlls = @(
     'msvcp140_codecvt_ids.dll'
 )
 
-# Contrato único del runtime. El bootstrap del usuario solo bloquea la instalación
-# si falla el núcleo necesario para arrancar y traducir. Los motores Quality y
-# adapters alternativos se empaquetan y se prueban en build, pero una DLL opcional
-# incompatible en una PC concreta no debe impedir abrir MilyVoice con fallback.
 $RequiredRuntimeModules = @(
     'fastapi',
     'uvicorn',
@@ -79,8 +73,8 @@ if (-not $pth) { throw 'El paquete embebido no contiene archivo _pth.' }
     'import site'
 ) | Set-Content -Path $pth.FullName -Encoding ascii
 
-# Las dependencias se resuelven en el runner de build. En el equipo del usuario
-# no se ejecuta pip ni se consulta Internet para preparar el runtime.
+# requirements.runtime.txt contiene solo versiones exactas. No se usa --upgrade:
+# una reconstrucción debe reproducir el conjunto validado, no resolver rangos nuevos.
 python -m pip install --disable-pip-version-check --no-input --target $sitePackages -r (Join-Path $Root 'services\ai\requirements.runtime.txt')
 if ($LASTEXITCODE -ne 0) { throw 'No se pudieron preparar las dependencias del runtime privado.' }
 
@@ -114,8 +108,30 @@ foreach ($module in @($RequiredRuntimeModules + $OptionalRuntimeModules)) {
     }
 }
 
+# Registrar el inventario efectivo, no solo el requirements de entrada. Esto deja
+# evidencia exacta de todas las dependencias transitivas incluidas en el ZIP.
+$inventoryProbe = @'
+import importlib.metadata
+import json
+packages = []
+for dist in importlib.metadata.distributions():
+    name = dist.metadata.get("Name")
+    if name:
+        packages.append({"Name": name, "Version": dist.version})
+packages.sort(key=lambda item: (item["Name"].lower(), item["Version"]))
+print(json.dumps(packages, separators=(",", ":")))
+'@
+$inventoryJson = & $embeddedPython -c $inventoryProbe
+if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($inventoryJson)) {
+    throw 'No se pudo inventariar el conjunto exacto de paquetes del runtime privado.'
+}
+$installedPackages = @($inventoryJson | ConvertFrom-Json)
+if ($installedPackages.Count -lt 10) {
+    throw "Inventario de paquetes incompleto: $($installedPackages.Count) entradas."
+}
+
 $metadata = [ordered]@{
-    schemaVersion = 3
+    schemaVersion = 4
     pythonVersion = $PythonVersion
     source = $DownloadUrl
     sourceSha256 = $ExpectedSha256.ToLowerInvariant()
@@ -124,6 +140,7 @@ $metadata = [ordered]@{
     windowsLoopback = 'PyAudioWPatch-0.2.12.8'
     requiredModules = $RequiredRuntimeModules
     optionalModules = $OptionalRuntimeModules
+    installedPackages = $installedPackages
     appLocalVisualCppRuntime = $appLocalVisualCppRuntime
     engineHubRuntimes = @(
         'faster-whisper',
@@ -135,7 +152,7 @@ $metadata = [ordered]@{
         'google-cloud-speech'
     )
 }
-$metadata | ConvertTo-Json -Depth 5 | Set-Content (Join-Path $Stage 'runtime-manifest.json') -Encoding UTF8
+$metadata | ConvertTo-Json -Depth 6 | Set-Content (Join-Path $Stage 'runtime-manifest.json') -Encoding UTF8
 
 Remove-Item $RuntimeZip,$RuntimeHash -Force -ErrorAction SilentlyContinue
 Compress-Archive -Path (Join-Path $Stage '*') -DestinationPath $RuntimeZip -CompressionLevel Optimal
