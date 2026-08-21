@@ -41,6 +41,26 @@ class ModelManagerTests(unittest.TestCase):
             )
             self.assertFalse(installer.verify(pack.id, pack.version))
 
+    def test_reinstall_repairs_an_installed_pack_with_corrupted_files(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            catalog = ModelCatalog(Path(tmp) / "models")
+            installer = HuggingFacePackInstaller(catalog)
+            fake_hub = types.SimpleNamespace(snapshot_download=self.fake_snapshot)
+            with patch.dict(sys.modules, {"huggingface_hub": fake_hub}):
+                installed = installer.install("business-qwen")
+                corrupted = installed.path / "components" / "asr" / "config.json"
+                corrupted.write_text("corrupt", encoding="utf-8")
+                self.assertFalse(installer.verify(installed.id, installed.version))
+
+                repaired = installer.install("business-qwen")
+
+            self.assertTrue(repaired.active)
+            self.assertTrue(installer.verify(repaired.id, repaired.version))
+            self.assertNotEqual(corrupted.read_text(encoding="utf-8"), "corrupt")
+            self.assertFalse(
+                (catalog.models_dir / ".staging" / "business-qwen-1.0.0").exists()
+            )
+
     def test_install_reports_download_optimize_verify_and_ready_phases(self):
         with tempfile.TemporaryDirectory() as tmp:
             catalog = ModelCatalog(Path(tmp) / "models")
