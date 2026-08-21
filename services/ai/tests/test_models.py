@@ -7,9 +7,11 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+import mily_ai.models as models_module
 from mily_ai.models import (
     HuggingFacePackInstaller,
     ModelCatalog,
+    ModelOperationError,
     classify_model_exception,
 )
 
@@ -60,6 +62,20 @@ class ModelManagerTests(unittest.TestCase):
             self.assertFalse(
                 (catalog.models_dir / ".staging" / "business-qwen-1.0.0").exists()
             )
+
+    def test_model_mutations_use_a_nonblocking_cross_process_lock(self):
+        self.assertTrue(
+            hasattr(models_module, "_model_operation_lock"),
+            "Las mutaciones de modelos necesitan un lock de archivo compartido entre Desktop/API/CLI.",
+        )
+        lock = getattr(models_module, "_model_operation_lock")
+        with tempfile.TemporaryDirectory() as tmp:
+            models_dir = Path(tmp) / "models"
+            with lock(models_dir):
+                with self.assertRaises(ModelOperationError) as caught:
+                    with lock(models_dir):
+                        pass
+        self.assertEqual(caught.exception.code, "MODEL_OPERATION_BUSY")
 
     def test_install_reports_download_optimize_verify_and_ready_phases(self):
         with tempfile.TemporaryDirectory() as tmp:
