@@ -314,23 +314,31 @@ class HuggingFacePackInstaller:
                     message="Verificando el modelo ya descargado.",
                     pack_id=pack_id,
                 )
-                if not self.verify(pack_id, version):
-                    raise ModelOperationError(
-                        "MODEL_HASH_MISMATCH",
-                        "El modelo instalado no pasó la verificación de integridad.",
+                if self.verify(pack_id, version):
+                    self.activate(pack_id, version)
+                    self.catalog.write_operation(
+                        state="ready",
+                        phase="ready",
+                        message="Modelo de tiempo real listo.",
+                        pack_id=pack_id,
                     )
-                self.activate(pack_id, version)
+                    return next(
+                        item
+                        for item in self.catalog.installed()
+                        if item.id == pack_id and item.version == version
+                    )
+
+                # Un pack instalado con hashes inválidos no es reutilizable. Se elimina
+                # antes de redescargar para evitar conservar pesos corruptos y duplicar
+                # cientos de MB durante la reparación. El staging también se reinicia.
                 self.catalog.write_operation(
-                    state="ready",
-                    phase="ready",
-                    message="Modelo de tiempo real listo.",
+                    state="installing",
+                    phase="repair",
+                    message="El modelo local está dañado. Se volverá a descargar y verificar.",
                     pack_id=pack_id,
                 )
-                return next(
-                    item
-                    for item in self.catalog.installed()
-                    if item.id == pack_id and item.version == version
-                )
+                shutil.rmtree(final_dir)
+                shutil.rmtree(staging, ignore_errors=True)
 
             staging.mkdir(parents=True, exist_ok=True)
             for component_name, component in definition["components"].items():
