@@ -8,6 +8,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[3]
 REQUIREMENTS = ROOT / "services/ai/requirements.runtime.txt"
 BUILDER = ROOT / "installer/windows/build-python-runtime.ps1"
+CI = ROOT / ".github/workflows/ci.yml"
+FRONTEND_LOCK = ROOT / "apps/desktop/package-lock.json"
 
 
 class RuntimeReproducibilityContractTests(unittest.TestCase):
@@ -38,6 +40,31 @@ class RuntimeReproducibilityContractTests(unittest.TestCase):
     def test_runtime_build_never_upgrades_dependencies_implicitly(self) -> None:
         source = BUILDER.read_text(encoding="utf-8")
         self.assertNotRegex(source, re.compile(r"pip install[^\n]*(?:--upgrade|-U)(?:\s|$)", re.IGNORECASE))
+
+    def test_frontend_dependency_graph_is_committed_and_ci_uses_npm_ci(self) -> None:
+        self.assertTrue(FRONTEND_LOCK.is_file(), "apps/desktop/package-lock.json debe versionarse.")
+        ci = CI.read_text(encoding="utf-8")
+        self.assertIn(
+            "npm ci --prefix apps/desktop --workspaces=false --legacy-peer-deps --no-audit --no-fund",
+            ci,
+        )
+        self.assertNotIn(
+            "npm install --prefix apps/desktop --workspaces=false --legacy-peer-deps --no-audit --no-fund",
+            ci,
+        )
+
+    def test_ci_never_updates_the_committed_cargo_lockfile(self) -> None:
+        ci = CI.read_text(encoding="utf-8")
+        required = (
+            "cargo test --locked --workspace --exclude milyvoicetraductor-desktop",
+            "cargo clippy --locked --workspace --all-targets --exclude milyvoicetraductor-desktop -- -D warnings",
+            "cargo build --locked -p mily-bridge --release",
+            "cargo test --locked --workspace",
+            "cargo clippy --locked --workspace --all-targets -- -D warnings",
+            "cargo build --locked -p milyvoicetraductor-desktop --release",
+        )
+        for command in required:
+            self.assertIn(command, ci)
 
 
 if __name__ == "__main__":
