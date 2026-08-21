@@ -15,6 +15,35 @@ $RuntimeZip = Join-Path $OutputRoot 'milyvoice-python-runtime.zip'
 $RuntimeHash = "$RuntimeZip.sha256"
 $DownloadUrl = "https://www.python.org/ftp/python/$PythonVersion/python-$PythonVersion-embeddable-amd64.zip"
 
+# CTranslate2, PyTorch y otros wheels nativos necesitan el runtime de Visual C++.
+# El runner de GitHub lo tiene instalado; una PC limpia puede no tenerlo. Se
+# despliega app-local junto a python.exe para que MilyVoice no dependa del SO.
+$RequiredAppLocalVisualCppDlls = @(
+    'concrt140.dll',
+    'msvcp140.dll',
+    'vcruntime140.dll',
+    'vcruntime140_1.dll'
+)
+$OptionalAppLocalVisualCppDlls = @(
+    'msvcp140_1.dll',
+    'msvcp140_2.dll',
+    'msvcp140_atomic_wait.dll',
+    'msvcp140_codecvt_ids.dll'
+)
+
+$RequiredRuntimeModules = @(
+    'fastapi',
+    'uvicorn',
+    'numpy',
+    'faster_whisper',
+    'ctranslate2',
+    'transformers',
+    'torch',
+    'huggingface_hub',
+    'sentencepiece',
+    'pyaudiowpatch'
+)
+
 Write-Host "[MilyVoice] Preparando Python $PythonVersion privado..." -ForegroundColor Cyan
 Remove-Item $BuildRoot -Recurse -Force -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Force -Path $BuildRoot,$Stage,$OutputRoot | Out-Null
@@ -43,20 +72,48 @@ if (-not $pth) { throw 'El paquete embebido no contiene archivo _pth.' }
 python -m pip install --disable-pip-version-check --no-input --target $sitePackages -r (Join-Path $Root 'services\ai\requirements.runtime.txt')
 if ($LASTEXITCODE -ne 0) { throw 'No se pudieron preparar las dependencias del runtime privado.' }
 
+$systemRoot = if ([string]::IsNullOrWhiteSpace($env:SystemRoot)) { 'C:\Windows' } else { $env:SystemRoot }
+$system32 = Join-Path $systemRoot 'System32'
+$appLocalVisualCppRuntime = @()
+foreach ($dllName in @($RequiredAppLocalVisualCppDlls + $OptionalAppLocalVisualCppDlls)) {
+    $source = Join-Path $system32 $dllName
+    $destination = Join-Path $Stage $dllName
+    if (-not (Test-Path $source -PathType Leaf)) {
+        if ($RequiredAppLocalVisualCppDlls -contains $dllName) {
+            throw "El runner Windows no contiene la DLL obligatoria del Visual C++ Runtime: $dllName"
+        }
+        continue
+    }
+    Copy-Item -LiteralPath $source -Destination $destination -Force
+    $copied = Get-Item -LiteralPath $destination
+    $appLocalVisualCppRuntime += [ordered]@{
+        file = $dllName
+        sha256 = (Get-FileHash $destination -Algorithm SHA256).Hash.ToLowerInvariant()
+        fileVersion = [string]$copied.VersionInfo.FileVersion
+    }
+}
+
 $embeddedPython = Join-Path $Stage 'python.exe'
-& $embeddedPython -c "import fastapi, uvicorn, numpy, faster_whisper, transformers, torch, huggingface_hub, pyaudiowpatch; print('MILY_RUNTIME_OK')"
-if ($LASTEXITCODE -ne 0) { throw 'El Python embebido no pudo importar todas las dependencias requeridas, incluido WASAPI loopback.' }
+foreach ($module in $RequiredRuntimeModules) {
+    & $embeddedPython -c "import importlib; importlib.import_module('$module'); print('MILY_RUNTIME_MODULE_OK')"
+    if ($LASTEXITCODE -ne 0) {
+        throw "El Python embebido no pudo importar el módulo requerido '$module' durante el build."
+    }
+}
 
 $metadata = [ordered]@{
-    schemaVersion = 1
+    schemaVersion = 3
     pythonVersion = $PythonVersion
     source = $DownloadUrl
     sourceSha256 = $ExpectedSha256.ToLowerInvariant()
     pythonSha256 = (Get-FileHash $embeddedPython -Algorithm SHA256).Hash.ToLowerInvariant()
     architecture = 'x86_64'
     windowsLoopback = 'PyAudioWPatch-0.2.12.8'
+    requiredModules = $RequiredRuntimeModules
+    optionalModules = @()
+    appLocalVisualCppRuntime = $appLocalVisualCppRuntime
 }
-$metadata | ConvertTo-Json -Depth 4 | Set-Content (Join-Path $Stage 'runtime-manifest.json') -Encoding UTF8
+$metadata | ConvertTo-Json -Depth 5 | Set-Content (Join-Path $Stage 'runtime-manifest.json') -Encoding UTF8
 
 Remove-Item $RuntimeZip,$RuntimeHash -Force -ErrorAction SilentlyContinue
 Compress-Archive -Path (Join-Path $Stage '*') -DestinationPath $RuntimeZip -CompressionLevel Optimal
