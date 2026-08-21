@@ -546,6 +546,11 @@ class HuggingFacePackInstaller:
             if not previous or "@" not in previous:
                 raise RuntimeError("No existe un pack anterior para rollback")
             pack_id, version = previous.rsplit("@", 1)
+            if not self._verify_unlocked(pack_id, version):
+                raise ModelOperationError(
+                    "MODEL_HASH_MISMATCH",
+                    "No se puede restaurar el pack anterior porque su integridad no es válida. Reinstálalo primero.",
+                )
             current = state.get("active")
             self._activate_unlocked(pack_id, version)
             new_state = self.catalog._state()
