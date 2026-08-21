@@ -77,6 +77,16 @@ class ModelManagerTests(unittest.TestCase):
                         pass
         self.assertEqual(caught.exception.code, "MODEL_OPERATION_BUSY")
 
+    def test_unreadable_current_state_degrades_to_no_active_pack(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            catalog = ModelCatalog(Path(tmp) / "models")
+            catalog.state_path.mkdir(parents=True)
+            self.assertEqual(
+                catalog._state(),
+                {"schemaVersion": 1, "active": None, "previous": None},
+            )
+            self.assertIsNone(catalog.active_pack())
+
     def test_install_reports_download_optimize_verify_and_ready_phases(self):
         with tempfile.TemporaryDirectory() as tmp:
             catalog = ModelCatalog(Path(tmp) / "models")
