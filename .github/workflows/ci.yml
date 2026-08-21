@@ -78,8 +78,8 @@ jobs:
           node-version: "22"
       - name: Pin npm
         run: npm install --global npm@10.9.9
-      - name: Install frontend dependencies
-        run: npm install --prefix apps/desktop --workspaces=false --legacy-peer-deps --no-audit --no-fund
+      - name: Install frontend dependencies from committed lock
+        run: npm ci --prefix apps/desktop --workspaces=false --legacy-peer-deps --no-audit --no-fund
       - name: Typecheck
         run: npm run --prefix apps/desktop typecheck
       - name: Tests
@@ -93,7 +93,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@1.98.0
         with:
           components: rustfmt, clippy
       - name: Format
@@ -119,10 +119,10 @@ jobs:
           PY
       - name: Core tests
         if: success()
-        run: cargo test --workspace --exclude milyvoicetraductor-desktop
+        run: cargo test --locked --workspace --exclude milyvoicetraductor-desktop
       - name: Core Clippy
         if: success()
-        run: cargo clippy --workspace --all-targets --exclude milyvoicetraductor-desktop -- -D warnings
+        run: cargo clippy --locked --workspace --all-targets --exclude milyvoicetraductor-desktop -- -D warnings
       - name: Upload Rust diagnostics
         if: always()
         uses: actions/upload-artifact@v6
@@ -146,11 +146,11 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: "3.13"
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@1.98.0
         with:
           components: rustfmt, clippy
-      - name: Install frontend dependencies
-        run: npm install --prefix apps/desktop --workspaces=false --legacy-peer-deps --no-audit --no-fund
+      - name: Install frontend dependencies from committed lock
+        run: npm ci --prefix apps/desktop --workspaces=false --legacy-peer-deps --no-audit --no-fund
       - name: Frontend build
         run: npm run --prefix apps/desktop build
       - name: Install lightweight AI test dependencies
@@ -169,7 +169,7 @@ jobs:
         run: .\installer\windows\test-bootstrap.ps1
       - name: Native Messaging bridge release build
         if: success()
-        run: cargo build -p mily-bridge --release
+        run: cargo build --locked -p mily-bridge --release
       - name: Build private Python 3.13 runtime
         if: success()
         shell: pwsh
@@ -209,13 +209,13 @@ jobs:
         run: .\installer\windows\test-zh-es-lite.ps1
       - name: Rust tests
         if: success()
-        run: cargo test --workspace
+        run: cargo test --locked --workspace
       - name: Clippy
         if: success()
-        run: cargo clippy --workspace --all-targets -- -D warnings
+        run: cargo clippy --locked --workspace --all-targets -- -D warnings
       - name: Windows desktop release build
         if: success()
-        run: cargo build -p milyvoicetraductor-desktop --release
+        run: cargo build --locked -p milyvoicetraductor-desktop --release
       - name: Verify Windows GUI subsystem
         if: success()
         shell: pwsh
