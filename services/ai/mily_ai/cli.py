@@ -10,6 +10,7 @@ from .models import (
     HuggingFacePackInstaller,
     ModelCatalog,
     ModelOperationError,
+    _model_operation_lock,
     classify_model_exception,
 )
 from .runtime import RuntimePaths
@@ -86,45 +87,47 @@ def cmd_models(args) -> int:
                 )
             )
             return 0
-        if args.model_action == "install":
-            pack = installer.install(args.pack_id)
-            print(
-                json.dumps(
-                    {"ok": True, "id": pack.id, "version": pack.version},
-                    ensure_ascii=False,
-                )
-            )
-            return 0
-        if args.model_action == "rollback":
-            pack = installer.rollback()
-            print(
-                json.dumps(
-                    {"ok": True, "active": f"{pack.id}@{pack.version}"},
-                    ensure_ascii=False,
-                )
-            )
-            return 0
-        if args.model_action == "verify":
-            ok = installer.verify(args.pack_id, args.version)
-            if not ok:
-                return _emit_model_error(
-                    ModelOperationError(
-                        "MODEL_HASH_MISMATCH",
-                        "El pack local no pasó la verificación de integridad.",
+
+        with _model_operation_lock(paths.models_dir):
+            if args.model_action == "install":
+                pack = installer.install(args.pack_id)
+                print(
+                    json.dumps(
+                        {"ok": True, "id": pack.id, "version": pack.version},
+                        ensure_ascii=False,
                     )
                 )
-            print(
-                json.dumps(
-                    {"ok": True, "id": args.pack_id, "version": args.version},
-                    ensure_ascii=False,
+                return 0
+            if args.model_action == "rollback":
+                pack = installer.rollback()
+                print(
+                    json.dumps(
+                        {"ok": True, "active": f"{pack.id}@{pack.version}"},
+                        ensure_ascii=False,
+                    )
                 )
-            )
-            return 0
-        if args.model_action == "remove":
-            installer.remove(args.pack_id, args.version)
-            print(json.dumps({"ok": True}, ensure_ascii=False))
-            return 0
-        return 2
+                return 0
+            if args.model_action == "verify":
+                ok = installer.verify(args.pack_id, args.version)
+                if not ok:
+                    return _emit_model_error(
+                        ModelOperationError(
+                            "MODEL_HASH_MISMATCH",
+                            "El pack local no pasó la verificación de integridad.",
+                        )
+                    )
+                print(
+                    json.dumps(
+                        {"ok": True, "id": args.pack_id, "version": args.version},
+                        ensure_ascii=False,
+                    )
+                )
+                return 0
+            if args.model_action == "remove":
+                installer.remove(args.pack_id, args.version)
+                print(json.dumps({"ok": True}, ensure_ascii=False))
+                return 0
+            return 2
     except ModelOperationError as exc:
         return _emit_model_error(exc)
     except BaseException as exc:
