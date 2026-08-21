@@ -1,0 +1,31 @@
+name: Generate frontend lock
+
+on:
+  push:
+    branches:
+      - hardening/complete-2.1-runtime-reproducibility
+
+permissions:
+  contents: read
+
+jobs:
+  lock:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+      - name: Pin npm
+        run: npm install --global npm@10.9.9
+      - name: Generate package-lock.json from exact package.json
+        run: npm install --prefix apps/desktop --package-lock-only --workspaces=false --legacy-peer-deps --no-audit --no-fund
+      - name: Validate lock can install exactly
+        run: npm ci --prefix apps/desktop --workspaces=false --legacy-peer-deps --no-audit --no-fund
+      - name: Upload generated lock
+        uses: actions/upload-artifact@v6
+        with:
+          name: MilyVoiceTraductor-Frontend-Lock-${{ github.sha }}
+          path: apps/desktop/package-lock.json
+          retention-days: 7
+          if-no-files-found: error
