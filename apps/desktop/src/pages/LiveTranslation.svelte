@@ -265,7 +265,7 @@
 
 <section class="page-stack live-page">
   <header class="page-header">
-    <div><p class="eyebrow">TRADUCCIÓN · LOCAL · 1.0.5</p><h1>Escuche, traduzca y enseñe en tiempo real</h1><p>Reuniones, micrófono, audio del sistema, videos, cursos y canciones sin enviar audio a la nube.</p></div>
+    <div><p class="eyebrow">TRADUCCIÓN · LOCAL · {appStatus?.version ?? '2.0.2'}</p><h1>Escuche, traduzca y enseñe en tiempo real</h1><p>Reuniones, micrófono, audio del sistema, videos, cursos y canciones sin enviar audio a la nube.</p></div>
     <span class:ok={active} class:warning={!active} class="status-badge"><span class="status-dot"></span>{active ? 'Capturando' : 'En espera'}</span>
   </header>
 
