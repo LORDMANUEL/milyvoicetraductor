@@ -130,8 +130,10 @@ if ($installedPackages.Count -lt 10) {
     throw "Inventario de paquetes incompleto: $($installedPackages.Count) entradas."
 }
 
+# Mantener schemaVersion 3 por compatibilidad. installedPackages es un campo
+# aditivo que consumidores antiguos pueden ignorar sin migración de esquema.
 $metadata = [ordered]@{
-    schemaVersion = 4
+    schemaVersion = 3
     pythonVersion = $PythonVersion
     source = $DownloadUrl
     sourceSha256 = $ExpectedSha256.ToLowerInvariant()
