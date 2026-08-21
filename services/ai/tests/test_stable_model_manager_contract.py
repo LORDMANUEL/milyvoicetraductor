@@ -48,6 +48,13 @@ class StableModelManagerContractTests(unittest.TestCase):
         self.assertIn("lastErrorCode", block)
         self.assertIn("modelErrorMessage", block)
 
+    def test_busy_model_operation_error_survives_all_public_layers(self) -> None:
+        rust = (ROOT / "crates/mily-models/src/lib.rs").read_text(encoding="utf-8")
+        frontend_errors = (ROOT / "apps/desktop/src/lib/modelErrors.ts").read_text(encoding="utf-8")
+        self.assertIn('"MODEL_OPERATION_BUSY"', rust)
+        self.assertIn("MODEL_OPERATION_BUSY:", frontend_errors)
+        self.assertIn("otra operación", frontend_errors.lower())
+
 
 if __name__ == "__main__":
     unittest.main()
