@@ -25,7 +25,7 @@
 
   async function refresh() {
     state = await desktopApi.getOnboardingStatus();
-    if (state.runtimeReady && state.bootstrapState !== 'failed' && !completed) {
+    if (state.runtimeReady && state.bridgeReady && state.bootstrapState !== 'failed' && !completed) {
       completed = true;
       await onReady();
     }
@@ -54,7 +54,7 @@
       errorCode = 'BOOTSTRAP_STATUS_ERROR';
       errorMessage = error && typeof error === 'object' && 'message' in error
         ? String((error as { message?: unknown }).message || '')
-        : 'No se pudo leer el estado del runtime local.';
+        : 'No se pudo leer el estado de la instalación local.';
     });
   });
 </script>
@@ -76,10 +76,10 @@
         <div><strong>Runtime privado</strong><small>{state.runtimeReady ? 'Python y dependencias incluidos listos' : repairing ? 'Reparando componentes incluidos…' : 'Verificando componentes incluidos…'}</small></div>
         <b>{state.runtimeReady ? '✓' : state.bootstrapState === 'failed' ? '!' : '…'}</b>
       </article>
-      <article class:done={state.bridgeReady}>
+      <article class:done={state.bridgeReady} class:error={state.runtimeReady && !state.bridgeReady}>
         <span class="step-index">2</span>
-        <div><strong>Enlace con Chromium</strong><small>{state.bridgeReady ? 'Native Messaging instalado' : 'Preparando bridge local…'}</small></div>
-        <b>{state.bridgeReady ? '✓' : '…'}</b>
+        <div><strong>Enlace con Chromium</strong><small>{state.bridgeReady ? 'Native Messaging instalado' : repairing ? 'Reparando Native Messaging…' : 'El bridge incluido necesita reparación'}</small></div>
+        <b>{state.bridgeReady ? '✓' : '!'}</b>
       </article>
       <article>
         <span class="step-index">3</span>
@@ -93,10 +93,10 @@
       </article>
     </div>
 
-    {#if state.bootstrapState === 'failed' || !state.runtimeReady}
+    {#if state.bootstrapState === 'failed' || !state.runtimeReady || !state.bridgeReady}
       <div class="onboarding-error" role="alert">
-        <strong>{state.errorCode || errorCode || 'RUNTIME_NOT_READY'}</strong>
-        <span>{state.errorMessage || errorMessage || 'El runtime local necesita reparación antes de abrir MilyVoiceTraductor.'}</span>
+        <strong>{state.errorCode || errorCode || (!state.bridgeReady && state.runtimeReady ? 'BRIDGE_NOT_READY' : 'RUNTIME_NOT_READY')}</strong>
+        <span>{state.errorMessage || errorMessage || (!state.bridgeReady && state.runtimeReady ? 'Native Messaging no está registrado correctamente. La reparación volverá a instalar el bridge local.' : 'El runtime local necesita reparación antes de abrir MilyVoiceTraductor.')}</span>
         <button class="primary" onclick={repair} disabled={repairing}>{repairing ? 'Reparando…' : 'Reparar instalación'}</button>
       </div>
     {:else if errorMessage}
