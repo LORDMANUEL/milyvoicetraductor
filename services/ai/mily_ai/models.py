@@ -286,7 +286,7 @@ class ModelCatalog:
             return {"schemaVersion": 1, "active": None, "previous": None}
         try:
             state = json.loads(self.state_path.read_text(encoding="utf-8"))
-        except json.JSONDecodeError:
+        except (OSError, json.JSONDecodeError):
             return {"schemaVersion": 1, "active": None, "previous": None}
         return state
 
