@@ -1,8 +1,12 @@
 !include "LogicLib.nsh"
 !include "x64.nsh"
 
+; La versión estable debe ser visible en la propia UI del instalador.
+BrandingText "${PRODUCTNAME} ${VERSION}"
+Caption "${PRODUCTNAME} ${VERSION} Setup"
+
 !macro NSIS_HOOK_POSTINSTALL
-  DetailPrint "Preparando runtime, motor y sincronización local de MilyVoiceTraductor..."
+  DetailPrint "MilyVoiceTraductor ${VERSION} - preparando runtime, motor y sincronización local..."
   ; El instalador NSIS puede ejecutar hooks desde un proceso de 32 bits aunque
   ; el payload sea x64. Deshabilitamos la redirección WOW64 para ejecutar el
   ; Windows PowerShell 5.1 de 64 bits que ya valida el flujo previo al bundle.
@@ -15,15 +19,18 @@
     ${EnableX64FSRedirection}
   ${EndIf}
   ${If} $0 == "0"
-    DetailPrint "Runtime, motor, extensión y Native Messaging preparados."
+    DetailPrint "MilyVoiceTraductor ${VERSION} - runtime, motor, extensión y Native Messaging preparados."
     ; En instalación silenciosa (CI/despliegue administrado) no se abre Desktop.
     IfSilent +2 0
     ExecShell "open" "$INSTDIR\MilyVoiceTraductor.exe"
   ${Else}
-    DetailPrint "La preparación local devolvió código $0."
-    ; Un MessageBox durante /S deja el instalador esperando entrada humana.
+    DetailPrint "MilyVoiceTraductor ${VERSION} - la preparación local devolvió código $0."
+    SetErrorLevel 2
+    ; No permitir que NSIS termine mostrando "Installation Complete" cuando el
+    ; runtime/motor quedó roto. En /S se salta únicamente el MessageBox.
     IfSilent +2 0
-    MessageBox MB_OK|MB_ICONEXCLAMATION "MilyVoiceTraductor se instaló, pero un componente local no terminó de prepararse. Abre la aplicación para ver el diagnóstico y usar Reparar instalación."
+    MessageBox MB_OK|MB_ICONSTOP "MilyVoiceTraductor ${VERSION} no pudo completar la preparación local. La instalación se marcará como fallida. Revisa el diagnóstico de instalación antes de volver a intentar."
+    Abort "MilyVoiceTraductor ${VERSION} - instalación incompleta: falló la preparación local."
   ${EndIf}
 !macroend
 

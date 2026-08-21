@@ -106,7 +106,7 @@ def create_app(paths: RuntimePaths, port: int = 8765, parent_pid: int | None = N
         active = catalog.active_pack()
         return {
             "ok": True,
-            "version": "2.0.1",
+            "version": "2.0.2",
             "protocol": 1,
             "modelPack": f"{active.id}@{active.version}" if active else None,
             "extensionConnected": heartbeat_path.exists()
@@ -487,7 +487,7 @@ def create_app(paths: RuntimePaths, port: int = 8765, parent_pid: int | None = N
             shutdown_executors(wait=False)
 
         try:
-            await safe_send(event("engine.ready", version="2.0.1", protocolVersion=1))
+            await safe_send(event("engine.ready", version="2.0.2", protocolVersion=1))
             while True:
                 packet = await websocket.receive()
                 if packet.get("type") == "websocket.disconnect":

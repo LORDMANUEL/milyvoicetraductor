@@ -7,9 +7,11 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+import mily_ai.models as models_module
 from mily_ai.models import (
     HuggingFacePackInstaller,
     ModelCatalog,
+    ModelOperationError,
     classify_model_exception,
 )
 
@@ -40,6 +42,50 @@ class ModelManagerTests(unittest.TestCase):
                 "corrupt", encoding="utf-8"
             )
             self.assertFalse(installer.verify(pack.id, pack.version))
+
+    def test_reinstall_repairs_an_installed_pack_with_corrupted_files(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            catalog = ModelCatalog(Path(tmp) / "models")
+            installer = HuggingFacePackInstaller(catalog)
+            fake_hub = types.SimpleNamespace(snapshot_download=self.fake_snapshot)
+            with patch.dict(sys.modules, {"huggingface_hub": fake_hub}):
+                installed = installer.install("business-qwen")
+                corrupted = installed.path / "components" / "asr" / "config.json"
+                corrupted.write_text("corrupt", encoding="utf-8")
+                self.assertFalse(installer.verify(installed.id, installed.version))
+
+                repaired = installer.install("business-qwen")
+
+            self.assertTrue(repaired.active)
+            self.assertTrue(installer.verify(repaired.id, repaired.version))
+            self.assertNotEqual(corrupted.read_text(encoding="utf-8"), "corrupt")
+            self.assertFalse(
+                (catalog.models_dir / ".staging" / "business-qwen-1.0.0").exists()
+            )
+
+    def test_model_mutations_use_a_nonblocking_cross_process_lock(self):
+        self.assertTrue(
+            hasattr(models_module, "_model_operation_lock"),
+            "Las mutaciones de modelos necesitan un lock de archivo compartido entre Desktop/API/CLI.",
+        )
+        lock = getattr(models_module, "_model_operation_lock")
+        with tempfile.TemporaryDirectory() as tmp:
+            models_dir = Path(tmp) / "models"
+            with lock(models_dir):
+                with self.assertRaises(ModelOperationError) as caught:
+                    with lock(models_dir):
+                        pass
+        self.assertEqual(caught.exception.code, "MODEL_OPERATION_BUSY")
+
+    def test_unreadable_current_state_degrades_to_no_active_pack(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            catalog = ModelCatalog(Path(tmp) / "models")
+            catalog.state_path.mkdir(parents=True)
+            self.assertEqual(
+                catalog._state(),
+                {"schemaVersion": 1, "active": None, "previous": None},
+            )
+            self.assertIsNone(catalog.active_pack())
 
     def test_install_reports_download_optimize_verify_and_ready_phases(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -84,6 +130,26 @@ class ModelManagerTests(unittest.TestCase):
             restored = installer.rollback()
             self.assertEqual(restored.id, "business-qwen")
             self.assertTrue(restored.active)
+
+    def test_rollback_rejects_corrupted_previous_pack_and_keeps_current_active(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            catalog = ModelCatalog(Path(tmp) / "models")
+            installer = HuggingFacePackInstaller(catalog)
+            fake_hub = types.SimpleNamespace(snapshot_download=self.fake_snapshot)
+            with patch.dict(sys.modules, {"huggingface_hub": fake_hub}):
+                previous = installer.install("business-qwen")
+                current = installer.install("lite-nllb")
+
+            corrupted = previous.path / "components" / "asr" / "config.json"
+            corrupted.write_text("corrupt", encoding="utf-8")
+            self.assertFalse(installer.verify(previous.id, previous.version))
+            self.assertEqual(catalog.active_pack().id, current.id)
+
+            with self.assertRaises(ModelOperationError) as caught:
+                installer.rollback()
+
+            self.assertEqual(caught.exception.code, "MODEL_HASH_MISMATCH")
+            self.assertEqual(catalog.active_pack().id, current.id)
 
     def test_disk_full_has_specific_public_code(self):
         error = classify_model_exception(OSError(errno.ENOSPC, "disk full"))

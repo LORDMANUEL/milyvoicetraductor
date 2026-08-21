@@ -14,12 +14,17 @@
   let lastFailedPack = '';
 
   async function load() {
-    const [catalog, hardware] = await Promise.all([
-      desktopApi.getModelCatalog(),
-      desktopApi.getHardwareAdvisor()
-    ]);
-    packs = catalog;
-    advisor = hardware;
+    try {
+      const [catalog, hardware] = await Promise.all([
+        desktopApi.getModelCatalog(),
+        desktopApi.getHardwareAdvisor()
+      ]);
+      packs = catalog;
+      advisor = hardware;
+    } catch (error) {
+      lastErrorCode = modelErrorCode(error);
+      message = modelErrorMessage(error);
+    }
   }
 
   async function install(pack: ModelPackInfo) {
@@ -43,14 +48,21 @@
 
   async function verify(pack: ModelPackInfo) {
     busy = `verify:${pack.id}`;
+    lastErrorCode = '';
     message = 'Verificando integridad SHA-256 del pack local…';
     try {
       const ok = await desktopApi.verifyModel(pack.id, pack.version);
-      message = ok
-        ? 'Integridad del pack verificada.'
-        : 'El pack no pasó la verificación. Reinstálalo antes de usarlo.';
+      if (ok) {
+        if (lastFailedPack === pack.id) lastFailedPack = '';
+        message = 'Integridad del pack verificada.';
+      } else {
+        lastErrorCode = 'MODEL_HASH_MISMATCH';
+        lastFailedPack = pack.id;
+        message = 'El pack no pasó la verificación. Pulsa Reintentar para descargarlo de nuevo antes de usarlo.';
+      }
     } catch (error) {
       lastErrorCode = modelErrorCode(error);
+      lastFailedPack = pack.id;
       message = modelErrorMessage(error);
     } finally {
       busy = '';
@@ -60,6 +72,7 @@
   async function remove(pack: ModelPackInfo) {
     if (pack.active) return;
     busy = `remove:${pack.id}`;
+    lastErrorCode = '';
     message = 'Eliminando pack local…';
     try {
       await desktopApi.removeModel(pack.id, pack.version);
@@ -76,6 +89,7 @@
 
   async function rollback() {
     busy = 'rollback';
+    lastErrorCode = '';
     try {
       await desktopApi.rollbackModel();
       message = 'Se restauró el pack anterior.';
@@ -147,8 +161,8 @@
             <span class="card-title">{pack.id} · {pack.version}</span>
             <h3>{pack.title}</h3>
           </div>
-          <span class="pill" class:ok={pack.active}>
-            {pack.active ? 'Activo' : pack.installed ? 'Instalado' : 'Disponible'}
+          <span class="pill" class:ok={pack.active && lastFailedPack !== pack.id}>
+            {lastFailedPack === pack.id ? 'Reparar' : pack.active ? 'Activo' : pack.installed ? 'Instalado' : 'Disponible'}
           </span>
         </div>
         <p>{pack.licenseNote}</p>
@@ -157,13 +171,13 @@
           <span>{pack.commercialUse ? 'Perfil permisivo/comercial' : 'Uso no comercial según modelo'}</span>
         </div>
         <div class="button-row">
-          <button class="primary" onclick={() => install(pack)} disabled={pack.active || busy === pack.id}>
+          <button class="primary" onclick={() => install(pack)} disabled={Boolean(busy) || (pack.active && lastFailedPack !== pack.id)}>
             {busy === pack.id
               ? 'Preparando…'
-              : pack.active
-                ? 'Activo'
-                : lastFailedPack === pack.id
-                  ? 'Reintentar'
+              : lastFailedPack === pack.id
+                ? 'Reintentar'
+                : pack.active
+                  ? 'Activo'
                   : pack.installed
                     ? 'Activar/reinstalar'
                     : 'Descargar e instalar'}

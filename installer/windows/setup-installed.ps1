@@ -42,6 +42,20 @@ $ModelsRoot = Join-Path $AppRoot 'models'
 $BootstrapStateRoot = Join-Path $AppRoot 'bootstrap'
 $StatusPath = Join-Path $BootstrapStateRoot 'status.json'
 $script:BootstrapStage = 'BOOTSTRAP_START'
+$script:RuntimeImportFailures = @()
+
+$DefaultRequiredRuntimeModules = @(
+    'fastapi',
+    'uvicorn',
+    'numpy',
+    'faster_whisper',
+    'ctranslate2',
+    'transformers',
+    'torch',
+    'huggingface_hub',
+    'sentencepiece',
+    'pyaudiowpatch'
+)
 
 function Write-Step([string]$Text) {
     Write-Host "[MilyVoiceTraductor] $Text"
@@ -50,12 +64,14 @@ function Write-Step([string]$Text) {
 function Write-BootstrapStatus([string]$State, [string]$Code, [string]$Message) {
     New-Item -ItemType Directory -Force -Path $BootstrapStateRoot | Out-Null
     [ordered]@{
-        schemaVersion = 2
+        schemaVersion = 3
         state = $State
         code = $Code
         message = $Message
+        stage = $script:BootstrapStage
+        runtimeImportFailures = @($script:RuntimeImportFailures)
         updatedAt = (Get-Date).ToUniversalTime().ToString('o')
-    } | ConvertTo-Json -Depth 4 | Set-Content -Path $StatusPath -Encoding UTF8
+    } | ConvertTo-Json -Depth 7 | Set-Content -Path $StatusPath -Encoding UTF8
 }
 
 function Set-BootstrapStage([string]$Code, [string]$Message) {
@@ -190,7 +206,7 @@ function Resolve-UnstructuredFailure([string]$Stage) {
         'RUNTIME_VERIFY' { return @('RUNTIME_VERIFY_FAILED', 'No se pudo verificar la integridad del runtime privado.') }
         'RUNTIME_EXTRACT' { return @('RUNTIME_EXTRACT_FAILED', 'No se pudo extraer el runtime privado incluido en el instalador.') }
         'RUNTIME_MANIFEST' { return @('RUNTIME_VERIFY_FAILED', 'No se pudo validar el manifiesto del runtime privado.') }
-        'RUNTIME_IMPORT' { return @('RUNTIME_IMPORT_FAILED', 'El runtime privado no pudo cargar sus dependencias.') }
+        'RUNTIME_IMPORT' { return @('RUNTIME_IMPORT_FAILED', 'El runtime privado no pudo cargar sus dependencias base.') }
         'RUNTIME_ACTIVATE' { return @('RUNTIME_ACTIVATE_FAILED', 'No se pudo activar el runtime privado en el perfil del usuario.') }
         'ENGINE_COPY' { return @('ENGINE_COPY_FAILED', 'No se pudo preparar el motor local incluido.') }
         'EXTENSION_COPY' { return @('EXTENSION_COPY_FAILED', 'No se pudo preparar la extensión Chromium incluida.') }
@@ -199,6 +215,83 @@ function Resolve-UnstructuredFailure([string]$Stage) {
         'ENGINE_DIAGNOSE' { return @('ENGINE_DIAGNOSE_FAILED', 'El motor incluido no pasó su diagnóstico local.') }
         'BOOTSTRAP_FINALIZE' { return @('BOOTSTRAP_FINALIZE_FAILED', 'La preparación local terminó, pero no pudo guardar su estado final.') }
         default { return @('BOOTSTRAP_FAILED', 'La preparación local no terminó correctamente.') }
+    }
+}
+
+function ConvertTo-SafeImportSummary([string]$Text) {
+    $safe = [string]$Text
+    foreach ($path in @($InstallRoot, $AppRoot, $RuntimeNext, $RuntimeRoot, $env:USERPROFILE, $env:GITHUB_WORKSPACE)) {
+        if ([string]::IsNullOrWhiteSpace([string]$path)) { continue }
+        $safe = $safe -replace [regex]::Escape([string]$path), '<PATH>'
+    }
+    $safe = $safe -replace '(?i)(token|password|passwd|secret)\s*[:=]\s*[^\s]+', '$1=<redacted>'
+    $safe = ($safe -replace '\s+', ' ').Trim()
+    if ([string]::IsNullOrWhiteSpace($safe)) {
+        return 'El intérprete terminó sin diagnóstico adicional.'
+    }
+    if ($safe.Length -gt 800) {
+        $safe = $safe.Substring($safe.Length - 800)
+    }
+    return $safe
+}
+
+function Test-PythonModule([string]$Python, [string]$Module) {
+    if ($Module -notmatch '^[A-Za-z0-9_.]+$') {
+        return [pscustomobject]@{
+            ok = $false
+            module = $Module
+            exitCode = -1
+            summary = 'El nombre del módulo no tiene un formato válido.'
+        }
+    }
+
+    $probePath = Join-Path ([System.IO.Path]::GetTempPath()) ('milyvoice-import-{0}.py' -f ([guid]::NewGuid().ToString('N')))
+    $process = $null
+    try {
+        $utf8 = New-Object System.Text.UTF8Encoding($false)
+        [System.IO.File]::WriteAllText(
+            $probePath,
+            ("import importlib`r`nimportlib.import_module('{0}')`r`n" -f $Module),
+            $utf8
+        )
+        $startInfo = New-Object System.Diagnostics.ProcessStartInfo
+        $startInfo.FileName = $Python
+        $startInfo.Arguments = ('"{0}"' -f $probePath)
+        $startInfo.UseShellExecute = $false
+        $startInfo.RedirectStandardOutput = $true
+        $startInfo.RedirectStandardError = $true
+        $startInfo.CreateNoWindow = $true
+
+        $process = New-Object System.Diagnostics.Process
+        $process.StartInfo = $startInfo
+        if (-not $process.Start()) {
+            return [pscustomobject]@{
+                ok = $false
+                module = $Module
+                exitCode = -1
+                summary = 'No se pudo iniciar el intérprete privado.'
+            }
+        }
+        $stdout = $process.StandardOutput.ReadToEnd()
+        $stderr = $process.StandardError.ReadToEnd()
+        $process.WaitForExit()
+        $summary = if (-not [string]::IsNullOrWhiteSpace($stderr)) { $stderr } else { $stdout }
+        return [pscustomobject]@{
+            ok = ($process.ExitCode -eq 0)
+            module = $Module
+            exitCode = [int]$process.ExitCode
+            summary = (ConvertTo-SafeImportSummary $summary)
+        }
+    } catch {
+        return [pscustomobject]@{
+            ok = $false
+            module = $Module
+            exitCode = -1
+            summary = (ConvertTo-SafeImportSummary ([string]$_.Exception.Message))
+        }
+    } finally {
+        if ($process -ne $null) { $process.Dispose() }
+        Remove-Item -LiteralPath $probePath -Force -ErrorAction SilentlyContinue
     }
 }
 
@@ -253,10 +346,44 @@ try {
         throw 'RUNTIME_PYTHON_HASH_MISMATCH|python.exe no coincide con el manifiesto del runtime.'
     }
 
+    $crtEntries = @($runtimeManifest.appLocalVisualCppRuntime)
+    $requiredCrt = @('concrt140.dll', 'msvcp140.dll', 'vcruntime140.dll', 'vcruntime140_1.dll')
+    foreach ($dllName in $requiredCrt) {
+        $entry = @($crtEntries | Where-Object { ([string]$_.file).ToLowerInvariant() -eq $dllName }) | Select-Object -First 1
+        if ($null -eq $entry) {
+            throw "RUNTIME_MANIFEST_INVALID|Falta Visual C++ Runtime app-local en el manifiesto: $dllName"
+        }
+        $dllPath = Join-Path $RuntimeNext $dllName
+        Assert-File $dllPath 'RUNTIME_CRT_MISSING'
+        $declaredHash = ([string]$entry.sha256).Trim().ToLowerInvariant()
+        if ($declaredHash -notmatch '^[0-9a-f]{64}$') {
+            throw "RUNTIME_MANIFEST_INVALID|Hash inválido para Visual C++ Runtime: $dllName"
+        }
+        if ((Get-Sha256Hex $dllPath) -ne $declaredHash) {
+            throw "RUNTIME_CRT_HASH_MISMATCH|La DLL app-local no coincide con el manifiesto: $dllName"
+        }
+    }
+
     Set-BootstrapStage 'RUNTIME_IMPORT' 'Comprobando dependencias del runtime privado.'
-    & $nextPython -c "import fastapi,uvicorn,numpy,faster_whisper,transformers,torch,huggingface_hub; print('MILY_RUNTIME_OK')"
-    if ($LASTEXITCODE -ne 0) {
-        throw 'RUNTIME_IMPORT_FAILED|El runtime privado no pudo cargar sus dependencias.'
+    $requiredRuntimeModules = @()
+    try { $requiredRuntimeModules = @($runtimeManifest.requiredModules) } catch { $requiredRuntimeModules = @() }
+    $requiredRuntimeModules = @($requiredRuntimeModules | ForEach-Object { ([string]$_).Trim() } | Where-Object { $_ })
+    if ($requiredRuntimeModules.Count -eq 0) { $requiredRuntimeModules = @($DefaultRequiredRuntimeModules) }
+
+    $script:RuntimeImportFailures = @()
+    foreach ($module in $requiredRuntimeModules) {
+        $result = Test-PythonModule $nextPython $module
+        if (-not $result.ok) {
+            $script:RuntimeImportFailures += [ordered]@{
+                module = $result.module
+                exitCode = $result.exitCode
+                summary = $result.summary
+            }
+        }
+    }
+    if ($script:RuntimeImportFailures.Count -gt 0) {
+        $failedNames = @($script:RuntimeImportFailures | ForEach-Object { $_.module }) -join ', '
+        throw "RUNTIME_IMPORT_FAILED|El runtime privado no pudo cargar: $failedNames. Revisa bootstrap\status.json para el diagnóstico sanitizado."
     }
 
     Set-BootstrapStage 'RUNTIME_ACTIVATE' 'Activando runtime privado.'

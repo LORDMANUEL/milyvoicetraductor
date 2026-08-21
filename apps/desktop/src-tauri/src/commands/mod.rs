@@ -141,14 +141,12 @@ pub fn get_onboarding_status(state: State<'_, AppState>) -> OnboardingStatus {
     } else {
         "milyvoice-bridge"
     };
+    let bridge_root = state.paths.data_dir.join("bridge");
+    let bridge_binary_ready = bridge_root.join(bridge_name).is_file();
+    let native_manifest_ready = bridge_root.join("com.milyvoice.traductor.json").is_file();
     OnboardingStatus {
         runtime_ready: state.engine.is_installed(),
-        bridge_ready: state
-            .paths
-            .data_dir
-            .join("bridge")
-            .join(bridge_name)
-            .is_file(),
+        bridge_ready: bridge_binary_ready && native_manifest_ready,
         extension_detected: state.engine.extension_connected(),
         model_state: state.models.status(),
         downloaded_bytes: directory_size(&state.paths.models_dir.join(".staging")),

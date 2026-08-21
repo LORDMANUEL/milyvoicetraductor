@@ -19,7 +19,8 @@
   let activePage: PageId = 'panel';
   let loading = true;
   let error = '';
-  let status: AppStatus = { version: '1.0.0-rc.1', engine: 'notInstalled', models: 'notInstalled', installedModels: 0, extensionConnected: false, activeModelPack: null };
+  let initialRouteResolved = false;
+  let status: AppStatus = { version: '2.0.2', engine: 'notInstalled', models: 'notInstalled', installedModels: 0, extensionConnected: false, activeModelPack: null };
   let onboarding: OnboardingStatus = { runtimeReady: false, bridgeReady: false, extensionDetected: false, modelState: 'notInstalled', downloadedBytes: 0, totalBytes: null, bootstrapState: 'unknown', errorCode: null, errorMessage: null };
   let system: SystemSnapshot = { operatingSystem: 'Cargando…', architecture: '', cpuBrand: '', logicalCpus: 0, totalMemoryMb: 0, gpu: null };
   let cache: CacheStatus = { bytes: 0, entries: 0, maxBytes: 256 * 1024 * 1024 };
@@ -33,6 +34,14 @@
         desktopApi.getAppStatus(), desktopApi.getOnboardingStatus(), desktopApi.getSystemInfo(),
         desktopApi.getCacheStatus(), desktopApi.getConfig()
       ]);
+
+      // Una instalación válida debe abrir el shell aunque todavía no exista un
+      // modelo. En ese caso aterriza en Model Manager y la descarga queda bajo
+      // control explícito del usuario.
+      if (!initialRouteResolved) {
+        initialRouteResolved = true;
+        if (onboarding.modelState !== 'ready') activePage = 'models';
+      }
     } catch {
       error = 'No se pudo cargar el estado local. Revisa los logs sanitizados de la aplicación.';
     } finally {
@@ -42,7 +51,9 @@
 
   async function finishOnboarding() {
     await load();
-    if (!needsOnboarding(onboarding)) activePage = 'live';
+    if (!needsOnboarding(onboarding)) {
+      activePage = onboarding.modelState === 'ready' ? 'live' : 'models';
+    }
   }
 
   async function saveConfig(value: AppConfig) {

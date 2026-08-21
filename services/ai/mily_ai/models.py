@@ -5,11 +5,13 @@ from __future__ import annotations
 import errno
 import hashlib
 import json
+import os
 import shutil
 import socket
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterator
 
 
 @dataclass(slots=True)
@@ -21,6 +23,55 @@ class ModelOperationError(RuntimeError):
 
     def __str__(self) -> str:
         return self.message
+
+
+@contextmanager
+def _model_operation_lock(models_dir: Path) -> Iterator[None]:
+    """Exclusión mutua no bloqueante entre Desktop, API y procesos CLI."""
+
+    root = Path(models_dir)
+    root.mkdir(parents=True, exist_ok=True)
+    lock_path = root / ".operation.lock"
+    handle = lock_path.open("a+b")
+    try:
+        handle.seek(0, os.SEEK_END)
+        if handle.tell() == 0:
+            handle.write(b"\0")
+            handle.flush()
+        handle.seek(0)
+
+        busy = ModelOperationError(
+            "MODEL_OPERATION_BUSY",
+            "Otra operación de modelos ya está en curso. Espera a que termine y vuelve a intentarlo.",
+        )
+
+        if os.name == "nt":
+            import msvcrt
+
+            try:
+                msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+            except OSError as exc:
+                if getattr(exc, "errno", None) in (errno.EACCES, errno.EAGAIN, 13):
+                    raise busy from exc
+                raise
+            try:
+                yield
+            finally:
+                handle.seek(0)
+                msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+        else:
+            import fcntl
+
+            try:
+                fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except (BlockingIOError, PermissionError) as exc:
+                raise busy from exc
+            try:
+                yield
+            finally:
+                fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+    finally:
+        handle.close()
 
 
 def classify_model_exception(exc: BaseException) -> ModelOperationError:
@@ -235,7 +286,7 @@ class ModelCatalog:
             return {"schemaVersion": 1, "active": None, "previous": None}
         try:
             state = json.loads(self.state_path.read_text(encoding="utf-8"))
-        except json.JSONDecodeError:
+        except (OSError, json.JSONDecodeError):
             return {"schemaVersion": 1, "active": None, "previous": None}
         return state
 
@@ -283,6 +334,10 @@ class HuggingFacePackInstaller:
         return "Descargando componente del modelo desde Hugging Face."
 
     def install(self, pack_id: str) -> InstalledPack:
+        with _model_operation_lock(self.catalog.models_dir):
+            return self._install_unlocked(pack_id)
+
+    def _install_unlocked(self, pack_id: str) -> InstalledPack:
         try:
             from huggingface_hub import snapshot_download
         except ImportError as exc:
@@ -314,23 +369,28 @@ class HuggingFacePackInstaller:
                     message="Verificando el modelo ya descargado.",
                     pack_id=pack_id,
                 )
-                if not self.verify(pack_id, version):
-                    raise ModelOperationError(
-                        "MODEL_HASH_MISMATCH",
-                        "El modelo instalado no pasó la verificación de integridad.",
+                if self._verify_unlocked(pack_id, version):
+                    self._activate_unlocked(pack_id, version)
+                    self.catalog.write_operation(
+                        state="ready",
+                        phase="ready",
+                        message="Modelo de tiempo real listo.",
+                        pack_id=pack_id,
                     )
-                self.activate(pack_id, version)
+                    return next(
+                        item
+                        for item in self.catalog.installed()
+                        if item.id == pack_id and item.version == version
+                    )
+
                 self.catalog.write_operation(
-                    state="ready",
-                    phase="ready",
-                    message="Modelo de tiempo real listo.",
+                    state="installing",
+                    phase="repair",
+                    message="El modelo local está dañado. Se volverá a descargar y verificar.",
                     pack_id=pack_id,
                 )
-                return next(
-                    item
-                    for item in self.catalog.installed()
-                    if item.id == pack_id and item.version == version
-                )
+                shutil.rmtree(final_dir)
+                shutil.rmtree(staging, ignore_errors=True)
 
             staging.mkdir(parents=True, exist_ok=True)
             for component_name, component in definition["components"].items():
@@ -389,12 +449,12 @@ class HuggingFacePackInstaller:
             if final_dir.exists():
                 shutil.rmtree(final_dir)
             staging.replace(final_dir)
-            if not self.verify(pack_id, version):
+            if not self._verify_unlocked(pack_id, version):
                 raise ModelOperationError(
                     "MODEL_HASH_MISMATCH",
                     "La descarga terminó, pero la verificación de integridad falló.",
                 )
-            self.activate(pack_id, version)
+            self._activate_unlocked(pack_id, version)
             self.catalog.write_operation(
                 state="ready",
                 phase="ready",
@@ -427,6 +487,10 @@ class HuggingFacePackInstaller:
             raise error from exc
 
     def verify(self, pack_id: str, version: str) -> bool:
+        with _model_operation_lock(self.catalog.models_dir):
+            return self._verify_unlocked(pack_id, version)
+
+    def _verify_unlocked(self, pack_id: str, version: str) -> bool:
         pack_dir = self.catalog.packs_dir / pack_id / version
         metadata_path = pack_dir / "pack.json"
         if not metadata_path.is_file():
@@ -451,6 +515,10 @@ class HuggingFacePackInstaller:
         )
 
     def activate(self, pack_id: str, version: str) -> None:
+        with _model_operation_lock(self.catalog.models_dir):
+            self._activate_unlocked(pack_id, version)
+
+    def _activate_unlocked(self, pack_id: str, version: str) -> None:
         pack_dir = self.catalog.packs_dir / pack_id / version
         if not (pack_dir / "pack.json").exists():
             raise FileNotFoundError("Pack no instalado")
@@ -472,22 +540,29 @@ class HuggingFacePackInstaller:
         temp.replace(self.catalog.state_path)
 
     def rollback(self) -> InstalledPack:
-        state = self.catalog._state()
-        previous = state.get("previous")
-        if not previous or "@" not in previous:
-            raise RuntimeError("No existe un pack anterior para rollback")
-        pack_id, version = previous.rsplit("@", 1)
-        current = state.get("active")
-        self.activate(pack_id, version)
-        new_state = self.catalog._state()
-        new_state["previous"] = current
-        self.catalog.state_path.write_text(
-            json.dumps(new_state, indent=2), encoding="utf-8"
-        )
-        return self.catalog.active_pack()  # type: ignore[return-value]
+        with _model_operation_lock(self.catalog.models_dir):
+            state = self.catalog._state()
+            previous = state.get("previous")
+            if not previous or "@" not in previous:
+                raise RuntimeError("No existe un pack anterior para rollback")
+            pack_id, version = previous.rsplit("@", 1)
+            if not self._verify_unlocked(pack_id, version):
+                raise ModelOperationError(
+                    "MODEL_HASH_MISMATCH",
+                    "No se puede restaurar el pack anterior porque su integridad no es válida. Reinstálalo primero.",
+                )
+            current = state.get("active")
+            self._activate_unlocked(pack_id, version)
+            new_state = self.catalog._state()
+            new_state["previous"] = current
+            self.catalog.state_path.write_text(
+                json.dumps(new_state, indent=2), encoding="utf-8"
+            )
+            return self.catalog.active_pack()  # type: ignore[return-value]
 
     def remove(self, pack_id: str, version: str) -> None:
-        ref = f"{pack_id}@{version}"
-        if self.catalog._state().get("active") == ref:
-            raise RuntimeError("No se puede eliminar el pack activo")
-        shutil.rmtree(self.catalog.packs_dir / pack_id / version, ignore_errors=False)
+        with _model_operation_lock(self.catalog.models_dir):
+            ref = f"{pack_id}@{version}"
+            if self.catalog._state().get("active") == ref:
+                raise RuntimeError("No se puede eliminar el pack activo")
+            shutil.rmtree(self.catalog.packs_dir / pack_id / version, ignore_errors=False)

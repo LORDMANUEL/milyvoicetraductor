@@ -2,76 +2,63 @@
   <img src="apps/site/assets/logo.svg" alt="MilyVoiceTraductor" width="150" />
 </p>
 
-<h1 align="center">MilyVoiceTraductor 2.0.1</h1>
+<h1 align="center">MilyVoiceTraductor 2.0.2</h1>
 
-<p align="center"><strong>Voz, subtítulos y traducción local en tiempo real para español, inglés y chino mandarín.</strong></p>
+<p align="center"><strong>Estable · Windows x64 · traducción local en tiempo real para español, inglés y chino mandarín.</strong></p>
 
-> **2.0.1 es la candidata correctiva de 2.0.** La versión 2.0 tuvo un defecto de validación: el smoke NSIS comprobaba el payload instalado, pero no arrancaba explícitamente el Desktop instalado. En 2.0.1 el mismo EXE generado debe instalarse, arrancar y permanecer activo antes de permitir cualquier artefacto o promoción a `main`.
+> **2.0.2 es el hotfix estable de 2.0.x.** Corrige el primer arranque, la preparación del runtime y el comportamiento del instalador sin cambiar el baseline de modelos de producción.
 
-## Objetivo 2.0.1
+## Descarga estable 2.0.2
 
-Este ciclo está deliberadamente limitado a **estabilidad, arranque, publicación, rendimiento y MilyCompute**. No cambia el baseline de modelos y no incorpora fine-tunes experimentales.
+- [Instalador Windows x64](https://github.com/LORDMANUEL/milyvoicetraductor/releases/download/v2.0.2/MilyVoiceTraductor_2.0.2_x64-setup.exe)
+- [Extensión Chromium](https://github.com/LORDMANUEL/milyvoicetraductor/releases/download/v2.0.2/MilyVoiceTraductor-Chromium-Extension.zip)
+- [MegaBench 2.0.2](https://github.com/LORDMANUEL/milyvoicetraductor/releases/download/v2.0.2/MilyVoiceTraductor-2.0.2-MegaBench.json)
+- [SHA256SUMS](https://github.com/LORDMANUEL/milyvoicetraductor/releases/download/v2.0.2/SHA256SUMS.txt)
 
-Baseline estable:
+## Flujo de primer arranque corregido
+
+```text
+Instalar MilyVoiceTraductor 2.0.2
+        ↓
+runtime privado + motor + bridge + extensión
+        ↓
+ABRIR la aplicación
+        ↓
+¿hay modelo activo?
+   sí → traducción
+   no → Gestor de modelos
+        ↓
+descarga únicamente por acción del usuario
+```
+
+El instalador **no descarga modelos**. Si el runtime está listo pero aún no hay un modelo activo, el shell abre y lleva al Gestor de modelos. Un fallo real del runtime sí mantiene el flujo de reparación.
+
+## Correcciones de 2.0.2
+
+- elimina `installModel('realtime-m2m100')` del onboarding automático;
+- un modelo ausente ya no bloquea todo el Desktop;
+- primer arranque sin modelo abre el Gestor de modelos;
+- el NSIS muestra claramente `MilyVoiceTraductor 2.0.2`;
+- un fallo del bootstrap hace que el NSIS termine con error: no se permite un falso **Installation Complete**;
+- el runtime Python privado incluye Visual C++ Runtime app-local junto a `python.exe`;
+- las DLL app-local se verifican por SHA-256 contra `runtime-manifest.json`;
+- los imports nativos del runtime se prueban módulo por módulo y `RUNTIME_IMPORT_FAILED` identifica el módulo que falló sin filtrar rutas ni secretos;
+- instalación limpia, primer arranque, reinstalación y Native Messaging se ejercitan con el NSIS real en GitHub Actions.
+
+## Baseline estable de modelos
+
+2.0.2 mantiene los pesos de producción de la línea 2.0.x:
 
 ```text
 ASR: Systran/faster-whisper-small
 MT : facebook/m2m100_418M → CTranslate2 INT8
 ```
 
-### Correcciones obligatorias
+La descarga/optimización del pack ocurre desde la aplicación cuando el usuario la solicita. Los pesos no se incluyen dentro del repositorio.
 
-- versión `2.0.1` única en VERSION, Cargo, Node, Tauri, motor Python y extensión Chromium;
-- landing y descargas `2.0.1`, sin textos RC/2.0.0 obsoletos;
-- Desktop, Native Messaging, motor Python y reparación sin CMD visible;
-- NSIS real instalado en CI;
-- **arranque real del `MilyVoiceTraductor.exe` instalado**;
-- runtime Python 3.13 privado;
-- Native Messaging y extensión preparados automáticamente;
-- MegaBench real Whisper Small + M2M100;
-- CPU como fallback obligatorio;
-- MilyCompute elige únicamente adapters realmente ejecutables y medidos.
+## Gates obligatorios
 
-## Hardware / MilyCompute
-
-MilyVoice no presupone que una GPU siempre sea mejor. El Hardware Profiler detecta CPU, núcleos físicos, AVX/AVX2/FMA, RAM y adaptadores GPU Windows mediante DXGI. MilyCompute mantiene estados distintos para runtime detectado y adapter realmente listo.
-
-```text
-Hardware Profiler
-      ↓
-Backend Registry
-      ↓
-Compatibility / health
-      ↓
-Benchmark P50 / P95 / RTF
-      ↓
-Model Router
-      ↓
-CPU fallback seguro
-```
-
-El perfil Legacy continúa optimizado para equipos pequeños, pero el benchmark físico específico sobre Intel Core i3 Haswell real permanece como validación externa pendiente. No se presenta como ejecutado mientras no exista esa evidencia física.
-
-## Windows sin consola negra
-
-- `MilyVoiceTraductor.exe`: subsistema `WINDOWS_GUI`.
-- bridge Native Messaging: subsistema Windows en Release.
-- motor Python: `CREATE_NO_WINDOW`.
-- reparación PowerShell: `CREATE_NO_WINDOW`, no interactivo y streams anulados.
-- el gate NSIS 2.0.1 arranca explícitamente el Desktop instalado.
-
-## MegaBench 2.0.1
-
-El mismo SHA debe generar `MilyVoiceTraductor-2.0.1-MegaBench.json` midiendo Whisper Small + M2M100 CT2 INT8 reales. El benchmark del runner es un gate de regresión; no reemplaza el benchmark físico Legacy Haswell.
-
-## Artefacto esperado
-
-Cuando la candidata supere todos los gates y sea promovida a `main`, la release `v2.0.1` debe contener exactamente:
-
-- `MilyVoiceTraductor_2.0.1_x64-setup.exe`;
-- `MilyVoiceTraductor-Chromium-Extension.zip`;
-- `MilyVoiceTraductor-2.0.1-MegaBench.json`;
-- `SHA256SUMS.txt`.
+Un SHA de 2.0.2 solo puede publicarse si pasa: consistencia de versión, privacidad, extensión, GitHub Pages, Frontend typecheck/tests/build, tests del motor, Rust format/tests/Clippy, runtime Python privado, Visual C++ app-local, diagnóstico de imports, Native Messaging, MegaBench real EN→ES y ZH→ES, Desktop Release, `WINDOWS_GUI`, bundle NSIS, **NSIS negativo ante bootstrap roto**, primer arranque sin descarga implícita, instalación/reinstalación real, extensión y SHA-256.
 
 ## Privacidad
 
@@ -81,21 +68,26 @@ El hot path permanece local:
 audio → 127.0.0.1 → ASR → MT → subtítulos/TTS/sesión
 ```
 
-No se guardan tokens, contraseñas, audio ni transcripciones dentro de Git. La persistencia de sesiones sigue siendo opt-in.
+No hay telemetría del contenido. La persistencia de sesiones continúa siendo opt-in.
+
+## Historial
+
+- `v2.0.1`: estable anterior; queda disponible como histórico.
+- `v2.0.0`: histórico.
+- la línea `2.1.x` pertenece al canal Beta y no reemplaza automáticamente esta estable.
 
 ## Ingeniería
 
 - [MASTER](MASTER.md)
-- [Coordinación de workstreams](docs/WORKSTREAMS.md)
 - [Instalación y desarrollo](docs/INSTALLATION.md)
 - [Arquitectura](docs/architecture/COMPLETE_ARCHITECTURE.md)
 - [Modelos y licencias](docs/MODELS.md)
 - [Privacidad](docs/privacy/PRIVACY.md)
 - [Seguridad](SECURITY.md)
-- [Checklist de release](docs/release/RELEASE_CHECKLIST.md)
+- [Notas 2.0.2](docs/release/RELEASE_NOTES_2.0.2.md)
 
 ## Licencia
 
-El código propio de MilyVoiceTraductor se distribuye bajo MIT. Los pesos externos mantienen sus licencias originales y no se redistribuyen dentro del repositorio.
+El código propio de MilyVoiceTraductor se distribuye bajo MIT. Los pesos externos mantienen sus licencias originales. SHA-256 verifica integridad; no se presenta el binario como Authenticode-firmado mientras no exista una identidad legítima de firma.
 
-<p align="center"><strong>MilyVoiceTraductor 2.0.1</strong><br/>Local · realtime · adaptive compute</p>
+<p align="center"><strong>MilyVoiceTraductor 2.0.2 · ESTABLE</strong><br/>Local · realtime · adaptive compute</p>
