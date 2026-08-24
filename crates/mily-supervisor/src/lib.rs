@@ -54,7 +54,9 @@ impl fmt::Display for ManifestError {
         match self {
             Self::EmptyProductName => formatter.write_str("product name must not be empty"),
             Self::EmptyProductVersion => formatter.write_str("product version must not be empty"),
-            Self::EmptyComponents => formatter.write_str("manifest must contain at least one component"),
+            Self::EmptyComponents => {
+                formatter.write_str("manifest must contain at least one component")
+            }
             Self::DuplicateComponentId(id) => write!(formatter, "duplicate component id: {id}"),
             Self::InvalidComponentId(id) => write!(formatter, "invalid component id: {id}"),
             Self::InvalidComponentVersion { id, version } => {
