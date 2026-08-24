@@ -3,5 +3,5 @@
   "package": "milyvoice-realtime",
   "version": "1.0.0",
   "contract": "realtime/v1",
-  "stage": "development"
+  "stage": "candidate"
 }
