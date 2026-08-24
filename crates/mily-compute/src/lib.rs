@@ -6,12 +6,14 @@
 
 mod benchmark;
 mod cache;
+mod compatibility;
 mod memory;
 mod registry;
 mod runtime;
 
 pub use benchmark::{BenchmarkSample, summarize_benchmark};
 pub use cache::{BenchmarkKey, CachedSelection, SelectionCache};
+pub use compatibility::{ModelComputeProfile, compatible_backends};
 pub use memory::{MemoryBudget, MemoryBudgetInput, MemoryTier, calculate_memory_budget};
 pub use registry::BackendRegistry;
 pub use runtime::{RuntimeProbe, SystemRuntimeProbe, discover_runtime_backends};
