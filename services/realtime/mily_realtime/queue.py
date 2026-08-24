@@ -26,6 +26,7 @@ class QueueSnapshot:
     buffered_duration_ns: int
     max_chunks: int
     max_buffered_duration_ns: int
+    policy: BackpressurePolicy
     dropped_oldest: int
     rejected_new: int
 
@@ -91,6 +92,7 @@ class BoundedRealtimeQueue:
             buffered_duration_ns=self._buffered_duration_ns,
             max_chunks=self.max_chunks,
             max_buffered_duration_ns=self.max_buffered_duration_ns,
+            policy=self.policy,
             dropped_oldest=self._dropped_oldest,
             rejected_new=self._rejected_new,
         )
