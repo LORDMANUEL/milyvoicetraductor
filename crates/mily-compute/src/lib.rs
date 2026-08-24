@@ -6,12 +6,14 @@
 
 mod benchmark;
 mod cache;
+mod compatibility;
 mod memory;
 mod registry;
 mod runtime;
 
 pub use benchmark::{BenchmarkSample, summarize_benchmark};
 pub use cache::{BenchmarkKey, CachedSelection, SelectionCache};
+pub use compatibility::{ModelComputeProfile, compatible_backends};
 pub use memory::{MemoryBudget, MemoryBudgetInput, MemoryTier, calculate_memory_budget};
 pub use registry::BackendRegistry;
 pub use runtime::{RuntimeProbe, SystemRuntimeProbe, discover_runtime_backends};
@@ -28,6 +30,14 @@ pub enum ComputeBackend {
     WindowsMl,
     OpenVino,
     Vulkan,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum BackendStatus {
+    Ready,
+    DetectedNotReady,
+    Unavailable,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -51,6 +61,22 @@ impl BackendCapability {
             evidence: vec!["fallback nativo".into()],
         }
     }
+
+    pub fn status(&self) -> BackendStatus {
+        match (self.runtime_detected, self.adapter_ready) {
+            (true, true) => BackendStatus::Ready,
+            (true, false) => BackendStatus::DetectedNotReady,
+            (false, _) => BackendStatus::Unavailable,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BackendCapabilityState {
+    pub backend: ComputeBackend,
+    pub status: BackendStatus,
+    pub evidence: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

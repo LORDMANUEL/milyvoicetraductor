@@ -18,6 +18,25 @@ def fail(message: str) -> None:
     raise AssertionError(message)
 
 
+def expected_components() -> dict[str, dict[str, object]]:
+    return {
+        "supervisor": {
+            "id": "supervisor",
+            "version": "1.0.0",
+            "contract": "supervisor/v1",
+            "stage": "candidate",
+            "required": True,
+        },
+        "compute": {
+            "id": "compute",
+            "version": "2.0.0",
+            "contract": "compute/v1",
+            "stage": "certified",
+            "required": True,
+        },
+    }
+
+
 def main() -> int:
     if not MANIFEST.is_file():
         fail(f"missing V3 component manifest: {MANIFEST.relative_to(ROOT)}")
@@ -53,16 +72,14 @@ def main() -> int:
         if not isinstance(required, bool):
             fail(f"required must be boolean for {component_id}")
 
-    expected_supervisor = {
-        "id": "supervisor",
-        "version": "1.0.0",
-        "contract": "supervisor/v1",
-        "stage": "candidate",
-        "required": True,
-    }
-    supervisor = next((item for item in components if item.get("id") == "supervisor"), None)
-    if supervisor != expected_supervisor:
-        fail(f"unexpected supervisor descriptor: {supervisor!r}")
+    expected = expected_components()
+    if ids != set(expected):
+        fail(f"unexpected V3 component ids: {sorted(ids)}; expected {sorted(expected)}")
+
+    by_id = {component["id"]: component for component in components}
+    for component_id, descriptor in expected.items():
+        if by_id.get(component_id) != descriptor:
+            fail(f"unexpected {component_id} descriptor: {by_id.get(component_id)!r}")
 
     print("V3 component manifest contract: PASS")
     return 0

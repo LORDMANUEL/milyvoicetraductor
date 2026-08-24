@@ -1,0 +1,8 @@
+{
+  "tier": "standard",
+  "reserveSystemMb": 2048,
+  "reserveSharedGpuMb": 0,
+  "maxModelResidentMb": 2048,
+  "cacheLimitMb": 1024,
+  "allowParallelHeavyStages": true
+}
