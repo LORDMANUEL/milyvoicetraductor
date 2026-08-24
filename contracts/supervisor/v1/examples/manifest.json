@@ -1,0 +1,15 @@
+{
+  "product": {
+    "name": "MilyVoiceTraductor",
+    "version": "3.0.0-alpha.1"
+  },
+  "components": [
+    {
+      "id": "supervisor",
+      "version": "1.0.0",
+      "contract": "supervisor/v1",
+      "stage": "candidate",
+      "required": true
+    }
+  ]
+}
