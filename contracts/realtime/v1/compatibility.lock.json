@@ -1,0 +1,52 @@
+{
+  "contract": "realtime/v1",
+  "messages": {
+    "RealtimeFrameDescriptor": {
+      "fields": {
+        "source": {"type": "enum:AudioSourceKind", "required": true},
+        "epoch": {"type": "integer", "required": true},
+        "sequenceId": {"type": "integer", "required": true},
+        "capturedMonotonicNs": {"type": "integer", "required": true},
+        "mediaStartNs": {"type": "integer", "required": true},
+        "durationNs": {"type": "integer", "required": true},
+        "sampleRate": {"type": "integer", "required": true},
+        "channels": {"type": "integer", "required": true},
+        "sampleCount": {"type": "integer", "required": true},
+        "sampleFormat": {"type": "enum:SampleFormat", "required": true},
+        "discontinuity": {"type": "boolean", "required": true},
+        "gapBefore": {"type": "integer", "required": true},
+        "jitterNs": {"type": "integer", "required": true}
+      }
+    },
+    "RealtimeTimelineSnapshot": {
+      "fields": {
+        "epoch": {"type": "integer", "required": true},
+        "expectedSequenceId": {"type": "integer", "required": true},
+        "mediaCursorNs": {"type": "integer", "required": true},
+        "acceptedChunks": {"type": "integer", "required": true},
+        "gapEvents": {"type": "integer", "required": true},
+        "missingChunks": {"type": "integer", "required": true},
+        "outOfOrderEvents": {"type": "integer", "required": true},
+        "timestampRegressions": {"type": "integer", "required": true},
+        "maxJitterNs": {"type": "integer", "required": true}
+      }
+    },
+    "RealtimeQueueSnapshot": {
+      "fields": {
+        "depth": {"type": "integer", "required": true},
+        "bufferedDurationNs": {"type": "integer", "required": true},
+        "maxChunks": {"type": "integer", "required": true},
+        "maxBufferedDurationNs": {"type": "integer", "required": true},
+        "policy": {"type": "enum:BackpressurePolicy", "required": true},
+        "droppedOldest": {"type": "integer", "required": true},
+        "rejectedNew": {"type": "integer", "required": true}
+      }
+    }
+  },
+  "enums": {
+    "AudioSourceKind": ["microphone", "systemLoopback", "browserTab", "mediaFile"],
+    "SampleFormat": ["float32"],
+    "BackpressurePolicy": ["rejectNew", "dropOldest"],
+    "RealtimeAnomaly": ["gap", "outOfOrder", "timestampRegression"]
+  }
+}
