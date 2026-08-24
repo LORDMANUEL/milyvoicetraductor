@@ -1,0 +1,29 @@
+{
+  "requestId": "req-42",
+  "utteranceId": "utt-7",
+  "sequenceId": 7,
+  "mediaStartNs": 2000000000,
+  "mediaEndNs": 3000000000,
+  "engineId": "whisper",
+  "sourceLanguage": "en",
+  "detectedLanguage": "en",
+  "final": false,
+  "text": "hello world",
+  "segments": [
+    {
+      "startMs": 100.0,
+      "endMs": 800.0,
+      "text": "hello world",
+      "language": "en",
+      "words": [
+        {"startMs": 100.0, "endMs": 400.0, "text": "hello"},
+        {"startMs": 400.0, "endMs": 800.0, "text": "world"}
+      ]
+    }
+  ],
+  "metrics": {
+    "elapsedMs": 250.0,
+    "audioDurationMs": 1000.0,
+    "rtf": 0.25
+  }
+}
