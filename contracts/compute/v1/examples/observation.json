@@ -1,0 +1,8 @@
+{
+  "backend": "cpu",
+  "available": true,
+  "successful": true,
+  "latencyMs": 81.5,
+  "rtf": 0.42,
+  "memoryMb": 612
+}
