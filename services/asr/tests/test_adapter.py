@@ -1,5 +1,6 @@
 import unittest
 from dataclasses import dataclass
+from pathlib import Path
 from types import SimpleNamespace
 
 from mily_asr import (
@@ -156,7 +157,7 @@ class AsrAdapterTests(unittest.TestCase):
         component, model_path, compute, budget, words = build_calls[0]
         self.assertEqual(component["provider"], "faster-whisper")
         self.assertEqual(component["repoId"], "demo/repo")
-        self.assertEqual(model_path, "C:/models/whisper-tiny")
+        self.assertEqual(Path(model_path), Path("C:/models/whisper-tiny"))
         self.assertEqual(compute, "cuda")
         self.assertIs(budget, budget_calls[0][2])
         self.assertTrue(words)
