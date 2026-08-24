@@ -1,0 +1,63 @@
+{
+  "id": "audio/v1",
+  "owner": "audio",
+  "status": "candidate",
+  "encoding": "json",
+  "compatibility": "additive-within-major",
+  "messages": {
+    "AudioChunkDescriptor": {
+      "required": [
+        "source",
+        "sequenceId",
+        "capturedMonotonicNs",
+        "sampleRate",
+        "channels",
+        "sampleFormat",
+        "sampleCount",
+        "discontinuity"
+      ],
+      "fields": {
+        "source": {"type": "enum:AudioSourceKind"},
+        "sequenceId": {"type": "integer"},
+        "capturedMonotonicNs": {"type": "integer"},
+        "sampleRate": {"type": "integer"},
+        "channels": {"type": "integer"},
+        "sampleFormat": {"type": "enum:SampleFormat"},
+        "sampleCount": {"type": "integer"},
+        "discontinuity": {"type": "boolean"}
+      }
+    },
+    "AudioDeviceInfo": {
+      "required": ["source", "name", "channels", "sampleRate"],
+      "fields": {
+        "source": {"type": "enum:AudioSourceKind"},
+        "name": {"type": "string"},
+        "deviceId": {"type": "string", "nullable": true},
+        "channels": {"type": "integer"},
+        "sampleRate": {"type": "integer"}
+      }
+    }
+  },
+  "enums": {
+    "AudioSourceKind": ["microphone", "systemLoopback", "browserTab", "mediaFile"],
+    "SampleFormat": ["float32"]
+  },
+  "examples": {
+    "chunkDescriptor": {
+      "message": "AudioChunkDescriptor",
+      "path": "examples/chunk-descriptor.json"
+    },
+    "deviceInfo": {
+      "message": "AudioDeviceInfo",
+      "path": "examples/device-info.json"
+    }
+  },
+  "invariants": [
+    "sequenceId starts at zero and increases exactly once per accepted chunk within one stream",
+    "capturedMonotonicNs is sampled from a monotonic clock and wall-clock time is not used for realtime ordering",
+    "sampleCount describes the out-of-band binary or in-memory audio payload",
+    "normalized ASR ingress uses mono 16000 Hz float32 samples",
+    "a discontinuity is explicit and applies to the first chunk of a restarted stream",
+    "an optional capture adapter failure cannot mutate another component"
+  ]
+}

@@ -1,0 +1,10 @@
+{
+  "source": "systemLoopback",
+  "sequenceId": 12,
+  "capturedMonotonicNs": 9876543210,
+  "sampleRate": 16000,
+  "channels": 1,
+  "sampleFormat": "float32",
+  "sampleCount": 1600,
+  "discontinuity": false
+}

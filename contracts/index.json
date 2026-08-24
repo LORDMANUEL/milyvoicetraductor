@@ -12,6 +12,12 @@
       "owner": "compute",
       "status": "candidate",
       "path": "compute/v1/contract.json"
+    },
+    {
+      "id": "audio/v1",
+      "owner": "audio",
+      "status": "candidate",
+      "path": "audio/v1/contract.json"
     }
   ]
 }

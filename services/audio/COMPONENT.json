@@ -1,0 +1,7 @@
+{
+  "id": "audio",
+  "package": "milyvoice-audio",
+  "version": "1.0.0",
+  "contract": "audio/v1",
+  "stage": "candidate"
+}
