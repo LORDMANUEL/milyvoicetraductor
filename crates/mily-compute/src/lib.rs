@@ -30,6 +30,14 @@ pub enum ComputeBackend {
     Vulkan,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum BackendStatus {
+    Ready,
+    DetectedNotReady,
+    Unavailable,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BackendCapability {
@@ -51,6 +59,22 @@ impl BackendCapability {
             evidence: vec!["fallback nativo".into()],
         }
     }
+
+    pub fn status(&self) -> BackendStatus {
+        match (self.runtime_detected, self.adapter_ready) {
+            (true, true) => BackendStatus::Ready,
+            (true, false) => BackendStatus::DetectedNotReady,
+            (false, _) => BackendStatus::Unavailable,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BackendCapabilityState {
+    pub backend: ComputeBackend,
+    pub status: BackendStatus,
+    pub evidence: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
