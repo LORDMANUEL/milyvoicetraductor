@@ -1,0 +1,68 @@
+{
+  "contract": "supervisor/v1",
+  "messages": {
+    "ProductDescriptor": {
+      "fields": {
+        "name": {"type": "string", "required": true},
+        "version": {"type": "string", "required": true}
+      }
+    },
+    "ComponentDescriptor": {
+      "fields": {
+        "id": {"type": "string", "required": true},
+        "version": {"type": "string", "required": true},
+        "contract": {"type": "string", "required": true},
+        "stage": {"type": "enum:ComponentStage", "required": true},
+        "required": {"type": "boolean", "required": true}
+      }
+    },
+    "ProductManifest": {
+      "fields": {
+        "product": {
+          "type": "object",
+          "message": "ProductDescriptor",
+          "required": true
+        },
+        "components": {
+          "type": "array:ComponentDescriptor",
+          "required": true
+        }
+      }
+    },
+    "ComponentHealth": {
+      "fields": {
+        "componentId": {"type": "string", "required": true},
+        "status": {"type": "enum:HealthStatus", "required": true},
+        "reason": {"type": "string", "nullable": true, "required": false}
+      }
+    },
+    "HealthSnapshot": {
+      "fields": {
+        "components": {"type": "array:ComponentHealth", "required": true}
+      }
+    },
+    "SupervisorError": {
+      "fields": {
+        "code": {"type": "enum:SupervisorErrorCode", "required": true},
+        "componentId": {"type": "string", "required": true}
+      }
+    }
+  },
+  "enums": {
+    "ComponentStage": [
+      "experimental",
+      "development",
+      "candidate",
+      "certified",
+      "frozen"
+    ],
+    "HealthStatus": [
+      "starting",
+      "healthy",
+      "degraded",
+      "unhealthy",
+      "disabled"
+    ],
+    "SupervisorErrorCode": ["unknown_component"]
+  }
+}
