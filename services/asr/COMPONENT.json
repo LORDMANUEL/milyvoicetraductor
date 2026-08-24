@@ -3,5 +3,5 @@
   "package": "milyvoice-asr",
   "version": "1.0.0",
   "contract": "asr/v1",
-  "stage": "development"
+  "stage": "candidate"
 }
