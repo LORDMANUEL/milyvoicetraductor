@@ -1,0 +1,10 @@
+[project]
+name = "milyvoice-engine-host"
+version = "1.0.0"
+description = "Lightweight adapter lifecycle host for MilyVoice 3"
+requires-python = ">=3.13"
+dependencies = []
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["mily_engine_host*"]
