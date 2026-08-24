@@ -6,6 +6,12 @@
       "owner": "supervisor",
       "status": "candidate",
       "path": "supervisor/v1/contract.json"
+    },
+    {
+      "id": "compute/v1",
+      "owner": "compute",
+      "status": "candidate",
+      "path": "compute/v1/contract.json"
     }
   ]
 }
