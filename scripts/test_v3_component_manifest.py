@@ -31,7 +31,7 @@ def expected_components() -> dict[str, dict[str, object]]:
             "id": "compute",
             "version": "2.0.0",
             "contract": "compute/v1",
-            "stage": "candidate",
+            "stage": "certified",
             "required": True,
         },
     }
