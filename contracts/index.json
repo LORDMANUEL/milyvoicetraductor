@@ -18,6 +18,12 @@
       "owner": "audio",
       "status": "candidate",
       "path": "audio/v1/contract.json"
+    },
+    {
+      "id": "realtime/v1",
+      "owner": "realtime",
+      "status": "candidate",
+      "path": "realtime/v1/contract.json"
     }
   ]
 }
