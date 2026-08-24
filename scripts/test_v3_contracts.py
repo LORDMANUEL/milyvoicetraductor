@@ -17,7 +17,7 @@ CONTRACT_ID = re.compile(r"^(?P<name>[a-z][a-z0-9]*(?:-[a-z0-9]+)*)/v(?P<major>[
 COMPONENT_ID = re.compile(r"^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$")
 ALLOWED_STATUS = {"candidate", "certified", "frozen"}
 ALLOWED_COMPATIBILITY = {"additive-within-major"}
-PRIMITIVE_TYPES = {"string", "boolean", "object"}
+PRIMITIVE_TYPES = {"string", "boolean", "number", "integer", "object"}
 
 
 class ContractFailure(AssertionError):
@@ -216,6 +216,14 @@ def validate_value(
     if field_type == "boolean":
         if not isinstance(value, bool):
             fail(f"{path} must be a boolean")
+        return
+    if field_type == "number":
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            fail(f"{path} must be a number")
+        return
+    if field_type == "integer":
+        if isinstance(value, bool) or not isinstance(value, int):
+            fail(f"{path} must be an integer")
         return
     if field_type == "object":
         if not isinstance(value, dict):
