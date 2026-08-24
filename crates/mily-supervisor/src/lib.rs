@@ -1,8 +1,9 @@
 //! MilyVoice 3 component supervisor foundation.
 //!
-//! Foundation v1 owns component identity, lifecycle and manifest validation.
-//! It intentionally has no runtime dependencies so it can evolve independently
-//! from the MilyVoice 2.1.x workspace.
+//! Foundation v1 owns component identity, lifecycle, manifest validation and
+//! deterministic component health snapshots. It intentionally has no runtime
+//! dependencies so it can evolve independently from the MilyVoice 2.1.x
+//! workspace.
 
 use std::collections::HashSet;
 use std::error::Error;
@@ -106,6 +107,77 @@ impl ProductManifest {
         }
 
         Ok(())
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HealthStatus {
+    Starting,
+    Healthy,
+    Degraded,
+    Unhealthy,
+    Disabled,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ComponentHealth {
+    pub component_id: String,
+    pub status: HealthStatus,
+    pub reason: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SupervisorError {
+    UnknownComponent(String),
+}
+
+impl fmt::Display for SupervisorError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::UnknownComponent(id) => write!(formatter, "unknown component: {id}"),
+        }
+    }
+}
+
+impl Error for SupervisorError {}
+
+#[derive(Debug, Clone)]
+pub struct Supervisor {
+    health: Vec<ComponentHealth>,
+}
+
+impl Supervisor {
+    pub fn new(manifest: ProductManifest) -> Result<Self, ManifestError> {
+        manifest.validate()?;
+
+        let health = manifest
+            .components
+            .into_iter()
+            .map(|component| ComponentHealth {
+                component_id: component.id,
+                status: HealthStatus::Starting,
+                reason: None,
+            })
+            .collect();
+
+        Ok(Self { health })
+    }
+
+    pub fn report_health(&mut self, report: ComponentHealth) -> Result<(), SupervisorError> {
+        let Some(index) = self
+            .health
+            .iter()
+            .position(|current| current.component_id == report.component_id)
+        else {
+            return Err(SupervisorError::UnknownComponent(report.component_id));
+        };
+
+        self.health[index] = report;
+        Ok(())
+    }
+
+    pub fn snapshot(&self) -> Vec<ComponentHealth> {
+        self.health.clone()
     }
 }
 
