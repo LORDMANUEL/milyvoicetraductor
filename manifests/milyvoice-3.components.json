@@ -15,7 +15,7 @@
       "id": "compute",
       "version": "2.0.0",
       "contract": "compute/v1",
-      "stage": "candidate",
+      "stage": "certified",
       "required": true
     }
   ]
