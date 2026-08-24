@@ -1,0 +1,15 @@
+{
+  "source": "systemLoopback",
+  "epoch": 0,
+  "sequenceId": 42,
+  "capturedMonotonicNs": 5100000000,
+  "mediaStartNs": 4200000000,
+  "durationNs": 100000000,
+  "sampleRate": 16000,
+  "channels": 1,
+  "sampleCount": 1600,
+  "sampleFormat": "float32",
+  "discontinuity": false,
+  "gapBefore": 0,
+  "jitterNs": 12000000
+}
