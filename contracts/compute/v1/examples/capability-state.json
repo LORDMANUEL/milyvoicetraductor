@@ -1,0 +1,7 @@
+{
+  "backend": "directMl",
+  "status": "detectedNotReady",
+  "evidence": [
+    {"value": "DirectML.dll detected"}
+  ]
+}
