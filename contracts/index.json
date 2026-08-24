@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "contracts": [
+    {
+      "id": "supervisor/v1",
+      "owner": "supervisor",
+      "status": "candidate",
+      "path": "supervisor/v1/contract.json"
+    }
+  ]
+}

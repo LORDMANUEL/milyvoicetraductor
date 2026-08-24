@@ -1,0 +1,9 @@
+{
+  "components": [
+    {
+      "componentId": "supervisor",
+      "status": "healthy",
+      "reason": "ready"
+    }
+  ]
+}
