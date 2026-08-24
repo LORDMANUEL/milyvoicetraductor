@@ -1,0 +1,19 @@
+{
+  "requestId": "s1",
+  "ok": true,
+  "operation": "snapshot",
+  "result": {
+    "version": "1.0.0",
+    "loadedAdapters": 1,
+    "maxLoadedAdapters": 2,
+    "adapters": [
+      {
+        "adapterId": "whisper-tiny",
+        "status": "healthy",
+        "loaded": true,
+        "failures": 0,
+        "lastError": null
+      }
+    ]
+  }
+}
