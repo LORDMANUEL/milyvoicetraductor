@@ -1,0 +1,8 @@
+{
+  "requestId": "p1",
+  "ok": true,
+  "operation": "ping",
+  "result": {
+    "version": "1.0.0"
+  }
+}
