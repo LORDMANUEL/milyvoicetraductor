@@ -1,0 +1,114 @@
+{
+  "id": "realtime/v1",
+  "owner": "realtime",
+  "status": "candidate",
+  "encoding": "json",
+  "compatibility": "additive-within-major",
+  "messages": {
+    "RealtimeFrameDescriptor": {
+      "required": [
+        "source",
+        "epoch",
+        "sequenceId",
+        "capturedMonotonicNs",
+        "mediaStartNs",
+        "durationNs",
+        "sampleRate",
+        "channels",
+        "sampleCount",
+        "sampleFormat",
+        "discontinuity",
+        "gapBefore",
+        "jitterNs"
+      ],
+      "fields": {
+        "source": {"type": "enum:AudioSourceKind"},
+        "epoch": {"type": "integer"},
+        "sequenceId": {"type": "integer"},
+        "capturedMonotonicNs": {"type": "integer"},
+        "mediaStartNs": {"type": "integer"},
+        "durationNs": {"type": "integer"},
+        "sampleRate": {"type": "integer"},
+        "channels": {"type": "integer"},
+        "sampleCount": {"type": "integer"},
+        "sampleFormat": {"type": "enum:SampleFormat"},
+        "discontinuity": {"type": "boolean"},
+        "gapBefore": {"type": "integer"},
+        "jitterNs": {"type": "integer"}
+      }
+    },
+    "RealtimeTimelineSnapshot": {
+      "required": [
+        "epoch",
+        "expectedSequenceId",
+        "mediaCursorNs",
+        "acceptedChunks",
+        "gapEvents",
+        "missingChunks",
+        "outOfOrderEvents",
+        "timestampRegressions",
+        "maxJitterNs"
+      ],
+      "fields": {
+        "epoch": {"type": "integer"},
+        "expectedSequenceId": {"type": "integer"},
+        "mediaCursorNs": {"type": "integer"},
+        "acceptedChunks": {"type": "integer"},
+        "gapEvents": {"type": "integer"},
+        "missingChunks": {"type": "integer"},
+        "outOfOrderEvents": {"type": "integer"},
+        "timestampRegressions": {"type": "integer"},
+        "maxJitterNs": {"type": "integer"}
+      }
+    },
+    "RealtimeQueueSnapshot": {
+      "required": [
+        "depth",
+        "bufferedDurationNs",
+        "maxChunks",
+        "maxBufferedDurationNs",
+        "policy",
+        "droppedOldest",
+        "rejectedNew"
+      ],
+      "fields": {
+        "depth": {"type": "integer"},
+        "bufferedDurationNs": {"type": "integer"},
+        "maxChunks": {"type": "integer"},
+        "maxBufferedDurationNs": {"type": "integer"},
+        "policy": {"type": "enum:BackpressurePolicy"},
+        "droppedOldest": {"type": "integer"},
+        "rejectedNew": {"type": "integer"}
+      }
+    }
+  },
+  "enums": {
+    "AudioSourceKind": ["microphone", "systemLoopback", "browserTab", "mediaFile"],
+    "SampleFormat": ["float32"],
+    "BackpressurePolicy": ["rejectNew", "dropOldest"],
+    "RealtimeAnomaly": ["gap", "outOfOrder", "timestampRegression"]
+  },
+  "examples": {
+    "frameDescriptor": {
+      "message": "RealtimeFrameDescriptor",
+      "path": "examples/frame-descriptor.json"
+    },
+    "timelineSnapshot": {
+      "message": "RealtimeTimelineSnapshot",
+      "path": "examples/timeline-snapshot.json"
+    },
+    "queueSnapshot": {
+      "message": "RealtimeQueueSnapshot",
+      "path": "examples/queue-snapshot.json"
+    }
+  },
+  "invariants": [
+    "mediaStartNs and mediaCursorNs advance from accepted audio sample duration, not processing or capture delay",
+    "capture jitter may change jitterNs but never shifts media time",
+    "a sequence gap is explicit and missing media duration is never invented",
+    "duplicate or out-of-order sequence IDs are rejected without advancing media state",
+    "monotonic timestamp regression is rejected inside one continuous epoch",
+    "queue overflow is never silent and is controlled by an explicit backpressure policy",
+    "the audio payload remains out-of-band and is not serialized by realtime/v1"
+  ]
+}
