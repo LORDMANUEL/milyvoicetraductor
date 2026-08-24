@@ -1,0 +1,56 @@
+{
+  "contract": "linguistic/v1",
+  "messages": {
+    "TextSegment": {"fields": {"text": {"type": "string", "required": true}}},
+    "TerminologyConstraint": {
+      "fields": {
+        "source": {"type": "string", "required": true},
+        "target": {"type": "string", "required": true},
+        "sourceLanguage": {"type": "string", "required": true},
+        "targetLanguage": {"type": "string", "required": true},
+        "caseSensitive": {"type": "boolean", "required": true}
+      }
+    },
+    "ContextItem": {
+      "fields": {
+        "text": {"type": "string", "required": true},
+        "language": {"type": "string", "required": true}
+      }
+    },
+    "PreparedTranslationInput": {
+      "fields": {
+        "text": {"type": "string", "required": true},
+        "sourceLanguage": {"type": "string", "required": true},
+        "targetLanguage": {"type": "string", "required": true},
+        "segments": {"type": "array:TextSegment", "required": true},
+        "terminology": {"type": "array:TerminologyConstraint", "required": true},
+        "context": {"type": "array:ContextItem", "required": true}
+      }
+    },
+    "TranslationQualityReport": {
+      "fields": {
+        "tokenCount": {"type": "integer", "required": true},
+        "ngramSize": {"type": "integer", "required": true},
+        "repeatedNgramRatio": {"type": "number", "required": true},
+        "maxNgramOccurrences": {"type": "integer", "required": true},
+        "repeatedSentenceCount": {"type": "integer", "required": true},
+        "passed": {"type": "boolean", "required": true},
+        "reason": {"type": "enum:QualityReason", "required": true}
+      }
+    },
+    "MissingNumber": {"fields": {"value": {"type": "string", "required": true}}},
+    "SourceTargetFidelityReport": {
+      "fields": {
+        "missingNumbers": {"type": "array:MissingNumber", "required": true},
+        "sourceHasNegation": {"type": "boolean", "required": true},
+        "targetHasNegation": {"type": "boolean", "required": true},
+        "passed": {"type": "boolean", "required": true},
+        "reason": {"type": "enum:FidelityReason", "required": true}
+      }
+    }
+  },
+  "enums": {
+    "QualityReason": ["OK", "EMPTY", "REPEATED_SENTENCE", "REPEATED_NGRAM", "REPETITION_RATIO"],
+    "FidelityReason": ["OK", "NUMBER_LOST", "NEGATION_LOST"]
+  }
+}
