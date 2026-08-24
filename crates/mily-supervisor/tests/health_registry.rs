@@ -85,6 +85,9 @@ fn subsequent_updates_do_not_change_snapshot_order() {
         .unwrap();
 
     let snapshot = supervisor.snapshot();
-    let ids: Vec<&str> = snapshot.iter().map(|item| item.component_id.as_str()).collect();
+    let ids: Vec<&str> = snapshot
+        .iter()
+        .map(|item| item.component_id.as_str())
+        .collect();
     assert_eq!(ids, vec!["supervisor", "audio"]);
 }
