@@ -30,6 +30,12 @@
       "owner": "engine-host",
       "status": "candidate",
       "path": "engine/v1/contract.json"
+    },
+    {
+      "id": "asr/v1",
+      "owner": "asr",
+      "status": "candidate",
+      "path": "asr/v1/contract.json"
     }
   ]
 }
