@@ -1,4 +1,6 @@
+import json
 import unittest
+from pathlib import Path
 
 import numpy as np
 
@@ -78,6 +80,24 @@ class AudioContractConsumerTests(unittest.TestCase):
         self.assertEqual(restart_frame.media_start_ns, 0)
         self.assertEqual(follow_frame.epoch, 1)
         self.assertEqual(follow_frame.media_start_ns, 100_000_000)
+
+    def test_audio_and_realtime_contracts_share_source_and_format_values(self):
+        root = Path(__file__).resolve().parents[3]
+        audio_contract = json.loads(
+            (root / "contracts/audio/v1/contract.json").read_text(encoding="utf-8")
+        )
+        realtime_contract = json.loads(
+            (root / "contracts/realtime/v1/contract.json").read_text(encoding="utf-8")
+        )
+
+        self.assertEqual(
+            realtime_contract["enums"]["AudioSourceKind"],
+            audio_contract["enums"]["AudioSourceKind"],
+        )
+        self.assertEqual(
+            realtime_contract["enums"]["SampleFormat"],
+            audio_contract["enums"]["SampleFormat"],
+        )
 
 
 if __name__ == "__main__":
