@@ -1,0 +1,48 @@
+name: V3 Supervisor
+
+on:
+  pull_request:
+    paths:
+      - "crates/mily-supervisor/**"
+      - "manifests/milyvoice-3.components.json"
+      - "scripts/test_v3_component_manifest.py"
+      - ".github/workflows/v3-supervisor.yml"
+      - "docs/ROADMAP-3.0.0.md"
+      - "docs/superpowers/specs/2026-08-23-milyvoice-3-modular-architecture-design.md"
+      - "docs/superpowers/plans/2026-08-23-milyvoice-3-foundation-supervisor.md"
+  push:
+    branches:
+      - "v3/**"
+    paths:
+      - "crates/mily-supervisor/**"
+      - "manifests/milyvoice-3.components.json"
+      - "scripts/test_v3_component_manifest.py"
+      - ".github/workflows/v3-supervisor.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  module:
+    name: Supervisor module gate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Component manifest contract
+        run: python scripts/test_v3_component_manifest.py
+
+      - name: Rust 1.98.0
+        uses: dtolnay/rust-toolchain@1.98.0
+        with:
+          components: rustfmt, clippy
+
+      - name: Format
+        run: cargo fmt --manifest-path crates/mily-supervisor/Cargo.toml -- --check
+
+      - name: Tests
+        run: cargo test --manifest-path crates/mily-supervisor/Cargo.toml --locked
+
+      - name: Clippy
+        run: cargo clippy --manifest-path crates/mily-supervisor/Cargo.toml --all-targets --locked -- -D warnings
