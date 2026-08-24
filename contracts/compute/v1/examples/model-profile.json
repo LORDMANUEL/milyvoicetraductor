@@ -1,0 +1,7 @@
+{
+  "supportedBackends": [
+    {"backend": "cpu"},
+    {"backend": "cuda"}
+  ],
+  "residentMemoryMb": 768
+}
