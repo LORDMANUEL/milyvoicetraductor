@@ -1,0 +1,53 @@
+{
+  "contract": "compute/v1",
+  "messages": {
+    "EvidenceItem": {
+      "fields": {
+        "value": {"type": "string", "required": true}
+      }
+    },
+    "SupportedBackend": {
+      "fields": {
+        "backend": {"type": "enum:ComputeBackend", "required": true}
+      }
+    },
+    "BackendCapabilityState": {
+      "fields": {
+        "backend": {"type": "enum:ComputeBackend", "required": true},
+        "status": {"type": "enum:BackendStatus", "required": true},
+        "evidence": {"type": "array:EvidenceItem", "required": true}
+      }
+    },
+    "BackendObservation": {
+      "fields": {
+        "backend": {"type": "enum:ComputeBackend", "required": true},
+        "available": {"type": "boolean", "required": true},
+        "successful": {"type": "boolean", "required": true},
+        "latencyMs": {"type": "number", "required": true},
+        "rtf": {"type": "number", "required": true},
+        "memoryMb": {"type": "integer", "required": true}
+      }
+    },
+    "MemoryBudget": {
+      "fields": {
+        "tier": {"type": "enum:MemoryTier", "required": true},
+        "reserveSystemMb": {"type": "integer", "required": true},
+        "reserveSharedGpuMb": {"type": "integer", "required": true},
+        "maxModelResidentMb": {"type": "integer", "required": true},
+        "cacheLimitMb": {"type": "integer", "required": true},
+        "allowParallelHeavyStages": {"type": "boolean", "required": true}
+      }
+    },
+    "ModelComputeProfile": {
+      "fields": {
+        "supportedBackends": {"type": "array:SupportedBackend", "required": true},
+        "residentMemoryMb": {"type": "integer", "required": true}
+      }
+    }
+  },
+  "enums": {
+    "ComputeBackend": ["cpu", "cuda", "directMl", "windowsMl", "openVino", "vulkan"],
+    "BackendStatus": ["ready", "detectedNotReady", "unavailable"],
+    "MemoryTier": ["constrained", "standard", "spacious"]
+  }
+}
