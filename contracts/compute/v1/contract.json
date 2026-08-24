@@ -1,0 +1,88 @@
+{
+  "id": "compute/v1",
+  "owner": "compute",
+  "status": "candidate",
+  "encoding": "json",
+  "compatibility": "additive-within-major",
+  "messages": {
+    "EvidenceItem": {
+      "required": ["value"],
+      "fields": {
+        "value": {"type": "string"}
+      }
+    },
+    "SupportedBackend": {
+      "required": ["backend"],
+      "fields": {
+        "backend": {"type": "enum:ComputeBackend"}
+      }
+    },
+    "BackendCapabilityState": {
+      "required": ["backend", "status", "evidence"],
+      "fields": {
+        "backend": {"type": "enum:ComputeBackend"},
+        "status": {"type": "enum:BackendStatus"},
+        "evidence": {"type": "array:EvidenceItem"}
+      }
+    },
+    "BackendObservation": {
+      "required": ["backend", "available", "successful", "latencyMs", "rtf", "memoryMb"],
+      "fields": {
+        "backend": {"type": "enum:ComputeBackend"},
+        "available": {"type": "boolean"},
+        "successful": {"type": "boolean"},
+        "latencyMs": {"type": "number"},
+        "rtf": {"type": "number"},
+        "memoryMb": {"type": "integer"}
+      }
+    },
+    "MemoryBudget": {
+      "required": ["tier", "reserveSystemMb", "reserveSharedGpuMb", "maxModelResidentMb", "cacheLimitMb", "allowParallelHeavyStages"],
+      "fields": {
+        "tier": {"type": "enum:MemoryTier"},
+        "reserveSystemMb": {"type": "integer"},
+        "reserveSharedGpuMb": {"type": "integer"},
+        "maxModelResidentMb": {"type": "integer"},
+        "cacheLimitMb": {"type": "integer"},
+        "allowParallelHeavyStages": {"type": "boolean"}
+      }
+    },
+    "ModelComputeProfile": {
+      "required": ["supportedBackends", "residentMemoryMb"],
+      "fields": {
+        "supportedBackends": {"type": "array:SupportedBackend"},
+        "residentMemoryMb": {"type": "integer"}
+      }
+    }
+  },
+  "enums": {
+    "ComputeBackend": ["cpu", "cuda", "directMl", "windowsMl", "openVino", "vulkan"],
+    "BackendStatus": ["ready", "detectedNotReady", "unavailable"],
+    "MemoryTier": ["constrained", "standard", "spacious"]
+  },
+  "examples": {
+    "capabilityState": {
+      "message": "BackendCapabilityState",
+      "path": "examples/capability-state.json"
+    },
+    "observation": {
+      "message": "BackendObservation",
+      "path": "examples/observation.json"
+    },
+    "memoryBudget": {
+      "message": "MemoryBudget",
+      "path": "examples/memory-budget.json"
+    },
+    "modelProfile": {
+      "message": "ModelComputeProfile",
+      "path": "examples/model-profile.json"
+    }
+  },
+  "invariants": [
+    "runtime detection alone never implies adapter readiness",
+    "an unavailable or detected-not-ready backend is excluded from compatible execution candidates",
+    "a model whose resident memory exceeds maxModelResidentMb has no compatible execution backend",
+    "benchmark selection ranks valid observations by RTF, then latency, then memory",
+    "CPU is eligible only when the model supports CPU and the model fits the memory budget"
+  ]
+}
