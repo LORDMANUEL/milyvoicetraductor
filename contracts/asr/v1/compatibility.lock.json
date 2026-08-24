@@ -1,0 +1,62 @@
+{
+  "contract": "asr/v1",
+  "messages": {
+    "AsrRequestDescriptor": {
+      "fields": {
+        "requestId": {"type": "string", "required": true},
+        "utteranceId": {"type": "string", "required": true},
+        "sequenceId": {"type": "integer", "required": true},
+        "mediaStartNs": {"type": "integer", "required": true},
+        "mediaEndNs": {"type": "integer", "required": true},
+        "sampleRate": {"type": "integer", "required": true},
+        "channels": {"type": "integer", "required": true},
+        "sampleFormat": {"type": "enum:SampleFormat", "required": true},
+        "sampleCount": {"type": "integer", "required": true},
+        "sourceLanguage": {"type": "string", "required": true},
+        "final": {"type": "boolean", "required": true}
+      }
+    },
+    "AsrWord": {
+      "fields": {
+        "startMs": {"type": "number", "required": true},
+        "endMs": {"type": "number", "required": true},
+        "text": {"type": "string", "required": true}
+      }
+    },
+    "AsrSegment": {
+      "fields": {
+        "startMs": {"type": "number", "required": true},
+        "endMs": {"type": "number", "required": true},
+        "text": {"type": "string", "required": true},
+        "language": {"type": "string", "nullable": true, "required": true},
+        "words": {"type": "array:AsrWord", "required": true}
+      }
+    },
+    "AsrMetrics": {
+      "fields": {
+        "elapsedMs": {"type": "number", "required": true},
+        "audioDurationMs": {"type": "number", "required": true},
+        "rtf": {"type": "number", "required": true}
+      }
+    },
+    "AsrResult": {
+      "fields": {
+        "requestId": {"type": "string", "required": true},
+        "utteranceId": {"type": "string", "required": true},
+        "sequenceId": {"type": "integer", "required": true},
+        "mediaStartNs": {"type": "integer", "required": true},
+        "mediaEndNs": {"type": "integer", "required": true},
+        "engineId": {"type": "string", "required": true},
+        "sourceLanguage": {"type": "string", "required": true},
+        "detectedLanguage": {"type": "string", "nullable": true, "required": true},
+        "final": {"type": "boolean", "required": true},
+        "text": {"type": "string", "required": true},
+        "segments": {"type": "array:AsrSegment", "required": true},
+        "metrics": {"type": "object", "message": "AsrMetrics", "required": true}
+      }
+    }
+  },
+  "enums": {
+    "SampleFormat": ["float32"]
+  }
+}
