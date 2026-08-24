@@ -1,0 +1,13 @@
+{
+  "requestId": "req-42",
+  "utteranceId": "utt-7",
+  "sequenceId": 7,
+  "mediaStartNs": 2000000000,
+  "mediaEndNs": 3000000000,
+  "sampleRate": 16000,
+  "channels": 1,
+  "sampleFormat": "float32",
+  "sampleCount": 16000,
+  "sourceLanguage": "en",
+  "final": false
+}
