@@ -37,7 +37,12 @@ def load_json(path: Path) -> Any:
         fail(f"invalid JSON in {path.relative_to(ROOT)}: {exc}")
 
 
-def validate_field_type(field_name: str, spec: Any, messages: dict[str, Any], enums: dict[str, Any]) -> None:
+def validate_field_type(
+    field_name: str,
+    spec: Any,
+    messages: dict[str, Any],
+    enums: dict[str, Any],
+) -> None:
     if not isinstance(spec, dict):
         fail(f"field {field_name} definition must be an object")
     field_type = spec.get("type")
@@ -94,7 +99,11 @@ def validate_contract_descriptor(contract: Any, expected_id: str, expected_owner
     for enum_name, values in enums.items():
         if not isinstance(enum_name, str) or not enum_name:
             fail(f"invalid enum name in {expected_id}")
-        if not isinstance(values, list) or not values or any(not isinstance(v, str) or not v for v in values):
+        if (
+            not isinstance(values, list)
+            or not values
+            or any(not isinstance(value, str) or not value for value in values)
+        ):
             fail(f"enum {enum_name} must contain non-empty string values")
         if len(values) != len(set(values)):
             fail(f"enum {enum_name} contains duplicate values")
@@ -108,7 +117,9 @@ def validate_contract_descriptor(contract: Any, expected_id: str, expected_owner
         required = message.get("required")
         if not isinstance(fields, dict) or not fields:
             fail(f"message {message_name} must define fields")
-        if not isinstance(required, list) or any(not isinstance(item, str) for item in required):
+        if not isinstance(required, list) or any(
+            not isinstance(item, str) for item in required
+        ):
             fail(f"message {message_name} required must be a string list")
         if len(required) != len(set(required)):
             fail(f"message {message_name} contains duplicate required fields")
@@ -158,10 +169,20 @@ def validate_compatibility(contract: dict[str, Any], lock: Any) -> None:
             if (field_name in current_required) != expected_required:
                 fail(f"breaking change: requiredness changed for {message_name}.{field_name}")
 
+            expected_message = locked_spec.get("message")
+            if expected_message is not None and current_spec.get("message") != expected_message:
+                fail(
+                    f"breaking change: object target changed for "
+                    f"{message_name}.{field_name}"
+                )
+
         locked_field_names = set(locked_fields)
         new_required = current_required - locked_field_names
         if new_required:
-            fail(f"breaking change: new required fields in {message_name}: {sorted(new_required)}")
+            fail(
+                f"breaking change: new required fields in {message_name}: "
+                f"{sorted(new_required)}"
+            )
 
     contract_enums = contract["enums"]
     locked_enums = lock.get("enums")
@@ -176,7 +197,12 @@ def validate_compatibility(contract: dict[str, Any], lock: Any) -> None:
             fail(f"breaking change: enum values removed from {enum_name}: {missing_values}")
 
 
-def validate_value(value: Any, spec: dict[str, Any], contract: dict[str, Any], path: str) -> None:
+def validate_value(
+    value: Any,
+    spec: dict[str, Any],
+    contract: dict[str, Any],
+    path: str,
+) -> None:
     if value is None:
         if spec.get("nullable") is True:
             return
@@ -213,7 +239,12 @@ def validate_value(value: Any, spec: dict[str, Any], contract: dict[str, Any], p
     fail(f"{path} has unsupported type {field_type}")
 
 
-def validate_message(value: Any, message_name: str, contract: dict[str, Any], path: str) -> None:
+def validate_message(
+    value: Any,
+    message_name: str,
+    contract: dict[str, Any],
+    path: str,
+) -> None:
     if not isinstance(value, dict):
         fail(f"{path} must be an object")
     message = contract["messages"].get(message_name)
@@ -248,37 +279,79 @@ def validate_examples(contract_path: Path, contract: dict[str, Any]) -> None:
         validate_message(fixture, message, contract, example_name)
 
 
+def first_locked_field(lock: dict[str, Any]) -> tuple[str, str, dict[str, Any]]:
+    for message_name, message in lock.get("messages", {}).items():
+        fields = message.get("fields", {}) if isinstance(message, dict) else {}
+        for field_name, spec in fields.items():
+            if isinstance(spec, dict):
+                return message_name, field_name, spec
+    fail("validator self-test requires at least one locked field")
+
+
 def self_test_compatibility(contract: dict[str, Any], lock: dict[str, Any]) -> None:
+    """Probe the compatibility checker without assuming any domain names."""
     base = copy.deepcopy(contract)
     validate_compatibility(base, lock)
 
+    message_name, field_name, locked_spec = first_locked_field(lock)
+
     removed = copy.deepcopy(base)
-    removed["messages"]["ComponentHealth"]["fields"].pop("status")
+    removed["messages"][message_name]["fields"].pop(field_name)
     expect_compatibility_failure(removed, lock, "field removal")
 
     changed_type = copy.deepcopy(base)
-    changed_type["messages"]["ComponentHealth"]["fields"]["componentId"]["type"] = "boolean"
+    current_type = changed_type["messages"][message_name]["fields"][field_name]["type"]
+    changed_type["messages"][message_name]["fields"][field_name]["type"] = (
+        "boolean" if current_type != "boolean" else "string"
+    )
     expect_compatibility_failure(changed_type, lock, "type change")
 
     required_added = copy.deepcopy(base)
-    required_added["messages"]["ComponentHealth"]["fields"]["timestamp"] = {"type": "string"}
-    required_added["messages"]["ComponentHealth"]["required"].append("timestamp")
+    required_added["messages"][message_name]["fields"]["compatRequiredProbe"] = {
+        "type": "string"
+    }
+    required_added["messages"][message_name]["required"].append("compatRequiredProbe")
     expect_compatibility_failure(required_added, lock, "new required field")
 
-    enum_removed = copy.deepcopy(base)
-    enum_removed["enums"]["HealthStatus"].remove("degraded")
-    expect_compatibility_failure(enum_removed, lock, "enum removal")
-
     optional_added = copy.deepcopy(base)
-    optional_added["messages"]["ComponentHealth"]["fields"]["diagnostic"] = {
+    optional_added["messages"][message_name]["fields"]["compatOptionalProbe"] = {
         "type": "string",
         "nullable": True,
     }
     validate_contract_descriptor(optional_added, base["id"], base["owner"])
     validate_compatibility(optional_added, lock)
 
+    locked_enums = lock.get("enums", {})
+    if not isinstance(locked_enums, dict):
+        fail("compatibility lock enums must be an object")
+    for enum_name, values in locked_enums.items():
+        if isinstance(values, list) and values:
+            enum_removed = copy.deepcopy(base)
+            enum_removed["enums"][enum_name].remove(values[0])
+            expect_compatibility_failure(enum_removed, lock, "enum removal")
+            break
 
-def expect_compatibility_failure(contract: dict[str, Any], lock: dict[str, Any], label: str) -> None:
+    if locked_spec.get("type") == "object" and locked_spec.get("message") is not None:
+        available_messages = [
+            name for name in base["messages"] if name != locked_spec["message"]
+        ]
+        if available_messages:
+            object_target_changed = copy.deepcopy(base)
+            object_target_changed["messages"][message_name]["fields"][field_name]["message"] = (
+                available_messages[0]
+            )
+            expect_compatibility_failure(
+                object_target_changed,
+                lock,
+                "object message target change",
+            )
+
+
+def expect_compatibility_failure(
+    contract: dict[str, Any],
+    lock: dict[str, Any],
+    label: str,
+) -> None:
     try:
         validate_compatibility(contract, lock)
     except ContractFailure:
