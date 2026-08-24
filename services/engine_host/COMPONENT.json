@@ -3,5 +3,5 @@
   "package": "milyvoice-engine-host",
   "version": "1.0.0",
   "contract": "engine/v1",
-  "stage": "development"
+  "stage": "candidate"
 }
