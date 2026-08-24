@@ -1,0 +1,9 @@
+{
+  "depth": 5,
+  "bufferedDurationNs": 500000000,
+  "maxChunks": 8,
+  "maxBufferedDurationNs": 500000000,
+  "policy": "dropOldest",
+  "droppedOldest": 995,
+  "rejectedNew": 0
+}
