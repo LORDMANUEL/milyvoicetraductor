@@ -1,0 +1,30 @@
+{
+  "contract": "audio/v1",
+  "messages": {
+    "AudioChunkDescriptor": {
+      "fields": {
+        "source": {"type": "enum:AudioSourceKind", "required": true},
+        "sequenceId": {"type": "integer", "required": true},
+        "capturedMonotonicNs": {"type": "integer", "required": true},
+        "sampleRate": {"type": "integer", "required": true},
+        "channels": {"type": "integer", "required": true},
+        "sampleFormat": {"type": "enum:SampleFormat", "required": true},
+        "sampleCount": {"type": "integer", "required": true},
+        "discontinuity": {"type": "boolean", "required": true}
+      }
+    },
+    "AudioDeviceInfo": {
+      "fields": {
+        "source": {"type": "enum:AudioSourceKind", "required": true},
+        "name": {"type": "string", "required": true},
+        "deviceId": {"type": "string", "nullable": true, "required": false},
+        "channels": {"type": "integer", "required": true},
+        "sampleRate": {"type": "integer", "required": true}
+      }
+    }
+  },
+  "enums": {
+    "AudioSourceKind": ["microphone", "systemLoopback", "browserTab", "mediaFile"],
+    "SampleFormat": ["float32"]
+  }
+}
