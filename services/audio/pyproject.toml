@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=75", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "milyvoice-audio"
+version = "1.0.0"
+description = "MilyVoice 3 local audio normalization and capture component"
+requires-python = ">=3.13"
+dependencies = ["numpy==2.5.2"]
+
+[project.optional-dependencies]
+windows = ["PyAudioWPatch==0.2.12.8"]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["mily_audio*"]
