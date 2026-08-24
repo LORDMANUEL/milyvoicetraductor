@@ -1,0 +1,21 @@
+{
+  "text": "Please check the work order. Next step!",
+  "sourceLanguage": "en",
+  "targetLanguage": "es",
+  "segments": [
+    {"text": "Please check the work order."},
+    {"text": "Next step!"}
+  ],
+  "terminology": [
+    {
+      "source": "work order",
+      "target": "orden de trabajo",
+      "sourceLanguage": "en",
+      "targetLanguage": "es",
+      "caseSensitive": false
+    }
+  ],
+  "context": [
+    {"text": "Previous order 1038.", "language": "en"}
+  ]
+}
