@@ -1,0 +1,72 @@
+name: V3 Linguistic
+
+on:
+  pull_request:
+    paths:
+      - "services/linguistic/**"
+      - "contracts/linguistic/**"
+      - "contracts/index.json"
+      - "manifests/milyvoice-3.components.json"
+      - "scripts/test_v3_component_manifest.py"
+      - ".github/workflows/v3-linguistic.yml"
+      - "docs/superpowers/specs/2026-08-24-milyvoice-3-linguistic-1.0-design.md"
+      - "docs/superpowers/plans/2026-08-24-milyvoice-3-linguistic-1.0.md"
+  push:
+    branches:
+      - "v3/linguistic-*"
+    paths:
+      - "services/linguistic/**"
+      - "contracts/linguistic/**"
+      - "contracts/index.json"
+      - "manifests/milyvoice-3.components.json"
+      - "scripts/test_v3_component_manifest.py"
+      - ".github/workflows/v3-linguistic.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  linux:
+    name: Linguistic Linux gate
+    runs-on: ubuntu-latest
+    env:
+      PYTHONPATH: services/linguistic:services/ai
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+      - name: Python 3.13
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+      - name: Compile Linguistic sources and tests
+        run: python -m compileall -q services/linguistic
+      - name: Linguistic tests
+        run: python -m unittest discover -s services/linguistic/tests -p "test_*.py" -v
+
+  windows:
+    name: Linguistic Windows gate
+    runs-on: windows-latest
+    env:
+      PYTHONPATH: "services/linguistic;services/ai"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+      - name: Python 3.13
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+      - name: Compile Linguistic sources and tests
+        run: python -m compileall -q services/linguistic
+      - name: Linguistic tests
+        run: python -m unittest discover -s services/linguistic/tests -p "test_*.py" -v
+
+  contracts:
+    name: Linguistic contract/composition gate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+      - name: Contracts registry
+        run: python scripts/test_v3_contracts.py
+      - name: V3 composition
+        run: python scripts/test_v3_component_manifest.py
