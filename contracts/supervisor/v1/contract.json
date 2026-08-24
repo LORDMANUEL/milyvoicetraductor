@@ -1,0 +1,90 @@
+{
+  "id": "supervisor/v1",
+  "owner": "supervisor",
+  "status": "candidate",
+  "encoding": "json",
+  "compatibility": "additive-within-major",
+  "messages": {
+    "ProductDescriptor": {
+      "required": ["name", "version"],
+      "fields": {
+        "name": {"type": "string"},
+        "version": {"type": "string"}
+      }
+    },
+    "ComponentDescriptor": {
+      "required": ["id", "version", "contract", "stage", "required"],
+      "fields": {
+        "id": {"type": "string"},
+        "version": {"type": "string"},
+        "contract": {"type": "string"},
+        "stage": {"type": "enum:ComponentStage"},
+        "required": {"type": "boolean"}
+      }
+    },
+    "ProductManifest": {
+      "required": ["product", "components"],
+      "fields": {
+        "product": {"type": "object", "message": "ProductDescriptor"},
+        "components": {"type": "array:ComponentDescriptor"}
+      }
+    },
+    "ComponentHealth": {
+      "required": ["componentId", "status"],
+      "fields": {
+        "componentId": {"type": "string"},
+        "status": {"type": "enum:HealthStatus"},
+        "reason": {"type": "string", "nullable": true}
+      }
+    },
+    "HealthSnapshot": {
+      "required": ["components"],
+      "fields": {
+        "components": {"type": "array:ComponentHealth"}
+      }
+    },
+    "SupervisorError": {
+      "required": ["code", "componentId"],
+      "fields": {
+        "code": {"type": "enum:SupervisorErrorCode"},
+        "componentId": {"type": "string"}
+      }
+    }
+  },
+  "enums": {
+    "ComponentStage": [
+      "experimental",
+      "development",
+      "candidate",
+      "certified",
+      "frozen"
+    ],
+    "HealthStatus": [
+      "starting",
+      "healthy",
+      "degraded",
+      "unhealthy",
+      "disabled"
+    ],
+    "SupervisorErrorCode": ["unknown_component"]
+  },
+  "examples": {
+    "manifest": {
+      "message": "ProductManifest",
+      "path": "examples/manifest.json"
+    },
+    "healthReport": {
+      "message": "ComponentHealth",
+      "path": "examples/health-report.json"
+    },
+    "healthSnapshot": {
+      "message": "HealthSnapshot",
+      "path": "examples/health-snapshot.json"
+    }
+  },
+  "invariants": [
+    "health reports are accepted only for component ids present in the validated manifest",
+    "an unknown component health report does not mutate the current snapshot",
+    "health snapshot ordering follows manifest component ordering"
+  ]
+}
