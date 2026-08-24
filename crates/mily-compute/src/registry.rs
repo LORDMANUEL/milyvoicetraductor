@@ -1,5 +1,14 @@
-use crate::{BackendCapability, ComputeBackend};
+use crate::{BackendCapability, BackendCapabilityState, BackendStatus, ComputeBackend};
 use std::collections::HashMap;
+
+const BACKEND_ORDER: [ComputeBackend; 6] = [
+    ComputeBackend::Cpu,
+    ComputeBackend::Cuda,
+    ComputeBackend::WindowsMl,
+    ComputeBackend::DirectMl,
+    ComputeBackend::OpenVino,
+    ComputeBackend::Vulkan,
+];
 
 #[derive(Debug, Clone)]
 pub struct BackendRegistry {
@@ -21,6 +30,26 @@ impl BackendRegistry {
 
     pub fn capability(&self, backend: ComputeBackend) -> Option<&BackendCapability> {
         self.capabilities.get(&backend)
+    }
+
+    pub fn status(&self, backend: ComputeBackend) -> BackendStatus {
+        self.capability(backend)
+            .map(BackendCapability::status)
+            .unwrap_or(BackendStatus::Unavailable)
+    }
+
+    pub fn capability_snapshot(&self) -> Vec<BackendCapabilityState> {
+        BACKEND_ORDER
+            .into_iter()
+            .map(|backend| BackendCapabilityState {
+                backend,
+                status: self.status(backend),
+                evidence: self
+                    .capability(backend)
+                    .map(|capability| capability.evidence.clone())
+                    .unwrap_or_default(),
+            })
+            .collect()
     }
 
     pub fn register_runtime(&mut self, backend: ComputeBackend, evidence: impl Into<String>) {
