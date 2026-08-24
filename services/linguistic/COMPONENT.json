@@ -3,5 +3,5 @@
   "package": "milyvoice-linguistic",
   "version": "1.0.0",
   "contract": "linguistic/v1",
-  "stage": "development"
+  "stage": "candidate"
 }
