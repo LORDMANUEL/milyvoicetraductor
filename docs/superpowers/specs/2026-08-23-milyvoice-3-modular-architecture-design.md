@@ -2,18 +2,18 @@
 
 ## Purpose
 
-MilyVoice 3.0.0 will migrate the existing 2.1.x codebase into independently versioned modules with explicit contracts, certification and freeze rules. The migration is incremental: 2.1.x remains the functional baseline while 3.x components are introduced behind compatible boundaries.
+MilyVoice 3.0.0 migrates la base 2.1.x hacia componentes con versión, contrato, pruebas, health y ciclo de release independientes. La migración es incremental: 2.1.x permanece como baseline funcional mientras cada componente 3.x se certifica detrás de límites explícitos.
 
 ## Architectural choice
 
 Use a **modular hybrid architecture**, not a pure microservice topology.
 
-- Rust crates remain in-process when isolation through public APIs is sufficient.
-- Python inference engines are hosted behind one lightweight Engine Host instead of spawning one process per feature.
-- Browser/Desktop boundaries continue to use Native Messaging/IPC where a process boundary already exists.
-- Components expose versioned contracts and health metadata regardless of whether they run in-process or out-of-process.
+- Rust modules stay in-process when public APIs provide enough isolation.
+- Python inference engines will live behind one lightweight Engine Host rather than one process per feature.
+- Browser/Desktop boundaries keep Native Messaging/IPC where a process boundary already exists.
+- Every component exposes versioned contracts and health metadata regardless of process placement.
 
-This gives module-level isolation without violating the product-wide <= 2 GiB memory target through unnecessary process duplication.
+This preserves most microservice isolation without unnecessary RAM/IPC overhead and keeps the product-wide <= 2 GiB target viable.
 
 ## Component identity
 
@@ -23,42 +23,42 @@ Every component declares:
 - semantic `version`;
 - versioned `contract` identifier;
 - lifecycle `stage`;
-- whether it is required for the current composition.
+- whether it is required for the selected product composition.
 
-The product manifest records an exact composition. Product version and component versions are independent.
+Product and component versions are independent. The product manifest pins the exact composition.
 
 ## Lifecycle
 
 `experimental -> development -> candidate -> certified -> frozen`
 
-`frozen` means the exact released component version is immutable. New behavior requires a new semantic version. Consumers may continue using the frozen version until a newer compatible version is certified.
+`frozen` means the exact component release is immutable. New behavior requires a new semantic version; consumers may remain on the frozen release until a compatible successor is certified.
 
 ## Supervisor boundary
 
-The first 3.x component is `mily-supervisor`. Its initial responsibilities are deliberately small:
+The first 3.x component is `mily-supervisor`. Foundation v1 does only this:
 
-1. validate a product/component manifest;
+1. validate an in-memory product/component manifest;
 2. reject duplicate component IDs;
-3. reject malformed component IDs, versions and contract IDs;
-4. maintain current health information for known components;
-5. reject health reports from unknown components;
-6. expose deterministic snapshots suitable for Desktop diagnostics and future updater decisions.
+3. reject malformed IDs, component versions and contract IDs;
+4. keep current health for known components;
+5. reject reports from unknown components without mutating state;
+6. expose deterministic snapshots for future Desktop diagnostics/updater decisions.
 
-It does **not** initially start/kill processes, download updates, choose AI models or own application configuration. Those behaviors belong to later modules.
+It does **not** start/kill processes, choose models, touch audio, own updates or replace existing 2.1.x configuration.
 
 ## Manifest rules
 
-A component ID uses lowercase ASCII letters, digits and hyphens, begins with a letter and has no consecutive/trailing hyphen.
+Component ID: lowercase ASCII letters, digits and hyphens; begins with a letter; no consecutive or trailing hyphen.
 
-A version is strict `MAJOR.MINOR.PATCH` with numeric non-negative fields. Pre-release product versions are allowed only in the product field; component v1 foundation stores release versions only so a frozen component is addressable unambiguously.
+Component version: strict release `MAJOR.MINOR.PATCH` with numeric non-negative fields. Product pre-release strings such as `3.0.0-alpha.1` remain allowed in the product descriptor.
 
-A contract ID uses `<name>/v<major>`, for example `supervisor/v1` or `audio/v1`.
+Contract ID: `<name>/v<major>`, with major >= 1, for example `supervisor/v1`.
 
-The manifest must contain at least one component and component IDs must be unique.
+A manifest must have non-empty product identity, at least one component and unique component IDs.
 
 ## Health model
 
-Health is orthogonal to lifecycle stage:
+Health is independent from lifecycle stage:
 
 - `starting`
 - `healthy`
@@ -66,46 +66,52 @@ Health is orthogonal to lifecycle stage:
 - `unhealthy`
 - `disabled`
 
-A health report contains component ID, status and an optional machine-readable reason. The supervisor only accepts reports for components present in its validated manifest.
+A health report contains component ID, status and an optional machine-readable reason.
 
 ## Failure behavior
 
-Invalid manifests fail closed before registry construction. An invalid health report does not mutate the current snapshot. Future process restart policy will consume these states but is out of scope for Foundation v1.
+Invalid manifests fail closed before Supervisor construction. Unknown health reports return an error and preserve the prior snapshot. Process restart policy is deferred to a later supervisor release.
 
 ## Compatibility model
 
-Contracts are versioned independently. A consumer binds to a major contract version. Additive compatible evolution may happen within that major. Breaking changes create a new contract major and a new compatibility entry.
+A consumer binds to a contract major. Additive compatible evolution can remain inside that major. Breaking changes create a new contract major and explicit compatibility entry.
 
 ## Repository migration
 
-The initial implementation adds `crates/mily-supervisor` to the existing Rust workspace. No existing crate is moved. Existing 2.1.0 product metadata remains unchanged on the foundation branch. Later phases introduce `contracts/` only after the supervisor manifest semantics are certified.
+Foundation deliberately **does not add `mily-supervisor` to the existing root Cargo workspace**. It creates `crates/mily-supervisor` as an independent nested Cargo workspace with its own component version, lock file and path-scoped CI. This prevents F1 from changing the global `Cargo.lock` or rebuilding the existing 2.1.x Rust graph merely to introduce governance infrastructure.
+
+Later integration may consume the certified Supervisor through a path dependency or process/IPC boundary chosen by the relevant contract phase. Existing 2.1.0 product metadata remains unchanged.
+
+## Machine-readable composition
+
+`manifests/milyvoice-3.components.json` records the intended 3.x composition separately from the 2.1.x runtime metadata. Foundation validates its required fields with a lightweight repository test; Rust JSON deserialization is intentionally deferred until a consuming runtime needs it, avoiding dependencies that do not yet provide runtime value.
 
 ## Testing strategy
 
-Foundation uses TDD and Rust integration/unit tests for:
+Foundation uses TDD for:
 
-- accepted valid manifest;
+- valid manifest acceptance;
 - duplicate ID rejection;
 - ID/version/contract validation;
 - known component health update;
-- unknown component health rejection;
-- snapshot stability.
+- unknown component rejection without mutation;
+- deterministic snapshot order.
 
-The existing repository CI remains the final integration gate so adding the crate cannot silently break Desktop, Python, extension or installer builds.
+`mily-supervisor` gets a dedicated path-scoped workflow. The normal repository CI remains the regression gate for the unchanged 2.1.x product.
 
 ## Resource behavior
 
-`mily-supervisor` is a data/control-plane component and must not load model runtimes, audio devices or WebView resources. Its memory footprint should remain negligible relative to the 2 GiB application budget; an explicit process-level memory gate will be introduced only if/when Supervisor becomes a process boundary.
+Supervisor Foundation uses only Rust `std`, loads no model runtime, audio stack or WebView, and has no long-running worker. It therefore adds no runtime dependency graph to 2.1.x. A measured process-memory gate becomes mandatory only if a later version introduces a process boundary.
 
 ## Non-goals for Foundation
 
 - process orchestration/restart;
 - hot updates;
 - cryptographic manifest signing;
-- engine selection;
-- model download;
+- engine/model selection;
 - audio/realtime changes;
 - UI changes;
-- changing global product version to 3.0.0.
+- changing global product version to 3.0.0;
+- refactoring existing root crates.
 
 Those are sequenced in `docs/ROADMAP-3.0.0.md`.
