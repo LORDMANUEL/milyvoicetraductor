@@ -1,0 +1,146 @@
+{
+  "id": "engine/v1",
+  "owner": "engine-host",
+  "status": "candidate",
+  "encoding": "json",
+  "compatibility": "additive-within-major",
+  "messages": {
+    "AdapterDescriptor": {
+      "required": ["id", "kind", "title", "version", "contract"],
+      "fields": {
+        "id": {"type": "string"},
+        "kind": {"type": "enum:AdapterKind"},
+        "title": {"type": "string"},
+        "version": {"type": "string"},
+        "contract": {"type": "string"}
+      }
+    },
+    "AdapterHealth": {
+      "required": ["adapterId", "status", "loaded", "failures", "lastError"],
+      "fields": {
+        "adapterId": {"type": "string"},
+        "status": {"type": "enum:AdapterStatus"},
+        "loaded": {"type": "boolean"},
+        "failures": {"type": "integer"},
+        "lastError": {"type": "string", "nullable": true}
+      }
+    },
+    "PingResult": {
+      "required": ["version"],
+      "fields": {
+        "version": {"type": "string"}
+      }
+    },
+    "DiscoverResult": {
+      "required": ["adapters"],
+      "fields": {
+        "adapters": {"type": "array:AdapterDescriptor"}
+      }
+    },
+    "SnapshotResult": {
+      "required": ["version", "loadedAdapters", "maxLoadedAdapters", "adapters"],
+      "fields": {
+        "version": {"type": "string"},
+        "loadedAdapters": {"type": "integer"},
+        "maxLoadedAdapters": {"type": "integer"},
+        "adapters": {"type": "array:AdapterHealth"}
+      }
+    },
+    "SimpleControlRequest": {
+      "required": ["requestId", "operation"],
+      "fields": {
+        "requestId": {"type": "string"},
+        "operation": {"type": "enum:ControlOperation"}
+      }
+    },
+    "LifecycleControlRequest": {
+      "required": ["requestId", "operation", "adapterId"],
+      "fields": {
+        "requestId": {"type": "string"},
+        "operation": {"type": "enum:ControlOperation"},
+        "adapterId": {"type": "string"}
+      }
+    },
+    "PingResponse": {
+      "required": ["requestId", "ok", "operation", "result"],
+      "fields": {
+        "requestId": {"type": "string"},
+        "ok": {"type": "boolean"},
+        "operation": {"type": "enum:ControlOperation"},
+        "result": {"type": "object", "message": "PingResult"}
+      }
+    },
+    "DiscoverResponse": {
+      "required": ["requestId", "ok", "operation", "result"],
+      "fields": {
+        "requestId": {"type": "string"},
+        "ok": {"type": "boolean"},
+        "operation": {"type": "enum:ControlOperation"},
+        "result": {"type": "object", "message": "DiscoverResult"}
+      }
+    },
+    "SnapshotResponse": {
+      "required": ["requestId", "ok", "operation", "result"],
+      "fields": {
+        "requestId": {"type": "string"},
+        "ok": {"type": "boolean"},
+        "operation": {"type": "enum:ControlOperation"},
+        "result": {"type": "object", "message": "SnapshotResult"}
+      }
+    },
+    "AdapterHealthResponse": {
+      "required": ["requestId", "ok", "operation", "result"],
+      "fields": {
+        "requestId": {"type": "string"},
+        "ok": {"type": "boolean"},
+        "operation": {"type": "enum:ControlOperation"},
+        "result": {"type": "object", "message": "AdapterHealth"}
+      }
+    },
+    "ControlErrorResponse": {
+      "required": ["requestId", "ok", "errorCode", "errorMessage"],
+      "fields": {
+        "requestId": {"type": "string", "nullable": true},
+        "ok": {"type": "boolean"},
+        "errorCode": {"type": "string"},
+        "errorMessage": {"type": "string"},
+        "adapterId": {"type": "string", "nullable": true}
+      }
+    }
+  },
+  "enums": {
+    "AdapterKind": ["asr", "mt", "tts", "external"],
+    "AdapterStatus": ["registered", "loading", "healthy", "degraded", "unhealthy", "unloaded"],
+    "ControlOperation": ["ping", "discover", "snapshot", "load", "unload"]
+  },
+  "examples": {
+    "adapterDescriptor": {
+      "message": "AdapterDescriptor",
+      "path": "examples/adapter-descriptor.json"
+    },
+    "hostSnapshot": {
+      "message": "SnapshotResponse",
+      "path": "examples/snapshot-response.json"
+    },
+    "pingResponse": {
+      "message": "PingResponse",
+      "path": "examples/ping-response.json"
+    },
+    "lifecycleRequest": {
+      "message": "LifecycleControlRequest",
+      "path": "examples/lifecycle-request.json"
+    },
+    "controlError": {
+      "message": "ControlErrorResponse",
+      "path": "examples/control-error.json"
+    }
+  },
+  "invariants": [
+    "engine/v1 standardizes adapter lifecycle, health and control metadata only",
+    "inference payloads, PCM, transcripts and model weights are never serialized by engine/v1",
+    "adapter-specific load config is an optional private JSON extension and is not compatibility-locked by engine/v1",
+    "a failed adapter cannot mutate the lifecycle state of another registered adapter",
+    "an adapter whose unload failed remains loaded for capacity accounting until an explicit successful recovery",
+    "the host never silently evicts a loaded adapter when capacity is reached"
+  ]
+}

@@ -1,0 +1,100 @@
+{
+  "contract": "engine/v1",
+  "messages": {
+    "AdapterDescriptor": {
+      "fields": {
+        "id": {"type": "string", "required": true},
+        "kind": {"type": "enum:AdapterKind", "required": true},
+        "title": {"type": "string", "required": true},
+        "version": {"type": "string", "required": true},
+        "contract": {"type": "string", "required": true}
+      }
+    },
+    "AdapterHealth": {
+      "fields": {
+        "adapterId": {"type": "string", "required": true},
+        "status": {"type": "enum:AdapterStatus", "required": true},
+        "loaded": {"type": "boolean", "required": true},
+        "failures": {"type": "integer", "required": true},
+        "lastError": {"type": "string", "nullable": true, "required": true}
+      }
+    },
+    "PingResult": {
+      "fields": {
+        "version": {"type": "string", "required": true}
+      }
+    },
+    "DiscoverResult": {
+      "fields": {
+        "adapters": {"type": "array:AdapterDescriptor", "required": true}
+      }
+    },
+    "SnapshotResult": {
+      "fields": {
+        "version": {"type": "string", "required": true},
+        "loadedAdapters": {"type": "integer", "required": true},
+        "maxLoadedAdapters": {"type": "integer", "required": true},
+        "adapters": {"type": "array:AdapterHealth", "required": true}
+      }
+    },
+    "SimpleControlRequest": {
+      "fields": {
+        "requestId": {"type": "string", "required": true},
+        "operation": {"type": "enum:ControlOperation", "required": true}
+      }
+    },
+    "LifecycleControlRequest": {
+      "fields": {
+        "requestId": {"type": "string", "required": true},
+        "operation": {"type": "enum:ControlOperation", "required": true},
+        "adapterId": {"type": "string", "required": true}
+      }
+    },
+    "PingResponse": {
+      "fields": {
+        "requestId": {"type": "string", "required": true},
+        "ok": {"type": "boolean", "required": true},
+        "operation": {"type": "enum:ControlOperation", "required": true},
+        "result": {"type": "object", "message": "PingResult", "required": true}
+      }
+    },
+    "DiscoverResponse": {
+      "fields": {
+        "requestId": {"type": "string", "required": true},
+        "ok": {"type": "boolean", "required": true},
+        "operation": {"type": "enum:ControlOperation", "required": true},
+        "result": {"type": "object", "message": "DiscoverResult", "required": true}
+      }
+    },
+    "SnapshotResponse": {
+      "fields": {
+        "requestId": {"type": "string", "required": true},
+        "ok": {"type": "boolean", "required": true},
+        "operation": {"type": "enum:ControlOperation", "required": true},
+        "result": {"type": "object", "message": "SnapshotResult", "required": true}
+      }
+    },
+    "AdapterHealthResponse": {
+      "fields": {
+        "requestId": {"type": "string", "required": true},
+        "ok": {"type": "boolean", "required": true},
+        "operation": {"type": "enum:ControlOperation", "required": true},
+        "result": {"type": "object", "message": "AdapterHealth", "required": true}
+      }
+    },
+    "ControlErrorResponse": {
+      "fields": {
+        "requestId": {"type": "string", "nullable": true, "required": true},
+        "ok": {"type": "boolean", "required": true},
+        "errorCode": {"type": "string", "required": true},
+        "errorMessage": {"type": "string", "required": true},
+        "adapterId": {"type": "string", "nullable": true, "required": false}
+      }
+    }
+  },
+  "enums": {
+    "AdapterKind": ["asr", "mt", "tts", "external"],
+    "AdapterStatus": ["registered", "loading", "healthy", "degraded", "unhealthy", "unloaded"],
+    "ControlOperation": ["ping", "discover", "snapshot", "load", "unload"]
+  }
+}

@@ -48,6 +48,13 @@ def expected_components() -> dict[str, dict[str, object]]:
             "stage": "candidate",
             "required": True,
         },
+        "engine-host": {
+            "id": "engine-host",
+            "version": "1.0.0",
+            "contract": "engine/v1",
+            "stage": "candidate",
+            "required": True,
+        },
     }
 
 
@@ -57,7 +64,7 @@ def main() -> int:
 
     payload = json.loads(MANIFEST.read_text(encoding="utf-8"))
     product = payload.get("product")
-    if product != {"name": "MilyVoiceTraductor", "version": "3.0.0-alpha.3-dev.1"}:
+    if product != {"name": "MilyVoiceTraductor", "version": "3.0.0-alpha.3"}:
         fail(f"unexpected product descriptor: {product!r}")
 
     components = payload.get("components")

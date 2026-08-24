@@ -1,7 +1,7 @@
 {
   "product": {
     "name": "MilyVoiceTraductor",
-    "version": "3.0.0-alpha.3-dev.1"
+    "version": "3.0.0-alpha.3"
   },
   "components": [
     {
@@ -29,6 +29,13 @@
       "id": "realtime",
       "version": "1.0.0",
       "contract": "realtime/v1",
+      "stage": "candidate",
+      "required": true
+    },
+    {
+      "id": "engine-host",
+      "version": "1.0.0",
+      "contract": "engine/v1",
       "stage": "candidate",
       "required": true
     }

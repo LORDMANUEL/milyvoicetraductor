@@ -24,6 +24,12 @@
       "owner": "realtime",
       "status": "candidate",
       "path": "realtime/v1/contract.json"
+    },
+    {
+      "id": "engine/v1",
+      "owner": "engine-host",
+      "status": "candidate",
+      "path": "engine/v1/contract.json"
     }
   ]
 }

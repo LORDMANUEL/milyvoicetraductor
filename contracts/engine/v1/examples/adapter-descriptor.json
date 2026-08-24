@@ -1,0 +1,7 @@
+{
+  "id": "whisper-tiny",
+  "kind": "asr",
+  "title": "Whisper Tiny Adapter",
+  "version": "1.0.0",
+  "contract": "asr/v1"
+}
