@@ -1,0 +1,11 @@
+{
+  "epoch": 0,
+  "expectedSequenceId": 43,
+  "mediaCursorNs": 4300000000,
+  "acceptedChunks": 43,
+  "gapEvents": 0,
+  "missingChunks": 0,
+  "outOfOrderEvents": 0,
+  "timestampRegressions": 0,
+  "maxJitterNs": 400000000
+}

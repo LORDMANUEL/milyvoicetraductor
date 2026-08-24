@@ -1,0 +1,86 @@
+name: V3 Realtime
+
+on:
+  pull_request:
+    paths:
+      - "services/realtime/**"
+      - "contracts/realtime/**"
+      - "contracts/index.json"
+      - "manifests/milyvoice-3.components.json"
+      - "scripts/test_v3_component_manifest.py"
+      - ".github/workflows/v3-realtime.yml"
+      - "docs/superpowers/specs/2026-08-24-milyvoice-3-realtime-1.0-design.md"
+      - "docs/superpowers/plans/2026-08-24-milyvoice-3-realtime-1.0.md"
+  push:
+    branches:
+      - "v3/realtime-*"
+    paths:
+      - "services/realtime/**"
+      - "contracts/realtime/**"
+      - "contracts/index.json"
+      - "manifests/milyvoice-3.components.json"
+      - "scripts/test_v3_component_manifest.py"
+      - ".github/workflows/v3-realtime.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  linux:
+    name: Realtime Linux gate
+    runs-on: ubuntu-latest
+    env:
+      PYTHONPATH: services/realtime:services/audio
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Python 3.13
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+
+      - name: Install Audio producer test dependency
+        run: python -m pip install numpy==2.5.2
+
+      - name: Compile Realtime sources and tests
+        run: python -m compileall -q services/realtime
+
+      - name: Realtime tests
+        run: python -m unittest discover -s services/realtime/tests -p "test_*.py" -v
+
+  windows:
+    name: Realtime Windows gate
+    runs-on: windows-latest
+    env:
+      PYTHONPATH: "services/realtime;services/audio"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Python 3.13
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+
+      - name: Install Audio producer test dependency
+        run: python -m pip install numpy==2.5.2
+
+      - name: Compile Realtime sources and tests
+        run: python -m compileall -q services/realtime
+
+      - name: Realtime tests
+        run: python -m unittest discover -s services/realtime/tests -p "test_*.py" -v
+
+  contracts:
+    name: Realtime contract/composition gate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Contracts registry
+        run: python scripts/test_v3_contracts.py
+
+      - name: V3 composition
+        run: python scripts/test_v3_component_manifest.py
