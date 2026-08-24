@@ -1,0 +1,115 @@
+{
+  "id": "asr/v1",
+  "owner": "asr",
+  "status": "candidate",
+  "encoding": "json",
+  "compatibility": "additive-within-major",
+  "messages": {
+    "AsrRequestDescriptor": {
+      "required": [
+        "requestId",
+        "utteranceId",
+        "sequenceId",
+        "mediaStartNs",
+        "mediaEndNs",
+        "sampleRate",
+        "channels",
+        "sampleFormat",
+        "sampleCount",
+        "sourceLanguage",
+        "final"
+      ],
+      "fields": {
+        "requestId": {"type": "string"},
+        "utteranceId": {"type": "string"},
+        "sequenceId": {"type": "integer"},
+        "mediaStartNs": {"type": "integer"},
+        "mediaEndNs": {"type": "integer"},
+        "sampleRate": {"type": "integer"},
+        "channels": {"type": "integer"},
+        "sampleFormat": {"type": "enum:SampleFormat"},
+        "sampleCount": {"type": "integer"},
+        "sourceLanguage": {"type": "string"},
+        "final": {"type": "boolean"}
+      }
+    },
+    "AsrWord": {
+      "required": ["startMs", "endMs", "text"],
+      "fields": {
+        "startMs": {"type": "number"},
+        "endMs": {"type": "number"},
+        "text": {"type": "string"}
+      }
+    },
+    "AsrSegment": {
+      "required": ["startMs", "endMs", "text", "language", "words"],
+      "fields": {
+        "startMs": {"type": "number"},
+        "endMs": {"type": "number"},
+        "text": {"type": "string"},
+        "language": {"type": "string", "nullable": true},
+        "words": {"type": "array:AsrWord"}
+      }
+    },
+    "AsrMetrics": {
+      "required": ["elapsedMs", "audioDurationMs", "rtf"],
+      "fields": {
+        "elapsedMs": {"type": "number"},
+        "audioDurationMs": {"type": "number"},
+        "rtf": {"type": "number"}
+      }
+    },
+    "AsrResult": {
+      "required": [
+        "requestId",
+        "utteranceId",
+        "sequenceId",
+        "mediaStartNs",
+        "mediaEndNs",
+        "engineId",
+        "sourceLanguage",
+        "detectedLanguage",
+        "final",
+        "text",
+        "segments",
+        "metrics"
+      ],
+      "fields": {
+        "requestId": {"type": "string"},
+        "utteranceId": {"type": "string"},
+        "sequenceId": {"type": "integer"},
+        "mediaStartNs": {"type": "integer"},
+        "mediaEndNs": {"type": "integer"},
+        "engineId": {"type": "string"},
+        "sourceLanguage": {"type": "string"},
+        "detectedLanguage": {"type": "string", "nullable": true},
+        "final": {"type": "boolean"},
+        "text": {"type": "string"},
+        "segments": {"type": "array:AsrSegment"},
+        "metrics": {"type": "object", "message": "AsrMetrics"}
+      }
+    }
+  },
+  "enums": {
+    "SampleFormat": ["float32"]
+  },
+  "examples": {
+    "request": {
+      "message": "AsrRequestDescriptor",
+      "path": "examples/request.json"
+    },
+    "result": {
+      "message": "AsrResult",
+      "path": "examples/result.json"
+    }
+  },
+  "invariants": [
+    "PCM samples are out-of-band and are never serialized by asr/v1",
+    "ASR input windows are 16000 Hz mono float32 and sampleCount matches the payload length",
+    "mediaStartNs/mediaEndNs come from the caller's Realtime window and provider processing delay cannot shift them",
+    "legacy provider seconds are normalized to milliseconds in words and segments",
+    "rtf equals elapsedMs divided by audioDurationMs",
+    "provider-specific model configuration is not compatibility-locked by asr/v1",
+    "engineId remains an extensible string so adding a new ASR family does not require a breaking contract major"
+  ]
+}
