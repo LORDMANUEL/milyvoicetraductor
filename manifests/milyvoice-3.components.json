@@ -1,7 +1,7 @@
 {
   "product": {
     "name": "MilyVoiceTraductor",
-    "version": "3.0.0-alpha.4-dev.1"
+    "version": "3.0.0-alpha.4-dev.2"
   },
   "components": [
     {
@@ -43,6 +43,13 @@
       "id": "asr",
       "version": "1.0.0",
       "contract": "asr/v1",
+      "stage": "candidate",
+      "required": true
+    },
+    {
+      "id": "linguistic",
+      "version": "1.0.0",
+      "contract": "linguistic/v1",
       "stage": "candidate",
       "required": true
     }
