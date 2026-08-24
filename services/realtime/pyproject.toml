@@ -1,0 +1,10 @@
+[project]
+name = "milyvoice-realtime"
+version = "1.0.0"
+description = "Bounded timing and backpressure component for MilyVoice 3"
+requires-python = ">=3.13"
+dependencies = []
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["mily_realtime*"]
