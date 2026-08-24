@@ -1,0 +1,75 @@
+name: V3 Audio
+
+on:
+  pull_request:
+    paths:
+      - "services/audio/**"
+      - "contracts/audio/**"
+      - "contracts/index.json"
+      - "manifests/milyvoice-3.components.json"
+      - "scripts/test_v3_component_manifest.py"
+      - ".github/workflows/v3-audio.yml"
+      - "docs/superpowers/specs/2026-08-23-milyvoice-3-audio-1.0-design.md"
+      - "docs/superpowers/plans/2026-08-23-milyvoice-3-audio-1.0.md"
+  push:
+    branches:
+      - "v3/audio-*"
+    paths:
+      - "services/audio/**"
+      - "contracts/audio/**"
+      - "contracts/index.json"
+      - "manifests/milyvoice-3.components.json"
+      - "scripts/test_v3_component_manifest.py"
+      - ".github/workflows/v3-audio.yml"
+
+permissions:
+  contents: read
+
+env:
+  PYTHONPATH: services/audio
+
+jobs:
+  linux:
+    name: Audio Linux gate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+      - name: Python 3.13
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+      - name: Install pinned lightweight dependency
+        run: python -m pip install numpy==2.5.2
+      - name: Compile Audio sources and tests
+        run: python -m compileall -q services/audio
+      - name: Audio tests
+        run: python -m unittest discover -s services/audio/tests -p "test_*.py" -v
+
+  windows:
+    name: Audio Windows gate
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+      - name: Python 3.13
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+      - name: Install pinned lightweight dependency
+        run: python -m pip install numpy==2.5.2
+      - name: Compile Audio sources and tests
+        run: python -m compileall -q services/audio
+      - name: Audio tests
+        run: python -m unittest discover -s services/audio/tests -p "test_*.py" -v
+
+  contracts:
+    name: Audio contract/composition gate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+      - name: Contracts registry
+        run: python scripts/test_v3_contracts.py
+      - name: V3 composition
+        run: python scripts/test_v3_component_manifest.py
