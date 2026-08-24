@@ -1,0 +1,7 @@
+{
+  "source": "systemLoopback",
+  "name": "Default Speakers [Loopback]",
+  "deviceId": "7",
+  "channels": 2,
+  "sampleRate": 48000
+}
