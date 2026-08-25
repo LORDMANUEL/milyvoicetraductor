@@ -8,6 +8,7 @@ on:
       - "apps/extension/background.js"
       - "apps/extension/offscreen.js"
       - "scripts/test_extension.py"
+      - "scripts/test_v3_tts_wiring.py"
       - "contracts/tts/**"
       - "contracts/index.json"
       - "manifests/milyvoice-3.components.json"
@@ -24,6 +25,7 @@ on:
       - "apps/extension/background.js"
       - "apps/extension/offscreen.js"
       - "scripts/test_extension.py"
+      - "scripts/test_v3_tts_wiring.py"
       - "contracts/tts/**"
       - "contracts/index.json"
       - "manifests/milyvoice-3.components.json"
@@ -47,6 +49,8 @@ jobs:
       - name: TTS module tests
         working-directory: apps/extension/tts
         run: node --experimental-default-type=module --test
+      - name: TTS wiring and failure isolation
+        run: python scripts/test_v3_tts_wiring.py
       - name: Extension integration guard
         run: python scripts/test_extension.py
 
@@ -63,6 +67,8 @@ jobs:
       - name: TTS module tests
         working-directory: apps/extension/tts
         run: node --experimental-default-type=module --test
+      - name: TTS wiring and failure isolation
+        run: python scripts/test_v3_tts_wiring.py
       - name: Extension integration guard
         run: python scripts/test_extension.py
 
