@@ -22,30 +22,8 @@
         "value": {"type": "string"}
       }
     },
-    "MtQualityReport": {
-      "required": ["tokenCount", "ngramSize", "repeatedNgramRatio", "maxNgramOccurrences", "repeatedSentenceCount", "passed", "reason"],
-      "fields": {
-        "tokenCount": {"type": "integer"},
-        "ngramSize": {"type": "integer"},
-        "repeatedNgramRatio": {"type": "number"},
-        "maxNgramOccurrences": {"type": "integer"},
-        "repeatedSentenceCount": {"type": "integer"},
-        "passed": {"type": "boolean"},
-        "reason": {"type": "enum:QualityReason"}
-      }
-    },
-    "MtFidelityReport": {
-      "required": ["missingNumbers", "sourceHasNegation", "targetHasNegation", "passed", "reason"],
-      "fields": {
-        "missingNumbers": {"type": "array:MissingNumber"},
-        "sourceHasNegation": {"type": "boolean"},
-        "targetHasNegation": {"type": "boolean"},
-        "passed": {"type": "boolean"},
-        "reason": {"type": "enum:FidelityReason"}
-      }
-    },
     "MtResult": {
-      "required": ["requestId", "utteranceId", "engineId", "providerId", "sourceLanguage", "targetLanguage", "sourceText", "targetText", "accepted", "reason", "quality", "fidelity", "elapsedMs"],
+      "required": ["requestId", "utteranceId", "engineId", "providerId", "sourceLanguage", "targetLanguage", "sourceText", "targetText", "accepted", "reason", "qualityTokenCount", "qualityNgramSize", "qualityRepeatedNgramRatio", "qualityMaxNgramOccurrences", "qualityRepeatedSentenceCount", "qualityPassed", "qualityReason", "missingNumbers", "sourceHasNegation", "targetHasNegation", "fidelityPassed", "fidelityReason", "elapsedMs"],
       "fields": {
         "requestId": {"type": "string"},
         "utteranceId": {"type": "string"},
@@ -57,8 +35,18 @@
         "targetText": {"type": "string"},
         "accepted": {"type": "boolean"},
         "reason": {"type": "enum:DecisionReason"},
-        "quality": {"type": "object:MtQualityReport"},
-        "fidelity": {"type": "object:MtFidelityReport"},
+        "qualityTokenCount": {"type": "integer"},
+        "qualityNgramSize": {"type": "integer"},
+        "qualityRepeatedNgramRatio": {"type": "number"},
+        "qualityMaxNgramOccurrences": {"type": "integer"},
+        "qualityRepeatedSentenceCount": {"type": "integer"},
+        "qualityPassed": {"type": "boolean"},
+        "qualityReason": {"type": "enum:QualityReason"},
+        "missingNumbers": {"type": "array:MissingNumber"},
+        "sourceHasNegation": {"type": "boolean"},
+        "targetHasNegation": {"type": "boolean"},
+        "fidelityPassed": {"type": "boolean"},
+        "fidelityReason": {"type": "enum:FidelityReason"},
         "elapsedMs": {"type": "number"}
       }
     }
@@ -84,6 +72,7 @@
     "candidate 1.0.0 promotes only en-es and zh-es because those are the only current local model-pack routes backed by certified repository metadata",
     "target text is never silently replaced by source text when quality or fidelity checks fail",
     "accepted is true only when both deterministic quality and fidelity reports pass",
+    "quality and fidelity fields are flattened because the Contracts Kernel v1 intentionally supports scalar, enum and array message fields rather than nested object fields",
     "engine and provider identifiers remain strings so future local MT families can be added additively",
     "model paths, provider prompts and model internals never cross mt/v1"
   ]
