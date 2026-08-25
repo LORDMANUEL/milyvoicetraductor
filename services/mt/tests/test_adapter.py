@@ -1,5 +1,6 @@
 import unittest
 from dataclasses import dataclass
+from pathlib import Path
 from types import SimpleNamespace
 
 from mily_mt import (
@@ -108,7 +109,7 @@ class MtAdapterTests(unittest.TestCase):
         self.assertEqual(component["sourceLanguage"], "en")
         self.assertEqual(component["targetLanguage"], "es")
         self.assertEqual(component["repoId"], "demo/repo")
-        self.assertTrue(model_path.endswith("models/opus"))
+        self.assertEqual(Path(model_path).parts[-2:], ("models", "opus"))
         self.assertEqual(compute, "cuda")
         self.assertIs(budget, budgets[0][2])
         self.assertTrue(adapter.health())
