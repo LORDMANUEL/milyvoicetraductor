@@ -2,5 +2,5 @@
   "id": "tts",
   "version": "1.0.0",
   "contract": "tts/v1",
-  "stage": "development"
+  "stage": "candidate"
 }
