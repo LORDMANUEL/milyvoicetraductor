@@ -1,0 +1,10 @@
+{
+  "requestId": "req-42",
+  "utteranceId": "utt-42",
+  "text": "La reunión comienza a las nueve.",
+  "targetLanguage": "es-ES",
+  "speakerId": "speaker-a",
+  "voiceId": "",
+  "duckingEnabled": true,
+  "duckingLevel": 0.25
+}
