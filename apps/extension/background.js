@@ -1,4 +1,4 @@
-import { speakTranslation } from './tts.js';
+import { speakTranslation, stopSpeech } from './tts.js';
 
 /**
  * Orquestador Manifest V3. Desktop y extensión se descubren mediante Native
@@ -219,7 +219,7 @@ async function startCapture(options) {
 
 async function stopCapture() {
   await ensureOffscreenDocument();
-  chrome.tts.stop();
+  await stopSpeech('CANCELLED');
   await chrome.runtime.sendMessage({ target: 'offscreen', type: 'TTS_FINISHED', speakerId: null }).catch(() => undefined);
   await chrome.runtime.sendMessage({ target: 'offscreen', type: 'STOP_CAPTURE' });
   await setCaptureState({ active: false, tabId: null, startedAt: null, source: null, sessionMode: null, speakerDetection: false, speakerFocusMode: 'all', speakerId: null });
@@ -276,8 +276,15 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     if (message.payload?.speakerId) rememberSpeaker(message.payload.speakerId).catch(() => undefined);
     if (message.payload?.type === 'translation.final') {
       speakTranslation(message.payload, {
-        onStart({ text, speakerId }) {
-          chrome.runtime.sendMessage({ target: 'offscreen', type: 'TTS_STARTED', text, speakerId }).catch(() => undefined);
+        onStart({ text, speakerId, duckingEnabled, duckingLevel }) {
+          chrome.runtime.sendMessage({
+            target: 'offscreen',
+            type: 'TTS_STARTED',
+            text,
+            speakerId,
+            duckingEnabled,
+            duckingLevel
+          }).catch(() => undefined);
         },
         onEnd({ speakerId }) {
           chrome.runtime.sendMessage({ target: 'offscreen', type: 'TTS_FINISHED', speakerId }).catch(() => undefined);
