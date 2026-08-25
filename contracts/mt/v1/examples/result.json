@@ -9,21 +9,17 @@
   "targetText": "No cancele el pedido 1038.",
   "accepted": true,
   "reason": "OK",
-  "quality": {
-    "tokenCount": 6,
-    "ngramSize": 3,
-    "repeatedNgramRatio": 0.0,
-    "maxNgramOccurrences": 1,
-    "repeatedSentenceCount": 0,
-    "passed": true,
-    "reason": "OK"
-  },
-  "fidelity": {
-    "missingNumbers": [],
-    "sourceHasNegation": true,
-    "targetHasNegation": true,
-    "passed": true,
-    "reason": "OK"
-  },
+  "qualityTokenCount": 6,
+  "qualityNgramSize": 3,
+  "qualityRepeatedNgramRatio": 0.0,
+  "qualityMaxNgramOccurrences": 1,
+  "qualityRepeatedSentenceCount": 0,
+  "qualityPassed": true,
+  "qualityReason": "OK",
+  "missingNumbers": [],
+  "sourceHasNegation": true,
+  "targetHasNegation": true,
+  "fidelityPassed": true,
+  "fidelityReason": "OK",
   "elapsedMs": 42.5
 }
