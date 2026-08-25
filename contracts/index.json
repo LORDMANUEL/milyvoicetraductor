@@ -42,6 +42,12 @@
       "owner": "linguistic",
       "status": "candidate",
       "path": "linguistic/v1/contract.json"
+    },
+    {
+      "id": "mt/v1",
+      "owner": "mt",
+      "status": "candidate",
+      "path": "mt/v1/contract.json"
     }
   ]
 }

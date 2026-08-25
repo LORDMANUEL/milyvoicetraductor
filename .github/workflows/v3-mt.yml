@@ -1,0 +1,72 @@
+name: V3 MT
+
+on:
+  pull_request:
+    paths:
+      - "services/mt/**"
+      - "contracts/mt/**"
+      - "contracts/index.json"
+      - "manifests/milyvoice-3.components.json"
+      - "scripts/test_v3_component_manifest.py"
+      - ".github/workflows/v3-mt.yml"
+      - "docs/superpowers/specs/2026-08-24-milyvoice-3-mt-1.0-design.md"
+      - "docs/superpowers/plans/2026-08-24-milyvoice-3-mt-1.0.md"
+  push:
+    branches:
+      - "v3/mt-*"
+    paths:
+      - "services/mt/**"
+      - "contracts/mt/**"
+      - "contracts/index.json"
+      - "manifests/milyvoice-3.components.json"
+      - "scripts/test_v3_component_manifest.py"
+      - ".github/workflows/v3-mt.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  linux:
+    name: MT Linux gate
+    runs-on: ubuntu-latest
+    env:
+      PYTHONPATH: services/mt:services/linguistic:services/engine_host:services/ai
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+      - name: Python 3.13
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+      - name: Compile MT sources and tests
+        run: python -m compileall -q services/mt
+      - name: MT tests
+        run: python -m unittest discover -s services/mt/tests -p "test_*.py" -v
+
+  windows:
+    name: MT Windows gate
+    runs-on: windows-latest
+    env:
+      PYTHONPATH: "services/mt;services/linguistic;services/engine_host;services/ai"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+      - name: Python 3.13
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+      - name: Compile MT sources and tests
+        run: python -m compileall -q services/mt
+      - name: MT tests
+        run: python -m unittest discover -s services/mt/tests -p "test_*.py" -v
+
+  contracts:
+    name: MT contract/composition gate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+      - name: Contracts registry
+        run: python scripts/test_v3_contracts.py
+      - name: V3 composition
+        run: python scripts/test_v3_component_manifest.py

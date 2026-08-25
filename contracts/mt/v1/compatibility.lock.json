@@ -1,0 +1,52 @@
+{
+  "contract": "mt/v1",
+  "messages": {
+    "MtRequestDescriptor": {
+      "fields": {
+        "requestId": {"type": "string", "required": true},
+        "utteranceId": {"type": "string", "required": true},
+        "route": {"type": "string", "required": true},
+        "sourceLanguage": {"type": "string", "required": true},
+        "targetLanguage": {"type": "string", "required": true},
+        "text": {"type": "string", "required": true}
+      }
+    },
+    "MissingNumber": {
+      "fields": {
+        "value": {"type": "string", "required": true}
+      }
+    },
+    "MtResult": {
+      "fields": {
+        "requestId": {"type": "string", "required": true},
+        "utteranceId": {"type": "string", "required": true},
+        "engineId": {"type": "string", "required": true},
+        "providerId": {"type": "string", "required": true},
+        "sourceLanguage": {"type": "string", "required": true},
+        "targetLanguage": {"type": "string", "required": true},
+        "sourceText": {"type": "string", "required": true},
+        "targetText": {"type": "string", "required": true},
+        "accepted": {"type": "boolean", "required": true},
+        "reason": {"type": "enum:DecisionReason", "required": true},
+        "qualityTokenCount": {"type": "integer", "required": true},
+        "qualityNgramSize": {"type": "integer", "required": true},
+        "qualityRepeatedNgramRatio": {"type": "number", "required": true},
+        "qualityMaxNgramOccurrences": {"type": "integer", "required": true},
+        "qualityRepeatedSentenceCount": {"type": "integer", "required": true},
+        "qualityPassed": {"type": "boolean", "required": true},
+        "qualityReason": {"type": "enum:QualityReason", "required": true},
+        "missingNumbers": {"type": "array:MissingNumber", "required": true},
+        "sourceHasNegation": {"type": "boolean", "required": true},
+        "targetHasNegation": {"type": "boolean", "required": true},
+        "fidelityPassed": {"type": "boolean", "required": true},
+        "fidelityReason": {"type": "enum:FidelityReason", "required": true},
+        "elapsedMs": {"type": "number", "required": true}
+      }
+    }
+  },
+  "enums": {
+    "QualityReason": ["OK", "EMPTY", "REPEATED_SENTENCE", "REPEATED_NGRAM", "REPETITION_RATIO"],
+    "FidelityReason": ["OK", "NUMBER_LOST", "NEGATION_LOST"],
+    "DecisionReason": ["OK", "EMPTY", "REPEATED_SENTENCE", "REPEATED_NGRAM", "REPETITION_RATIO", "NUMBER_LOST", "NEGATION_LOST"]
+  }
+}
