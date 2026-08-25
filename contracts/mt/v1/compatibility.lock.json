@@ -16,26 +16,6 @@
         "value": {"type": "string", "required": true}
       }
     },
-    "MtQualityReport": {
-      "fields": {
-        "tokenCount": {"type": "integer", "required": true},
-        "ngramSize": {"type": "integer", "required": true},
-        "repeatedNgramRatio": {"type": "number", "required": true},
-        "maxNgramOccurrences": {"type": "integer", "required": true},
-        "repeatedSentenceCount": {"type": "integer", "required": true},
-        "passed": {"type": "boolean", "required": true},
-        "reason": {"type": "enum:QualityReason", "required": true}
-      }
-    },
-    "MtFidelityReport": {
-      "fields": {
-        "missingNumbers": {"type": "array:MissingNumber", "required": true},
-        "sourceHasNegation": {"type": "boolean", "required": true},
-        "targetHasNegation": {"type": "boolean", "required": true},
-        "passed": {"type": "boolean", "required": true},
-        "reason": {"type": "enum:FidelityReason", "required": true}
-      }
-    },
     "MtResult": {
       "fields": {
         "requestId": {"type": "string", "required": true},
@@ -48,8 +28,18 @@
         "targetText": {"type": "string", "required": true},
         "accepted": {"type": "boolean", "required": true},
         "reason": {"type": "enum:DecisionReason", "required": true},
-        "quality": {"type": "object:MtQualityReport", "required": true},
-        "fidelity": {"type": "object:MtFidelityReport", "required": true},
+        "qualityTokenCount": {"type": "integer", "required": true},
+        "qualityNgramSize": {"type": "integer", "required": true},
+        "qualityRepeatedNgramRatio": {"type": "number", "required": true},
+        "qualityMaxNgramOccurrences": {"type": "integer", "required": true},
+        "qualityRepeatedSentenceCount": {"type": "integer", "required": true},
+        "qualityPassed": {"type": "boolean", "required": true},
+        "qualityReason": {"type": "enum:QualityReason", "required": true},
+        "missingNumbers": {"type": "array:MissingNumber", "required": true},
+        "sourceHasNegation": {"type": "boolean", "required": true},
+        "targetHasNegation": {"type": "boolean", "required": true},
+        "fidelityPassed": {"type": "boolean", "required": true},
+        "fidelityReason": {"type": "enum:FidelityReason", "required": true},
         "elapsedMs": {"type": "number", "required": true}
       }
     }
