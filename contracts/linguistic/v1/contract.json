@@ -1,0 +1,97 @@
+{
+  "id": "linguistic/v1",
+  "owner": "linguistic",
+  "status": "candidate",
+  "encoding": "json",
+  "compatibility": "additive-within-major",
+  "messages": {
+    "TextSegment": {
+      "required": ["text"],
+      "fields": {
+        "text": {"type": "string"}
+      }
+    },
+    "TerminologyConstraint": {
+      "required": ["source", "target", "sourceLanguage", "targetLanguage", "caseSensitive"],
+      "fields": {
+        "source": {"type": "string"},
+        "target": {"type": "string"},
+        "sourceLanguage": {"type": "string"},
+        "targetLanguage": {"type": "string"},
+        "caseSensitive": {"type": "boolean"}
+      }
+    },
+    "ContextItem": {
+      "required": ["text", "language"],
+      "fields": {
+        "text": {"type": "string"},
+        "language": {"type": "string"}
+      }
+    },
+    "PreparedTranslationInput": {
+      "required": ["text", "sourceLanguage", "targetLanguage", "segments", "terminology", "context"],
+      "fields": {
+        "text": {"type": "string"},
+        "sourceLanguage": {"type": "string"},
+        "targetLanguage": {"type": "string"},
+        "segments": {"type": "array:TextSegment"},
+        "terminology": {"type": "array:TerminologyConstraint"},
+        "context": {"type": "array:ContextItem"}
+      }
+    },
+    "TranslationQualityReport": {
+      "required": ["tokenCount", "ngramSize", "repeatedNgramRatio", "maxNgramOccurrences", "repeatedSentenceCount", "passed", "reason"],
+      "fields": {
+        "tokenCount": {"type": "integer"},
+        "ngramSize": {"type": "integer"},
+        "repeatedNgramRatio": {"type": "number"},
+        "maxNgramOccurrences": {"type": "integer"},
+        "repeatedSentenceCount": {"type": "integer"},
+        "passed": {"type": "boolean"},
+        "reason": {"type": "enum:QualityReason"}
+      }
+    },
+    "MissingNumber": {
+      "required": ["value"],
+      "fields": {
+        "value": {"type": "string"}
+      }
+    },
+    "SourceTargetFidelityReport": {
+      "required": ["missingNumbers", "sourceHasNegation", "targetHasNegation", "passed", "reason"],
+      "fields": {
+        "missingNumbers": {"type": "array:MissingNumber"},
+        "sourceHasNegation": {"type": "boolean"},
+        "targetHasNegation": {"type": "boolean"},
+        "passed": {"type": "boolean"},
+        "reason": {"type": "enum:FidelityReason"}
+      }
+    }
+  },
+  "enums": {
+    "QualityReason": ["OK", "EMPTY", "REPEATED_SENTENCE", "REPEATED_NGRAM", "REPETITION_RATIO"],
+    "FidelityReason": ["OK", "NUMBER_LOST", "NEGATION_LOST"]
+  },
+  "examples": {
+    "preparedInput": {
+      "message": "PreparedTranslationInput",
+      "path": "examples/prepared-input.json"
+    },
+    "qualityReport": {
+      "message": "TranslationQualityReport",
+      "path": "examples/quality-report.json"
+    },
+    "fidelityReport": {
+      "message": "SourceTargetFidelityReport",
+      "path": "examples/fidelity-report.json"
+    }
+  },
+  "invariants": [
+    "linguistic/v1 prepares and validates text but never performs translation inference",
+    "terminology constraints describe requested mappings and never rewrite source or target text automatically",
+    "context is bounded and ephemeral; persistence is outside this component",
+    "quality and fidelity reasons preserve the established MilyVoice 2.x deterministic guard semantics",
+    "number, identifier, clock and EN-to-ES negation fidelity remain deterministic pre-publication checks",
+    "adding MT providers does not change linguistic/v1"
+  ]
+}

@@ -36,6 +36,12 @@
       "owner": "asr",
       "status": "candidate",
       "path": "asr/v1/contract.json"
+    },
+    {
+      "id": "linguistic/v1",
+      "owner": "linguistic",
+      "status": "candidate",
+      "path": "linguistic/v1/contract.json"
     }
   ]
 }
