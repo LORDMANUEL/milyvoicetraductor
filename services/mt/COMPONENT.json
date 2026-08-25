@@ -1,0 +1,7 @@
+{
+  "id": "mt",
+  "package": "milyvoice-mt",
+  "version": "1.0.0",
+  "contract": "mt/v1",
+  "stage": "development"
+}
