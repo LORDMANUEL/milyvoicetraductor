@@ -188,10 +188,18 @@ class BaseMtAdapter:
             raise MtAdapterError("MT_NOT_LOADED", "El adapter MT no está cargado")
         try:
             request_id = self._required_text(getattr(request, "request_id"), "request_id")
+            route = self._required_text(getattr(request, "route"), "route")
             frame = getattr(request, "frame")
             metadata = getattr(request, "metadata")
         except AttributeError as exc:
             raise MtAdapterError("MT_REQUEST_INVALID", "Request MT inválido") from exc
+
+        expected_route = f"mt:{self.source_language}-{self.target_language}"
+        if route != expected_route:
+            raise MtAdapterError(
+                "MT_ROUTE_INVALID",
+                f"El adapter {self.engine_id} requiere route={expected_route}",
+            )
 
         text, source, target = self._validate_input(frame)
         utterance_id = self._utterance_id(metadata)
