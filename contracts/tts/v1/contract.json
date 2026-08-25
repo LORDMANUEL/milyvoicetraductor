@@ -1,0 +1,75 @@
+{
+  "id": "tts/v1",
+  "owner": "tts",
+  "status": "candidate",
+  "encoding": "json",
+  "compatibility": "additive-within-major",
+  "messages": {
+    "TtsRequest": {
+      "required": ["requestId", "utteranceId", "text", "targetLanguage", "speakerId", "voiceId", "duckingEnabled", "duckingLevel"],
+      "fields": {
+        "requestId": {"type": "string"},
+        "utteranceId": {"type": "string"},
+        "text": {"type": "string"},
+        "targetLanguage": {"type": "string"},
+        "speakerId": {"type": "string"},
+        "voiceId": {"type": "string"},
+        "duckingEnabled": {"type": "boolean"},
+        "duckingLevel": {"type": "number"}
+      }
+    },
+    "TtsLifecycleEvent": {
+      "required": ["requestId", "utteranceId", "state", "reason", "speakerId", "queueDepth"],
+      "fields": {
+        "requestId": {"type": "string"},
+        "utteranceId": {"type": "string"},
+        "state": {"type": "enum:TtsState"},
+        "reason": {"type": "enum:TtsReason"},
+        "speakerId": {"type": "string"},
+        "queueDepth": {"type": "integer"}
+      }
+    },
+    "TtsSnapshot": {
+      "required": ["enabled", "health", "active", "pendingCount", "droppedCount", "lastErrorReason"],
+      "fields": {
+        "enabled": {"type": "boolean"},
+        "health": {"type": "enum:TtsHealth"},
+        "active": {"type": "boolean"},
+        "pendingCount": {"type": "integer"},
+        "droppedCount": {"type": "integer"},
+        "lastErrorReason": {"type": "enum:TtsReason"}
+      }
+    }
+  },
+  "enums": {
+    "TtsState": ["QUEUED", "STARTED", "FINISHED", "DROPPED", "FALLBACK"],
+    "TtsReason": ["NONE", "END", "DISABLED", "EMPTY", "QUEUE_OVERFLOW", "STALE", "RUNTIME_ERROR", "CANCELLED", "INTERRUPTED"],
+    "TtsHealth": ["DISABLED", "HEALTHY", "DEGRADED"]
+  },
+  "examples": {
+    "request": {
+      "message": "TtsRequest",
+      "path": "examples/request.json"
+    },
+    "lifecycleEvent": {
+      "message": "TtsLifecycleEvent",
+      "path": "examples/lifecycle-event.json"
+    },
+    "snapshot": {
+      "message": "TtsSnapshot",
+      "path": "examples/snapshot.json"
+    }
+  },
+  "invariants": [
+    "tts/v1 is optional and subtitle output remains independent from synthesis success",
+    "tts 1.0.0 owns at most one active utterance plus three pending utterances",
+    "pending utterances older than 4000 milliseconds are dropped before synthesis",
+    "queue overflow drops the oldest pending utterance and never interrupts the active utterance solely to make room",
+    "the candidate Chromium adapter uses local browser or operating-system voices and does not require a remote service or neural model",
+    "speaker voice selection is user or system configuration only and never infers gender age identity or another sensitive attribute from audio",
+    "ducking modifies only local playback gain and never pauses or destroys capture ASR MT Realtime or Engine Host",
+    "every terminal synthesis cancellation error and capture-cleanup path restores playback gain to unity",
+    "tts.started continues registering synthesized text with the existing engine anti-feedback path",
+    "browser tab identifiers AudioContext nodes chrome APIs and implementation internals never cross tts/v1"
+  ]
+}

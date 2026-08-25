@@ -1,0 +1,8 @@
+{
+  "enabled": true,
+  "health": "HEALTHY",
+  "active": false,
+  "pendingCount": 0,
+  "droppedCount": 0,
+  "lastErrorReason": "NONE"
+}

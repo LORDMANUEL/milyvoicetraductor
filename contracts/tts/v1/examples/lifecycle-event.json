@@ -1,0 +1,8 @@
+{
+  "requestId": "req-42",
+  "utteranceId": "utt-42",
+  "state": "STARTED",
+  "reason": "NONE",
+  "speakerId": "speaker-a",
+  "queueDepth": 1
+}

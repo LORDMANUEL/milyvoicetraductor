@@ -1,7 +1,7 @@
 {
   "product": {
     "name": "MilyVoiceTraductor",
-    "version": "3.0.0-alpha.4-dev.3"
+    "version": "3.0.0-alpha.4-dev.4"
   },
   "components": [
     {
@@ -59,6 +59,13 @@
       "contract": "mt/v1",
       "stage": "candidate",
       "required": true
+    },
+    {
+      "id": "tts",
+      "version": "1.0.0",
+      "contract": "tts/v1",
+      "stage": "candidate",
+      "required": false
     }
   ]
 }

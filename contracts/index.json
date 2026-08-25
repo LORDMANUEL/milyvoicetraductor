@@ -48,6 +48,12 @@
       "owner": "mt",
       "status": "candidate",
       "path": "mt/v1/contract.json"
+    },
+    {
+      "id": "tts/v1",
+      "owner": "tts",
+      "status": "candidate",
+      "path": "tts/v1/contract.json"
     }
   ]
 }
