@@ -1,0 +1,42 @@
+{
+  "contract": "tts/v1",
+  "messages": {
+    "TtsRequest": {
+      "fields": {
+        "requestId": {"type": "string", "required": true},
+        "utteranceId": {"type": "string", "required": true},
+        "text": {"type": "string", "required": true},
+        "targetLanguage": {"type": "string", "required": true},
+        "speakerId": {"type": "string", "required": true},
+        "voiceId": {"type": "string", "required": true},
+        "duckingEnabled": {"type": "boolean", "required": true},
+        "duckingLevel": {"type": "number", "required": true}
+      }
+    },
+    "TtsLifecycleEvent": {
+      "fields": {
+        "requestId": {"type": "string", "required": true},
+        "utteranceId": {"type": "string", "required": true},
+        "state": {"type": "enum:TtsState", "required": true},
+        "reason": {"type": "enum:TtsReason", "required": true},
+        "speakerId": {"type": "string", "required": true},
+        "queueDepth": {"type": "integer", "required": true}
+      }
+    },
+    "TtsSnapshot": {
+      "fields": {
+        "enabled": {"type": "boolean", "required": true},
+        "health": {"type": "enum:TtsHealth", "required": true},
+        "active": {"type": "boolean", "required": true},
+        "pendingCount": {"type": "integer", "required": true},
+        "droppedCount": {"type": "integer", "required": true},
+        "lastErrorReason": {"type": "enum:TtsReason", "required": true}
+      }
+    }
+  },
+  "enums": {
+    "TtsState": ["QUEUED", "STARTED", "FINISHED", "DROPPED", "FALLBACK"],
+    "TtsReason": ["NONE", "END", "DISABLED", "EMPTY", "QUEUE_OVERFLOW", "STALE", "RUNTIME_ERROR", "CANCELLED", "INTERRUPTED"],
+    "TtsHealth": ["DISABLED", "HEALTHY", "DEGRADED"]
+  }
+}
