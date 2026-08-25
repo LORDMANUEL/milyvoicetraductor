@@ -1,3 +1,5 @@
+import { setDuckingGain, restoreGain } from './tts/ducking.js';
+
 /**
  * Documento offscreen: recibe el stream de la pestaña, conserva la reproducción
  * a la frecuencia nativa del dispositivo y transmite una copia PCM16/16 kHz.
@@ -5,6 +7,7 @@
 let mediaStream = null;
 let audioContext = null;
 let workletNode = null;
+let playbackGainNode = null;
 let websocket = null;
 let activeTabId = null;
 let stopping = false;
@@ -38,16 +41,19 @@ function sendControl(type, fields = {}) {
 
 async function cleanup() {
   stopping = true;
+  restoreGain(playbackGainNode?.gain);
   if (websocket && websocket.readyState === WebSocket.OPEN && sessionReady) {
     websocket.send(JSON.stringify({ protocol: 1, type: 'audio.stop', sourceLanguage: 'auto', targetLanguage: 'es' }));
     await new Promise((resolve) => setTimeout(resolve, 250));
   }
   try { websocket?.close(1000, 'user stop'); } catch (_) {}
   try { workletNode?.disconnect(); } catch (_) {}
+  try { playbackGainNode?.disconnect(); } catch (_) {}
   try { await audioContext?.close(); } catch (_) {}
   for (const track of mediaStream?.getTracks?.() || []) track.stop();
   websocket = null;
   workletNode = null;
+  playbackGainNode = null;
   audioContext = null;
   mediaStream = null;
   activeTabId = null;
@@ -88,9 +94,10 @@ async function startCapture(message) {
 
   // tabCapture puede silenciar la salida original; esta rama conserva audible la
   // reunión con la frecuencia nativa, separada de la copia 16 kHz del ASR.
-  const playbackGain = audioContext.createGain();
-  playbackGain.gain.value = 1;
-  source.connect(playbackGain).connect(audioContext.destination);
+  // TTS solo modifica este GainNode de reproducción: nunca el worklet/captura ASR.
+  playbackGainNode = audioContext.createGain();
+  playbackGainNode.gain.value = 1;
+  source.connect(playbackGainNode).connect(audioContext.destination);
 
   const localPort = Math.min(65535, Math.max(1024, Number(message.enginePort) || 8765));
   const wsUrl = `ws://127.0.0.1:${localPort}/ws?token=${encodeURIComponent(message.credential)}`;
@@ -211,11 +218,13 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     return false;
   }
   if (message.type === 'TTS_STARTED') {
+    setDuckingGain(playbackGainNode?.gain, Boolean(message.duckingEnabled), message.duckingLevel);
     const ok = sendControl('tts.started', { text: message.text || '', speakerId: message.speakerId || null });
     sendResponse({ ok });
     return false;
   }
   if (message.type === 'TTS_FINISHED') {
+    restoreGain(playbackGainNode?.gain);
     const ok = sendControl('tts.finished', { speakerId: message.speakerId || null });
     sendResponse({ ok });
     return false;
