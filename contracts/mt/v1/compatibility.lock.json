@@ -1,0 +1,62 @@
+{
+  "contract": "mt/v1",
+  "messages": {
+    "MtRequestDescriptor": {
+      "fields": {
+        "requestId": {"type": "string", "required": true},
+        "utteranceId": {"type": "string", "required": true},
+        "route": {"type": "string", "required": true},
+        "sourceLanguage": {"type": "string", "required": true},
+        "targetLanguage": {"type": "string", "required": true},
+        "text": {"type": "string", "required": true}
+      }
+    },
+    "MissingNumber": {
+      "fields": {
+        "value": {"type": "string", "required": true}
+      }
+    },
+    "MtQualityReport": {
+      "fields": {
+        "tokenCount": {"type": "integer", "required": true},
+        "ngramSize": {"type": "integer", "required": true},
+        "repeatedNgramRatio": {"type": "number", "required": true},
+        "maxNgramOccurrences": {"type": "integer", "required": true},
+        "repeatedSentenceCount": {"type": "integer", "required": true},
+        "passed": {"type": "boolean", "required": true},
+        "reason": {"type": "enum:QualityReason", "required": true}
+      }
+    },
+    "MtFidelityReport": {
+      "fields": {
+        "missingNumbers": {"type": "array:MissingNumber", "required": true},
+        "sourceHasNegation": {"type": "boolean", "required": true},
+        "targetHasNegation": {"type": "boolean", "required": true},
+        "passed": {"type": "boolean", "required": true},
+        "reason": {"type": "enum:FidelityReason", "required": true}
+      }
+    },
+    "MtResult": {
+      "fields": {
+        "requestId": {"type": "string", "required": true},
+        "utteranceId": {"type": "string", "required": true},
+        "engineId": {"type": "string", "required": true},
+        "providerId": {"type": "string", "required": true},
+        "sourceLanguage": {"type": "string", "required": true},
+        "targetLanguage": {"type": "string", "required": true},
+        "sourceText": {"type": "string", "required": true},
+        "targetText": {"type": "string", "required": true},
+        "accepted": {"type": "boolean", "required": true},
+        "reason": {"type": "enum:DecisionReason", "required": true},
+        "quality": {"type": "object:MtQualityReport", "required": true},
+        "fidelity": {"type": "object:MtFidelityReport", "required": true},
+        "elapsedMs": {"type": "number", "required": true}
+      }
+    }
+  },
+  "enums": {
+    "QualityReason": ["OK", "EMPTY", "REPEATED_SENTENCE", "REPEATED_NGRAM", "REPETITION_RATIO"],
+    "FidelityReason": ["OK", "NUMBER_LOST", "NEGATION_LOST"],
+    "DecisionReason": ["OK", "EMPTY", "REPEATED_SENTENCE", "REPEATED_NGRAM", "REPETITION_RATIO", "NUMBER_LOST", "NEGATION_LOST"]
+  }
+}
