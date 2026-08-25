@@ -1,0 +1,78 @@
+name: V3 TTS
+
+on:
+  pull_request:
+    paths:
+      - "apps/extension/tts.js"
+      - "apps/extension/tts/**"
+      - "apps/extension/background.js"
+      - "apps/extension/offscreen.js"
+      - "scripts/test_extension.py"
+      - "contracts/tts/**"
+      - "contracts/index.json"
+      - "manifests/milyvoice-3.components.json"
+      - "scripts/test_v3_component_manifest.py"
+      - ".github/workflows/v3-tts.yml"
+      - "docs/superpowers/specs/2026-08-24-milyvoice-3-tts-1.0-design.md"
+      - "docs/superpowers/plans/2026-08-24-milyvoice-3-tts-1.0.md"
+  push:
+    branches:
+      - "v3/tts-*"
+    paths:
+      - "apps/extension/tts.js"
+      - "apps/extension/tts/**"
+      - "apps/extension/background.js"
+      - "apps/extension/offscreen.js"
+      - "scripts/test_extension.py"
+      - "contracts/tts/**"
+      - "contracts/index.json"
+      - "manifests/milyvoice-3.components.json"
+      - "scripts/test_v3_component_manifest.py"
+      - ".github/workflows/v3-tts.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  linux:
+    name: TTS Linux gate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+      - name: Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: TTS module tests
+        working-directory: apps/extension/tts
+        run: node --experimental-default-type=module --test
+      - name: Extension integration guard
+        run: python scripts/test_extension.py
+
+  windows:
+    name: TTS Windows gate
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+      - name: Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: TTS module tests
+        working-directory: apps/extension/tts
+        run: node --experimental-default-type=module --test
+      - name: Extension integration guard
+        run: python scripts/test_extension.py
+
+  contracts:
+    name: TTS contract/composition gate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+      - name: Contracts registry
+        run: python scripts/test_v3_contracts.py
+      - name: V3 composition
+        run: python scripts/test_v3_component_manifest.py
