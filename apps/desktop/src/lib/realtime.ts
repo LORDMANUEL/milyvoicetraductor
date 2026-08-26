@@ -1,10 +1,17 @@
 import { desktopApi } from './api';
 import { shouldUseProtectedSystemAudioFallback } from './audio-source-policy';
+import {
+  getTier1TargetLanguage,
+  normalizeTier1SourceLanguage,
+  setTier1TargetLanguage,
+  type Tier1SourceLanguage,
+  type Tier1TargetLanguage
+} from './tier1-route';
 import type { AudioSourceMode, RealtimeEvent, SessionMode, SpeakerFocusMode } from '../types';
 
 export type RealtimeEventHandler = (event: RealtimeEvent) => void;
-export type RealtimeSourceLanguage = 'auto' | 'en' | 'es' | 'zh';
-export type RealtimeTargetLanguage = 'es' | 'en' | 'zh';
+export type RealtimeSourceLanguage = Tier1SourceLanguage;
+export type RealtimeTargetLanguage = Tier1TargetLanguage;
 
 export class LocalEngineError extends Error {
   constructor(public readonly code: string | undefined, message: string) {
@@ -185,7 +192,6 @@ export type DesktopAudioSource = 'microphone' | 'system' | 'media';
 
 export class DesktopAudioCapture {
   private client: LocalRealtimeClient;
-  private targetLanguage: RealtimeTargetLanguage = 'es';
   private context: AudioContext | null = null;
   private worklet: AudioWorkletNode | null = null;
   private stream: MediaStream | null = null;
@@ -197,7 +203,15 @@ export class DesktopAudioCapture {
   }
 
   setTargetLanguage(targetLanguage: RealtimeTargetLanguage): void {
-    this.targetLanguage = targetLanguage;
+    setTier1TargetLanguage(targetLanguage);
+  }
+
+  private route(sourceLanguage: RealtimeSourceLanguage) {
+    const targetLanguage = getTier1TargetLanguage();
+    return {
+      sourceLanguage: normalizeTier1SourceLanguage(sourceLanguage, targetLanguage),
+      targetLanguage
+    };
   }
 
   /** Compatibilidad: ya no se descarta PCM durante TTS. */
@@ -245,7 +259,8 @@ export class DesktopAudioCapture {
     speakerId: string | null = null
   ): Promise<void> {
     await this.stop();
-    await this.client.connect(sourceLanguage, this.targetLanguage, persistTranscript, sessionMode, 'microphone', speakerDetection, speakerFocusMode, speakerId);
+    const route = this.route(sourceLanguage);
+    await this.client.connect(route.sourceLanguage, route.targetLanguage, persistTranscript, sessionMode, 'microphone', speakerDetection, speakerFocusMode, speakerId);
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: {
@@ -275,11 +290,12 @@ export class DesktopAudioCapture {
     speakerId: string | null = null
   ): Promise<void> {
     await this.stop();
+    const route = this.route(sourceLanguage);
 
     try {
       await this.client.connect(
-        sourceLanguage,
-        this.targetLanguage,
+        route.sourceLanguage,
+        route.targetLanguage,
         persistTranscript,
         sessionMode,
         'system_loopback',
@@ -296,8 +312,8 @@ export class DesktopAudioCapture {
     }
 
     await this.client.connect(
-      sourceLanguage,
-      this.targetLanguage,
+      route.sourceLanguage,
+      route.targetLanguage,
       persistTranscript,
       sessionMode,
       'system_loopback',
@@ -340,7 +356,8 @@ export class DesktopAudioCapture {
     speakerId: string | null = null
   ): Promise<void> {
     await this.stop();
-    await this.client.connect(sourceLanguage, this.targetLanguage, persistTranscript, sessionMode, 'media_file', speakerDetection, speakerFocusMode, speakerId);
+    const route = this.route(sourceLanguage);
+    await this.client.connect(route.sourceLanguage, route.targetLanguage, persistTranscript, sessionMode, 'media_file', speakerDetection, speakerFocusMode, speakerId);
     try {
       const context = await this.createAudioGraph();
       this.elementSource = context.createMediaElementSource(element);
