@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
   "engines": [
-    {"id":"local-ct2-lite","kind":"pipeline","title":"MilyVoice Lite CTranslate2","routes":["en-es","es-en","zh-es"],"runtime":"builtin","cloud":false,"commercialUse":true},
-    {"id":"local-ct2-quality","kind":"pipeline","title":"MilyVoice Quality CTranslate2","routes":["en-es","zh-es"],"runtime":"builtin","cloud":false,"commercialUse":true},
+    {"id":"local-ct2-lite","kind":"pipeline","title":"MilyVoice Lite CTranslate2","routes":["en-es","zh-es"],"runtime":"builtin","cloud":false,"commercialUse":true},
+    {"id":"local-ct2-quality","kind":"pipeline","title":"MilyVoice Quality CTranslate2","routes":["en-es","zh-es","es-en","es-zh"],"runtime":"builtin","cloud":false,"commercialUse":true},
     {"id":"local-transformers-quality","kind":"pipeline","title":"Transformers Quality","routes":["en-es","zh-es"],"runtime":"transformers","cloud":false,"commercialUse":true},
     {"id":"local-transformers-research","kind":"pipeline","title":"Transformers Research","routes":["en-es","zh-es"],"runtime":"transformers","cloud":false,"commercialUse":false},
     {"id":"moonshine-local","kind":"asr","title":"Moonshine Voice","routes":["en-es"],"runtime":"moonshine","cloud":false,"commercialUse":true},
