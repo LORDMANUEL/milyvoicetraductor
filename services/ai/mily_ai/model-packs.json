@@ -117,7 +117,7 @@
       "version": "1.0.0",
       "title": "Calidad multilingüe (Whisper Small + M2M100 INT8)",
       "tier": "quality",
-      "routes": ["en-es", "zh-es"],
+      "routes": ["en-es", "zh-es", "es-en", "es-zh"],
       "ramMb": 2300,
       "vramMb": 1600,
       "recommendedRamGb": 8,
