@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from mily_ai.model_operations import _download_lite_cascade_pack
+from mily_ai.tier1_model_operations import _download_lite_cascade_pack
 from mily_ai.models import ModelCatalog
 
 
@@ -32,6 +32,7 @@ class Tier1CascadeDownloadTests(unittest.TestCase):
                             "id": "lite-es-zh",
                             "version": "1.0.0",
                             "title": "ES ZH",
+                            "tier": "lite",
                             "commercialUse": True,
                             "routes": ["es-zh"],
                             "components": {
