@@ -15,6 +15,8 @@ const PROTECTED_HOSTS = new Set([
 ]);
 const SESSION_MODES = new Set(['meeting', 'education', 'karaoke', 'compact']);
 const SPEAKER_FOCUS_MODES = new Set(['all', 'dominant', 'fixed']);
+const SOURCE_LANGUAGES = new Set(['auto', 'en', 'es', 'zh']);
+const TARGET_LANGUAGES = new Set(['es', 'en', 'zh']);
 
 let nativePort = null;
 let pendingBridgeRequest = null;
@@ -151,6 +153,16 @@ function assertCapturableTab(tab) {
   }
 }
 
+function normalizeRoute(options = {}) {
+  const requestedTarget = String(options.targetLanguage || 'es').toLowerCase();
+  const targetLanguage = TARGET_LANGUAGES.has(requestedTarget) ? requestedTarget : 'es';
+  const requestedSource = String(options.sourceLanguage || 'auto').toLowerCase();
+  let sourceLanguage = SOURCE_LANGUAGES.has(requestedSource) ? requestedSource : 'auto';
+  if (targetLanguage !== 'es') sourceLanguage = 'es';
+  if (targetLanguage === 'es' && sourceLanguage === 'es') sourceLanguage = 'auto';
+  return { sourceLanguage, targetLanguage };
+}
+
 async function setCaptureState(state) {
   await chrome.storage.session.set({ captureState: state });
 }
@@ -196,13 +208,15 @@ async function startCapture(options) {
     throw new Error('Selecciona un hablante antes de usar el modo Fijado.');
   }
   const speakerDetection = Boolean(options.speakerDetection);
+  const { sourceLanguage, targetLanguage } = normalizeRoute(options);
   const response = await chrome.runtime.sendMessage({
     target: 'offscreen',
     type: 'START_CAPTURE',
     streamId,
     tabId: tab.id,
     credential: bridge.credential,
-    sourceLanguage: options.sourceLanguage || 'auto',
+    sourceLanguage,
+    targetLanguage: options.targetLanguage ? targetLanguage : 'es',
     sessionMode,
     speakerDetection,
     speakerFocusMode,
@@ -213,7 +227,18 @@ async function startCapture(options) {
   if (!response?.ok) throw new Error(response?.error || 'No se pudo iniciar la captura.');
   const startedAt = Date.now();
   await chrome.storage.session.set({ knownSpeakers: [] });
-  await setCaptureState({ active: true, tabId: tab.id, startedAt, source: 'browser_tab', sessionMode, speakerDetection, speakerFocusMode, speakerId });
+  await setCaptureState({
+    active: true,
+    tabId: tab.id,
+    startedAt,
+    source: 'browser_tab',
+    sourceLanguage,
+    targetLanguage,
+    sessionMode,
+    speakerDetection,
+    speakerFocusMode,
+    speakerId
+  });
   return { ok: true };
 }
 
@@ -222,7 +247,7 @@ async function stopCapture() {
   chrome.tts.stop();
   await chrome.runtime.sendMessage({ target: 'offscreen', type: 'TTS_FINISHED', speakerId: null }).catch(() => undefined);
   await chrome.runtime.sendMessage({ target: 'offscreen', type: 'STOP_CAPTURE' });
-  await setCaptureState({ active: false, tabId: null, startedAt: null, source: null, sessionMode: null, speakerDetection: false, speakerFocusMode: 'all', speakerId: null });
+  await setCaptureState({ active: false, tabId: null, startedAt: null, source: null, sourceLanguage: null, targetLanguage: null, sessionMode: null, speakerDetection: false, speakerFocusMode: 'all', speakerId: null });
   await chrome.storage.session.set({ knownSpeakers: [] });
   return { ok: true };
 }
@@ -274,20 +299,22 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 
   if (message?.type === 'TRANSLATION_EVENT' && Number.isInteger(message.tabId)) {
     if (message.payload?.speakerId) rememberSpeaker(message.payload.speakerId).catch(() => undefined);
-    if (message.payload?.type === 'translation.final') {
-      speakTranslation(message.payload, {
-        onStart({ text, speakerId }) {
-          chrome.runtime.sendMessage({ target: 'offscreen', type: 'TTS_STARTED', text, speakerId }).catch(() => undefined);
-        },
-        onEnd({ speakerId }) {
-          chrome.runtime.sendMessage({ target: 'offscreen', type: 'TTS_FINISHED', speakerId }).catch(() => undefined);
-        }
-      }).catch(() => undefined);
-    }
     chrome.storage.session.get('captureState').then(({ captureState }) => {
+      const targetLanguage = captureState?.targetLanguage || 'es';
+      const payload = { ...message.payload, targetLanguage };
+      if (payload.type === 'translation.final') {
+        speakTranslation(payload, {
+          onStart({ text, speakerId }) {
+            chrome.runtime.sendMessage({ target: 'offscreen', type: 'TTS_STARTED', text, speakerId }).catch(() => undefined);
+          },
+          onEnd({ speakerId }) {
+            chrome.runtime.sendMessage({ target: 'offscreen', type: 'TTS_FINISHED', speakerId }).catch(() => undefined);
+          }
+        }).catch(() => undefined);
+      }
       chrome.tabs.sendMessage(message.tabId, {
         type: 'MILYVOICE_SUBTITLE',
-        payload: message.payload,
+        payload,
         sessionMode: captureState?.sessionMode || 'meeting',
         sessionStartedAt: captureState?.startedAt || Date.now()
       }).catch(() => undefined);
