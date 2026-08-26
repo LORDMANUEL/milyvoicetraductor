@@ -52,6 +52,8 @@ jobs:
           python -m unittest discover -s services/ai/tests -p "test_protocol.py" -v
           python -m unittest discover -s services/ai/tests -p "test_m2m100_target_language.py" -v
           python -m unittest discover -s services/ai/tests -p "test_tier1_session_route.py" -v
+          python -m unittest discover -s services/ai/tests -p "test_server_route_contract.py" -v
+          python -m unittest discover -s services/ai/tests -p "test_model_pack_tier1_routes.py" -v
           python -m unittest discover -s services/ai/tests -p "test_desktop_target_language_contract.py" -v
           python -m unittest discover -s services/ai/tests -p "test_extension_target_language_contract.py" -v
       - name: Verify resources, queues, backend truth and deterministic unload
