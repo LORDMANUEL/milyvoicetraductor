@@ -7,8 +7,9 @@ import re
 from dataclasses import dataclass
 from typing import Any
 
+from .languages import get_tier1_route, normalize_language
+
 PROTOCOL_VERSION = 1
-ALLOWED_SOURCES = {"auto", "en", "zh"}
 ALLOWED_SESSION_MODES = {"meeting", "education", "karaoke", "compact"}
 ALLOWED_SOURCE_MODES = {"browser_tab", "microphone", "media_file", "system_loopback"}
 ALLOWED_SPEAKER_FOCUS = {"all", "dominant", "fixed"}
@@ -63,13 +64,10 @@ class ClientMessage:
         }:
             raise ProtocolError("Tipo de mensaje no permitido")
 
-        source = str(payload.get("sourceLanguage", "auto"))
-        if source not in ALLOWED_SOURCES:
-            raise ProtocolError("Idioma de origen no permitido")
-
-        target = str(payload.get("targetLanguage", "es"))
-        if target != "es":
-            raise ProtocolError("Esta versión solo admite español como destino")
+        source = normalize_language(str(payload.get("sourceLanguage", "auto")))
+        target = normalize_language(str(payload.get("targetLanguage", "es")))
+        if not (source == "auto" and target == "es") and get_tier1_route(source, target) is None:
+            raise ProtocolError("Ruta de idioma no permitida")
 
         session_mode = str(payload.get("sessionMode", "meeting"))
         if session_mode not in ALLOWED_SESSION_MODES:
