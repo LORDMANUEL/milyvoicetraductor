@@ -1,7 +1,11 @@
 import unittest
 from pathlib import Path
 
-from mily_ai.server import route_supported_by_definition
+from mily_ai.tier1_server import route_supported_by_definition
+
+
+ROOT = Path(__file__).resolve().parents[3]
+PYPROJECT = ROOT / "services/ai/pyproject.toml"
 
 
 class ServerRouteContractTests(unittest.TestCase):
@@ -15,6 +19,15 @@ class ServerRouteContractTests(unittest.TestCase):
         definition = {"routes": ["en-es", "zh-es"]}
         self.assertTrue(route_supported_by_definition(definition, "auto", "es"))
         self.assertFalse(route_supported_by_definition(definition, "auto", "en"))
+
+    def test_quality_pack_supports_outbound_routes(self):
+        definition = {"routes": ["en-es", "zh-es", "es-en", "es-zh"]}
+        self.assertTrue(route_supported_by_definition(definition, "es", "en"))
+        self.assertTrue(route_supported_by_definition(definition, "es", "zh"))
+
+    def test_console_entrypoint_uses_tier1_cli(self):
+        source = PYPROJECT.read_text(encoding="utf-8")
+        self.assertIn('mily-ai-engine = "mily_ai.tier1_cli:main"', source)
 
 
 if __name__ == "__main__":
