@@ -1,36 +1,33 @@
-import tempfile
 import unittest
-from pathlib import Path
+from types import SimpleNamespace
 
-from mily_ai.pipeline import RealtimePipeline
-from mily_ai.sessions import SessionRecorder
+from mily_ai.tier1_pipeline import Tier1RealtimePipeline, resolve_target_language
 
 
 class Tier1SessionRouteTests(unittest.TestCase):
-    def test_pipeline_keeps_explicit_spanish_source_and_english_target(self):
-        with tempfile.TemporaryDirectory() as temp:
-            root = Path(temp)
-            pack_path = root / "pack"
-            (pack_path / "components" / "asr").mkdir(parents=True)
-            (pack_path / "components" / "translation").mkdir(parents=True)
-            (pack_path / "pack.json").write_text(
-                '{"components":{"asr":{"provider":"faster-whisper"},"translation":{"provider":"m2m100-ct2"}}}',
-                encoding="utf-8",
-            )
+    def test_explicit_target_wins_recorder_default(self):
+        recorder = SimpleNamespace(target_language="es")
+        self.assertEqual(resolve_target_language(recorder, "en"), "en")
 
-            class Pack:
-                path = pack_path
-
-            recorder = SessionRecorder(root / "sessions", False)
-            pipeline = RealtimePipeline.__new__(RealtimePipeline)
-            pipeline.source_language = "es"
-            pipeline.target_language = "en"
-
-            self.assertEqual(pipeline.source_language, "es")
-            self.assertEqual(pipeline.target_language, "en")
+    def test_recorder_target_is_used_when_server_does_not_pass_explicit_target(self):
+        recorder = SimpleNamespace(target_language="zh")
+        self.assertEqual(resolve_target_language(recorder, None), "zh")
 
     def test_explicit_spanish_wins_language_detection(self):
-        self.assertEqual(RealtimePipeline._detect_language("hola mundo", "auto", "es"), "es")
+        self.assertEqual(
+            Tier1RealtimePipeline._detect_language("hola mundo", "auto", "es"),
+            "es",
+        )
+
+    def test_detected_tier1_language_wins_when_available(self):
+        self.assertEqual(
+            Tier1RealtimePipeline._detect_language("hello", "en", "auto"),
+            "en",
+        )
+        self.assertEqual(
+            Tier1RealtimePipeline._detect_language("你好", "zh", "auto"),
+            "zh",
+        )
 
 
 if __name__ == "__main__":
