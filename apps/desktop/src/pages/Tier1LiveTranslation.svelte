@@ -4,6 +4,7 @@
   import { desktopApi } from '../lib/api';
   import {
     installTargetAwareSpeechSynthesis,
+    isTier1SessionActive,
     setTier1TargetLanguage,
     type Tier1TargetLanguage
   } from '../lib/tier1-route';
@@ -61,6 +62,12 @@
 
   async function prepareTarget(): Promise<void> {
     if (preparing) return;
+    if (isTier1SessionActive()) {
+      targetLanguage = activeTargetLanguage;
+      routeError = 'Detén la traducción actual antes de cambiar de idioma destino.';
+      routeMessage = 'La sesión y el modelo activos no fueron modificados.';
+      return;
+    }
     const requested = targetLanguage;
     const plan = ROUTES[requested];
     preparing = true;
@@ -88,10 +95,11 @@
   }
 
   onMount(() => {
-    targetLanguage = config.targetLanguage === 'es' ? 'es' : 'es';
-    activeTargetLanguage = targetLanguage;
-    setTier1TargetLanguage(targetLanguage);
+    targetLanguage = 'es';
+    activeTargetLanguage = 'es';
+    setTier1TargetLanguage('es');
     restoreSpeech = installTargetAwareSpeechSynthesis();
+    void config;
   });
 
   onDestroy(() => restoreSpeech());
