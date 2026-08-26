@@ -11,6 +11,11 @@ import json
 from .pipeline import RealtimePipeline
 from .provider_factory import build_translation_provider
 from .providers import CachedTranslator, Translator
+from .tier1_routes import (
+    definition_for_installed_pack,
+    mark_route_failure,
+    route_supported_by_definition,
+)
 
 _TIER1_LANGUAGES = {"es", "en", "zh"}
 
@@ -20,6 +25,10 @@ def resolve_target_language(recorder, explicit: str | None) -> str:
 
     candidate = str(explicit or getattr(recorder, "target_language", "es") or "es").strip().lower()
     return candidate if candidate in _TIER1_LANGUAGES else "es"
+
+
+class ModelRouteUnsupported(RuntimeError):
+    pass
 
 
 class Tier1RealtimePipeline(RealtimePipeline):
@@ -38,6 +47,16 @@ class Tier1RealtimePipeline(RealtimePipeline):
         speaker_focus_mode: str = "all",
         fixed_speaker_id: str | None = None,
     ):
+        self.target_language = resolve_target_language(recorder, target_language)
+        definition = definition_for_installed_pack(pack)
+        if not route_supported_by_definition(
+            definition, source_language, self.target_language
+        ):
+            mark_route_failure()
+            raise ModelRouteUnsupported(
+                f"Pack {getattr(pack, 'id', '')!s} no admite {source_language}-{self.target_language}"
+            )
+
         super().__init__(
             pack,
             source_language,
@@ -48,7 +67,6 @@ class Tier1RealtimePipeline(RealtimePipeline):
             speaker_focus_mode=speaker_focus_mode,
             fixed_speaker_id=fixed_speaker_id,
         )
-        self.target_language = resolve_target_language(recorder, target_language)
 
         metadata = json.loads((pack.path / "pack.json").read_text(encoding="utf-8"))
         component = metadata["components"]["translation"]
