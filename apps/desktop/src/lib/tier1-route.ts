@@ -1,29 +1,30 @@
-import type { RealtimeSourceLanguage, RealtimeTargetLanguage } from './realtime';
+export type Tier1SourceLanguage = 'auto' | 'en' | 'es' | 'zh';
+export type Tier1TargetLanguage = 'es' | 'en' | 'zh';
 
-let targetLanguage: RealtimeTargetLanguage = 'es';
+let targetLanguage: Tier1TargetLanguage = 'es';
 
-const LOCALES: Record<RealtimeTargetLanguage, string> = {
+const LOCALES: Record<Tier1TargetLanguage, string> = {
   es: 'es-ES',
   en: 'en-US',
   zh: 'zh-CN'
 };
 
-export function setTier1TargetLanguage(value: RealtimeTargetLanguage): void {
+export function setTier1TargetLanguage(value: Tier1TargetLanguage): void {
   targetLanguage = value;
 }
 
-export function getTier1TargetLanguage(): RealtimeTargetLanguage {
+export function getTier1TargetLanguage(): Tier1TargetLanguage {
   return targetLanguage;
 }
 
 export function normalizeTier1SourceLanguage(
-  source: RealtimeSourceLanguage,
-  target: RealtimeTargetLanguage = targetLanguage
-): RealtimeSourceLanguage {
+  source: Tier1SourceLanguage,
+  target: Tier1TargetLanguage = targetLanguage
+): Tier1SourceLanguage {
   return target === 'es' ? source : 'es';
 }
 
-export function targetLocale(target: RealtimeTargetLanguage = targetLanguage): string {
+export function targetLocale(target: Tier1TargetLanguage = targetLanguage): string {
   return LOCALES[target];
 }
 
