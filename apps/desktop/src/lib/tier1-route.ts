@@ -2,6 +2,7 @@ export type Tier1SourceLanguage = 'auto' | 'en' | 'es' | 'zh';
 export type Tier1TargetLanguage = 'es' | 'en' | 'zh';
 
 let targetLanguage: Tier1TargetLanguage = 'es';
+let sessionActive = false;
 
 const LOCALES: Record<Tier1TargetLanguage, string> = {
   es: 'es-ES',
@@ -15,6 +16,14 @@ export function setTier1TargetLanguage(value: Tier1TargetLanguage): void {
 
 export function getTier1TargetLanguage(): Tier1TargetLanguage {
   return targetLanguage;
+}
+
+export function setTier1SessionActive(value: boolean): void {
+  sessionActive = Boolean(value);
+}
+
+export function isTier1SessionActive(): boolean {
+  return sessionActive;
 }
 
 export function normalizeTier1SourceLanguage(
