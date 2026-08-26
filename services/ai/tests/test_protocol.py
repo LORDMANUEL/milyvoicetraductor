@@ -19,8 +19,48 @@ class ProtocolTests(unittest.TestCase):
         }))
         self.assertEqual(message.type, "client.hello")
         self.assertEqual(message.source_language, "auto")
+        self.assertEqual(message.target_language, "es")
         self.assertEqual(message.session_mode, "meeting")
         self.assertTrue(message.binary_pcm)
+
+    def test_accepts_all_four_explicit_tier1_routes(self):
+        for source, target in (("en", "es"), ("zh", "es"), ("es", "en"), ("es", "zh")):
+            with self.subTest(route=f"{source}-{target}"):
+                message = ClientMessage.parse(json.dumps({
+                    "protocol": 1,
+                    "type": "client.hello",
+                    "sourceLanguage": source,
+                    "targetLanguage": target,
+                }))
+                self.assertEqual((message.source_language, message.target_language), (source, target))
+
+    def test_auto_is_only_valid_when_translating_to_spanish(self):
+        accepted = ClientMessage.parse(json.dumps({
+            "protocol": 1,
+            "type": "client.hello",
+            "sourceLanguage": "auto",
+            "targetLanguage": "es",
+        }))
+        self.assertEqual((accepted.source_language, accepted.target_language), ("auto", "es"))
+
+        for target in ("en", "zh"):
+            with self.subTest(target=target), self.assertRaises(ProtocolError):
+                ClientMessage.parse(json.dumps({
+                    "protocol": 1,
+                    "type": "client.hello",
+                    "sourceLanguage": "auto",
+                    "targetLanguage": target,
+                }))
+
+    def test_rejects_non_tier1_language_pairs(self):
+        for source, target in (("en", "zh"), ("zh", "en"), ("es", "es"), ("en", "en")):
+            with self.subTest(route=f"{source}-{target}"), self.assertRaises(ProtocolError):
+                ClientMessage.parse(json.dumps({
+                    "protocol": 1,
+                    "type": "client.hello",
+                    "sourceLanguage": source,
+                    "targetLanguage": target,
+                }))
 
     def test_karaoke_session_mode_is_parsed(self):
         message = ClientMessage.parse(json.dumps({
