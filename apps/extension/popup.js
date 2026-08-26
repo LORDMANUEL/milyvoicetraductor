@@ -1,4 +1,5 @@
 const source = document.querySelector('#source');
+const target = document.querySelector('#target');
 const sessionMode = document.querySelector('#sessionMode');
 const subtitleTheme = document.querySelector('#subtitleTheme');
 const tutorControls = document.querySelector('#tutorControls');
@@ -39,15 +40,32 @@ function speakerLabel(id) {
   return /^speaker-[a-z]$/.test(String(id || '')) ? `Hablante ${id.slice(-1).toUpperCase()}` : String(id || '');
 }
 
+function normalizeRouteSelection(preferTarget = false) {
+  if (preferTarget) {
+    if (target.value !== 'es') source.value = 'es';
+    else if (source.value === 'es') source.value = 'auto';
+    return;
+  }
+  if (source.value === 'es') {
+    if (target.value === 'es') target.value = 'en';
+  } else {
+    target.value = 'es';
+  }
+}
+
+function setDotState(element, state) {
+  setDot(element, state);
+}
+
 function renderBridge(state, connected = true) {
   const engineStartable = state?.engine === 'ready' || state?.engine === 'stopped';
   bridgeReady = Boolean(connected && engineStartable && state?.modelPack);
   appState.textContent = connected ? 'Detectada' : 'No instalada';
   engineState.textContent = state?.engine === 'ready' ? 'Activo' : state?.engine === 'stopped' ? 'Detenido' : 'No disponible';
   modelState.textContent = state?.modelPack ? 'Listo' : connected ? 'Preparando…' : 'No disponible';
-  setDot(appDot, connected ? 'ok' : 'error');
-  setDot(engineDot, state?.engine === 'ready' ? 'ok' : connected ? 'warn' : 'error');
-  setDot(modelDot, state?.modelPack ? 'ok' : connected ? 'warn' : 'error');
+  setDotState(appDot, connected ? 'ok' : 'error');
+  setDotState(engineDot, state?.engine === 'ready' ? 'ok' : connected ? 'warn' : 'error');
+  setDotState(modelDot, state?.modelPack ? 'ok' : connected ? 'warn' : 'error');
   downloadApp.hidden = connected;
 
   const active = toggle.dataset.active === '1';
@@ -64,7 +82,8 @@ function renderCapture(active) {
   toggle.textContent = active ? 'Detener traducción' : bridgeReady ? 'Iniciar traducción' : 'Preparando…';
   toggle.classList.toggle('stop', active);
   toggle.disabled = active ? false : !bridgeReady;
-  source.disabled = active;
+  source.disabled = active || target.value !== 'es';
+  target.disabled = active;
   sessionMode.disabled = active;
   speakerDetection.disabled = active;
 }
@@ -110,12 +129,12 @@ function renderSpeakerVoices() {
   speakerVoiceList.hidden = !ttsEnabled.checked || knownSpeakers.length === 0;
   speakerVoiceList.replaceChildren();
   if (speakerVoiceList.hidden) return;
-  const spanishVoices = voicesFor(['es']);
+  const outputVoices = voicesFor([target.value]);
   for (const id of knownSpeakers) {
     const label = document.createElement('label');
     label.textContent = `${speakerLabel(id)} · voz`;
     const select = document.createElement('select');
-    makeVoiceOptions(select, speakerVoiceNames[id] || '', spanishVoices);
+    makeVoiceOptions(select, speakerVoiceNames[id] || '', outputVoices);
     select.addEventListener('change', async () => {
       speakerVoiceNames = { ...speakerVoiceNames, [id]: select.value };
       await chrome.storage.local.set({ speakerVoiceNames });
@@ -131,7 +150,7 @@ function renderTtsControls() {
 }
 
 function refreshVoiceOptions() {
-  makeVoiceOptions(ttsVoice, ttsVoice.value, voicesFor(['es']), 'Voz española automática');
+  makeVoiceOptions(ttsVoice, ttsVoice.value, voicesFor([target.value]), 'Voz traducida automática');
   const sourcePrefix = source.value === 'auto' ? ['en', 'zh', 'es'] : [source.value];
   makeVoiceOptions(tutorVoice, tutorVoice.value, voicesFor(sourcePrefix), 'Voz automática');
   renderSpeakerVoices();
@@ -169,6 +188,7 @@ function renderEngineEvent(event) {
 async function savePreferences() {
   await chrome.storage.local.set({
     sourceLanguage: source.value,
+    targetLanguage: target.value,
     sessionMode: sessionMode.value,
     subtitleTheme: subtitleTheme.value,
     tutorVoiceName: tutorVoice.value,
@@ -196,10 +216,12 @@ async function loadVoices() {
 
 async function loadSettings() {
   const saved = await chrome.storage.local.get([
-    'sourceLanguage', 'sessionMode', 'subtitleTheme', 'tutorVoiceName', 'persistTranscript', 'showOriginal',
+    'sourceLanguage', 'targetLanguage', 'sessionMode', 'subtitleTheme', 'tutorVoiceName', 'persistTranscript', 'showOriginal',
     'speakerDetection', 'speakerFocusMode', 'speakerId', 'ttsEnabled', 'ttsVoiceName', 'speakerVoiceNames'
   ]);
   source.value = saved.sourceLanguage || 'auto';
+  target.value = saved.targetLanguage || 'es';
+  normalizeRouteSelection(target.value !== 'es');
   sessionMode.value = saved.sessionMode || 'meeting';
   subtitleTheme.value = saved.subtitleTheme || 'auto';
   persist.checked = Boolean(saved.persistTranscript);
@@ -230,7 +252,17 @@ for (const element of [persist, showOriginal, ttsVoice, subtitleTheme, tutorVoic
 }
 
 source.addEventListener('change', async () => {
+  normalizeRouteSelection(false);
   refreshVoiceOptions();
+  renderCapture(toggle.dataset.active === '1');
+  await savePreferences();
+});
+
+target.addEventListener('change', async () => {
+  normalizeRouteSelection(true);
+  ttsVoice.value = '';
+  refreshVoiceOptions();
+  renderCapture(toggle.dataset.active === '1');
   await savePreferences();
 });
 
@@ -286,6 +318,7 @@ toggle.addEventListener('click', async () => {
           type: 'START_CAPTURE',
           options: {
             sourceLanguage: source.value,
+            targetLanguage: target.value,
             sessionMode: sessionMode.value === 'tutor' ? 'education' : sessionMode.value,
             persistTranscript: persist.checked,
             speakerDetection: speakerDetection.checked,
