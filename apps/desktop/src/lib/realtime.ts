@@ -3,6 +3,7 @@ import { shouldUseProtectedSystemAudioFallback } from './audio-source-policy';
 import {
   getTier1TargetLanguage,
   normalizeTier1SourceLanguage,
+  setTier1SessionActive,
   setTier1TargetLanguage,
   type Tier1SourceLanguage,
   type Tier1TargetLanguage
@@ -103,6 +104,7 @@ export class LocalRealtimeClient {
         this.handler(payload);
         if (payload.type === 'session.started') {
           this.binaryPcm = payload.binaryPcm === true;
+          setTier1SessionActive(true);
           if (!settled) {
             settled = true;
             window.clearTimeout(timeout);
@@ -111,6 +113,7 @@ export class LocalRealtimeClient {
         } else if (payload.type === 'engine.error' && !settled) {
           settled = true;
           window.clearTimeout(timeout);
+          setTier1SessionActive(false);
           reject(new LocalEngineError(payload.code, payload.message || 'El motor local rechazó la sesión.'));
         }
       });
@@ -119,12 +122,14 @@ export class LocalRealtimeClient {
         if (!settled) {
           settled = true;
           window.clearTimeout(timeout);
+          setTier1SessionActive(false);
           reject(new Error('No se pudo conectar con el motor local.'));
         }
       });
 
       socket.addEventListener('close', () => {
         this.binaryPcm = false;
+        setTier1SessionActive(false);
         if (!settled) {
           settled = true;
           window.clearTimeout(timeout);
@@ -165,7 +170,10 @@ export class LocalRealtimeClient {
 
   async stop(): Promise<void> {
     const socket = this.socket;
-    if (!socket) return;
+    if (!socket) {
+      setTier1SessionActive(false);
+      return;
+    }
     if (socket.readyState === WebSocket.OPEN) {
       socket.send(JSON.stringify({
         protocol: 1,
@@ -182,6 +190,7 @@ export class LocalRealtimeClient {
     const socket = this.socket;
     this.socket = null;
     this.binaryPcm = false;
+    setTier1SessionActive(false);
     if (socket) {
       try { socket.close(1000, 'desktop stop'); } catch (_) { /* noop */ }
     }
