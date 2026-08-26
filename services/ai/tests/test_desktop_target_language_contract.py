@@ -34,6 +34,15 @@ class DesktopTargetLanguageContractTests(unittest.TestCase):
         wrapper = LIVE.read_text(encoding="utf-8")
         self.assertIn("./LiveTranslation.svelte", wrapper)
 
+    def test_outbound_wrapper_installs_and_benchmarks_preferred_lite_pack(self):
+        wrapper = LIVE.read_text(encoding="utf-8")
+        self.assertIn("desktopApi.getModelCatalog", wrapper)
+        self.assertIn("desktopApi.installModel", wrapper)
+        self.assertIn("desktopApi.optimizeModels", wrapper)
+        self.assertIn("lite-es-en", wrapper)
+        self.assertIn("lite-es-zh", wrapper)
+        self.assertIn("resourceAllowed", wrapper)
+
 
 if __name__ == "__main__":
     unittest.main()
