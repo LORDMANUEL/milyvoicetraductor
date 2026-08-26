@@ -4,7 +4,8 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from mily_ai.cpu_budget import detect_cpu_budget
-from mily_ai.providers import M2M100CTranslate2Translator, FasterWhisperAsr
+from mily_ai.provider_factory import build_asr_provider, build_translation_provider
+from mily_ai.tier1_providers import TargetAwareM2M100CTranslate2Translator, Tier1FasterWhisperAsr
 
 
 class _FakeTokenizer:
@@ -52,17 +53,19 @@ class TargetAwareM2M100Tests(unittest.TestCase):
     def tearDown(self):
         self.temp.cleanup()
 
-    def test_constructor_keeps_requested_target_language(self):
-        translator = M2M100CTranslate2Translator(
+    def test_factory_keeps_requested_target_language_for_m2m100(self):
+        translator = build_translation_provider(
+            {"provider": "m2m100-ct2"},
             self.path,
             "cpu",
-            cpu_budget=self.budget,
+            self.budget,
             target_language="en",
         )
+        self.assertIsInstance(translator, TargetAwareM2M100CTranslate2Translator)
         self.assertEqual(translator.target_language, "en")
 
     def test_translate_uses_target_language_token(self):
-        translator = M2M100CTranslate2Translator(
+        translator = TargetAwareM2M100CTranslate2Translator(
             self.path,
             "cpu",
             cpu_budget=self.budget,
@@ -79,12 +82,15 @@ class TargetAwareM2M100Tests(unittest.TestCase):
         self.assertEqual(fake_tokenizer.src_lang, "es")
         self.assertEqual(fake_translator.target_prefix, [["__zh__"]])
 
-    def test_faster_whisper_warmup_preserves_explicit_spanish(self):
-        provider = FasterWhisperAsr(
+    def test_faster_whisper_factory_warmup_preserves_explicit_spanish(self):
+        provider = build_asr_provider(
+            {"provider": "faster-whisper"},
             self.path,
             "cpu",
-            cpu_budget=self.budget,
+            self.budget,
+            False,
         )
+        self.assertIsInstance(provider, Tier1FasterWhisperAsr)
         fake_model = _FakeWhisperModel()
         provider._model = fake_model
 
