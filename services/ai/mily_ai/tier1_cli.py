@@ -5,6 +5,7 @@ from __future__ import annotations
 import sys
 
 from . import cli as base_cli
+from .tier1_model_advisor import Tier1ModelAdvisor
 from .tier1_model_operations import download_pack as tier1_download_pack
 from .tier1_server import create_app
 
@@ -27,9 +28,10 @@ def cmd_serve(args) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
-    # `models install` del CLI estable usa el símbolo de módulo `download_pack`.
-    # Sustituimos sólo ese punto para que los packs nuevos con cascada Marian se
-    # descarguen mediante la capa 2.1; el resto de comandos permanece intacto.
+    # Los símbolos son puntos de extensión deliberados de la capa 2.1. El CLI
+    # estable conserva parser, errores y comandos; sólo cambiamos el descargador
+    # de cascadas nuevas, el benchmark de rutas y `serve`.
     base_cli.cmd_serve = cmd_serve
     base_cli.download_pack = tier1_download_pack
+    base_cli.ModelAdvisor = Tier1ModelAdvisor
     return base_cli.main(argv)
