@@ -1,10 +1,13 @@
 {
   "schemaVersion": 1,
   "stable": {
-    "version": "2.0.1",
+    "version": "2.0.2",
     "channel": "stable",
     "recommended": true,
-    "installer": "https://github.com/LORDMANUEL/milyvoicetraductor/releases/download/v2.0.1/MilyVoiceTraductor_2.0.1_x64-setup.exe"
+    "installer": "https://github.com/LORDMANUEL/milyvoicetraductor/releases/download/v2.0.2/MilyVoiceTraductor_2.0.2_x64-setup.exe",
+    "extension": "https://github.com/LORDMANUEL/milyvoicetraductor/releases/download/v2.0.2/MilyVoiceTraductor-Chromium-Extension.zip",
+    "release": "https://github.com/LORDMANUEL/milyvoicetraductor/releases/tag/v2.0.2",
+    "targetCommit": "cfd3946644c41242e6345c2c593f4edb7a1047b4"
   },
   "beta": {
     "version": "2.1.0",
