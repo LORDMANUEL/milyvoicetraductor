@@ -103,6 +103,20 @@ ASR_BUILDERS: dict[str, AsrBuilder] = {
 }
 
 
+def _m2m100(
+    component: dict[str, Any],
+    model_path: Path,
+    compute_profile: str,
+    cpu_budget: CpuBudget,
+) -> Translator:
+    return TargetAwareM2M100CTranslate2Translator(
+        model_path,
+        compute_profile,
+        cpu_budget=cpu_budget,
+        target_language=str(component.get("targetLanguage", "es")),
+    )
+
+
 def _marian(
     component: dict[str, Any],
     model_path: Path,
@@ -181,6 +195,7 @@ def _nllb(
 
 
 TRANSLATION_BUILDERS: dict[str, TranslationBuilder] = {
+    "m2m100-ct2": _m2m100,
     "marian-ct2": _marian,
     "marian-cascade-ct2": _marian_cascade,
     "qwen": _qwen,
@@ -228,12 +243,14 @@ def build_translation_provider(
 ) -> Translator:
     provider = str(component.get("provider", "")).strip().lower()
     normalized_compute = _translation_compute_profile(compute_profile)
-    if provider == "m2m100-ct2":
-        return TargetAwareM2M100CTranslate2Translator(
+    if provider == "m2m100-ct2" and target_language is not None:
+        routed_component = dict(component)
+        routed_component["targetLanguage"] = target_language
+        return TRANSLATION_BUILDERS[provider](
+            routed_component,
             Path(model_path),
             normalized_compute,
-            cpu_budget=cpu_budget,
-            target_language=target_language or str(component.get("targetLanguage", "es")),
+            cpu_budget,
         )
     builder = TRANSLATION_BUILDERS.get(provider)
     if builder is None:
