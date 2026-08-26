@@ -10,12 +10,12 @@
 
 <p align="center">
   <a href="https://lordmanuel.github.io/milyvoicetraductor/"><img alt="Sitio oficial" src="https://img.shields.io/badge/Sitio_oficial-Ver_producto-00a878?style=for-the-badge" /></a>
-  <a href="https://github.com/LORDMANUEL/milyvoicetraductor/releases/download/v2.0.1/MilyVoiceTraductor_2.0.1_x64-setup.exe"><img alt="Descargar estable para Windows" src="https://img.shields.io/badge/Windows_x64-Descargar_estable_2.0.1-0078d4?style=for-the-badge&logo=windows" /></a>
+  <a href="https://github.com/LORDMANUEL/milyvoicetraductor/releases/download/v2.0.2/MilyVoiceTraductor_2.0.2_x64-setup.exe"><img alt="Descargar estable para Windows" src="https://img.shields.io/badge/Windows_x64-Descargar_estable_2.0.2-0078d4?style=for-the-badge&logo=windows" /></a>
   <a href="https://github.com/LORDMANUEL/milyvoicetraductor/releases/tag/v2.1.0"><img alt="Beta 2.1.0" src="https://img.shields.io/badge/Beta-2.1.0-f59e0b?style=for-the-badge" /></a>
 </p>
 
 <p align="center">
-  <a href="https://github.com/LORDMANUEL/milyvoicetraductor/releases/download/v2.0.1/MilyVoiceTraductor_2.0.1_x64-setup.exe"><strong>Descargar estable 2.0.1</strong></a>
+  <a href="https://github.com/LORDMANUEL/milyvoicetraductor/releases/download/v2.0.2/MilyVoiceTraductor_2.0.2_x64-setup.exe"><strong>Descargar estable 2.0.2</strong></a>
   ·
   <a href="https://github.com/LORDMANUEL/milyvoicetraductor/releases/tag/v2.1.0">Probar beta 2.1.0</a>
   ·
@@ -28,15 +28,15 @@
 
 ## Canales de versión
 
-### Estable actual — `v2.0.1`
+### Estable actual — `v2.0.2`
 
-La versión recomendada para uso normal continúa siendo **MilyVoiceTraductor 2.0.1 para Windows x64**.
+La versión recomendada para uso normal es **MilyVoiceTraductor 2.0.2 para Windows x64**. Es el hotfix estable que corrige el primer arranque, evita descargas automáticas de modelos y endurece el runtime/instalador en Windows limpio.
 
-**[Descargar estable 2.0.1](https://github.com/LORDMANUEL/milyvoicetraductor/releases/download/v2.0.1/MilyVoiceTraductor_2.0.1_x64-setup.exe)**
+**[Descargar estable 2.0.2](https://github.com/LORDMANUEL/milyvoicetraductor/releases/download/v2.0.2/MilyVoiceTraductor_2.0.2_x64-setup.exe)**
 
 ### Beta actual — `v2.1.0`
 
-**MilyVoiceTraductor 2.1.0 es una beta pública para pruebas.** No sustituye todavía a 2.0.1 como estable.
+**MilyVoiceTraductor 2.1.0 es una beta pública para pruebas.** No sustituye todavía a 2.0.2 como estable.
 
 La beta 2.1.0 incorpora Engine Hub, rutas Lite, selección adaptativa de motores y nuevas pruebas de Windows. Debe usarse para validación externa, reporte de fallos y comparación de rendimiento.
 
@@ -46,8 +46,9 @@ La beta 2.1.0 incorpora Engine Hub, rutas Lite, selección adaptativa de motores
 
 | Canal | Componente | Descarga |
 |---|---|---|
-| **Estable** | Instalador Windows x64 | [MilyVoiceTraductor 2.0.1](https://github.com/LORDMANUEL/milyvoicetraductor/releases/download/v2.0.1/MilyVoiceTraductor_2.0.1_x64-setup.exe) |
-| **Estable** | Extensión Chromium | [Extensión 2.0.1](https://github.com/LORDMANUEL/milyvoicetraductor/releases/download/v2.0.1/MilyVoiceTraductor-Chromium-Extension.zip) |
+| **Estable** | Instalador Windows x64 | [MilyVoiceTraductor 2.0.2](https://github.com/LORDMANUEL/milyvoicetraductor/releases/download/v2.0.2/MilyVoiceTraductor_2.0.2_x64-setup.exe) |
+| **Estable** | Extensión Chromium | [Extensión 2.0.2](https://github.com/LORDMANUEL/milyvoicetraductor/releases/download/v2.0.2/MilyVoiceTraductor-Chromium-Extension.zip) |
+| **Estable** | Hashes SHA-256 | [SHA256SUMS.txt](https://github.com/LORDMANUEL/milyvoicetraductor/releases/download/v2.0.2/SHA256SUMS.txt) |
 | **Beta** | Instalador Windows x64 | [MilyVoiceTraductor 2.1.0 Beta](https://github.com/LORDMANUEL/milyvoicetraductor/releases/download/v2.1.0/MilyVoiceTraductor_2.1.0_x64-setup.exe) |
 | **Beta** | Extensión Chromium | [Extensión 2.1.0](https://github.com/LORDMANUEL/milyvoicetraductor/releases/download/v2.1.0/MilyVoiceTraductor-Chromium-Extension.zip) |
 | **Beta** | Hashes SHA-256 | [SHA256SUMS.txt](https://github.com/LORDMANUEL/milyvoicetraductor/releases/download/v2.1.0/SHA256SUMS.txt) |
@@ -82,7 +83,7 @@ MilyVoiceTraductor convierte voz y contenido multimedia en subtítulos y traducc
 audio → motor local → ASR → traducción → subtítulos / TTS / sesión
 ```
 
-El instalador incorpora runtime Python privado, motor local, bridge Native Messaging y herramientas de reparación. No depende del Python del usuario ni de copiar tokens o puertos manualmente.
+El instalador incorpora runtime Python privado, motor local, bridge Native Messaging y herramientas de reparación. No depende del Python del usuario ni de copiar tokens o puertos manualmente. Los modelos se descargan/activan únicamente cuando el usuario lo solicita desde el Gestor de modelos.
 
 ### MilyCompute / Engine Hub
 
@@ -92,7 +93,8 @@ En el canal beta 2.1.0 se prueban rutas como Moonshine, Whisper Tiny y Sherpa Zi
 
 Las versiones anteriores se conservan públicamente:
 
-- [v2.0.1 — estable actual](https://github.com/LORDMANUEL/milyvoicetraductor/releases/tag/v2.0.1)
+- [v2.0.2 — estable actual](https://github.com/LORDMANUEL/milyvoicetraductor/releases/tag/v2.0.2)
+- [v2.0.1 — histórica estable](https://github.com/LORDMANUEL/milyvoicetraductor/releases/tag/v2.0.1)
 - [v2.0.0 — histórica](https://github.com/LORDMANUEL/milyvoicetraductor/releases/tag/v2.0.0)
 - [v1.0.5 — histórica](https://github.com/LORDMANUEL/milyvoicetraductor/releases/tag/v1.0.5)
 - [v1.0.0-rc.1 — RC histórica](https://github.com/LORDMANUEL/milyvoicetraductor/releases/tag/v1.0.0-rc.1)
@@ -107,7 +109,7 @@ El registro técnico completo está en [VERSION_HISTORY.md](docs/release/VERSION
 - [Modelos y licencias](docs/MODELS.md)
 - [Privacidad](docs/privacy/PRIVACY.md)
 - [Seguridad](SECURITY.md)
-- [Notas 2.0.1](docs/release/RELEASE_NOTES_2.0.1.md)
+- [Notas estable 2.0.2](docs/release/RELEASE_NOTES_2.0.2.md)
 - [Notas beta 2.1.0](docs/release/RELEASE_NOTES_2.1.0.md)
 
 ## Licencia
@@ -117,6 +119,6 @@ El código propio de MilyVoiceTraductor se distribuye bajo licencia MIT. Modelos
 ---
 
 <p align="center">
-  <strong>2.0.1 estable · 2.1.0 beta pública</strong><br />
+  <strong>2.0.2 estable · 2.1.0 beta pública</strong><br />
   IA local · Audio universal · Realtime · Privacidad por diseño
 </p>
