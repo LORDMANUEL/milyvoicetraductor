@@ -9,7 +9,21 @@ styles = ROOT / "apps" / "site" / "styles.css"
 logo = ROOT / "apps" / "site" / "assets" / "logo.svg"
 history = ROOT / "docs" / "release" / "VERSION_HISTORY.md"
 
-WINDOWS_DOWNLOAD = "https://github.com/LORDMANUEL/milyvoicetraductor/releases/download/v2.0.1/MilyVoiceTraductor_2.0.1_x64-setup.exe"
+STABLE_VERSION = "2.0.1"
+BETA_VERSION = "2.1.0"
+STABLE_INSTALLER = (
+    "https://github.com/LORDMANUEL/milyvoicetraductor/releases/download/"
+    "v2.0.1/MilyVoiceTraductor_2.0.1_x64-setup.exe"
+)
+BETA_INSTALLER = (
+    "https://github.com/LORDMANUEL/milyvoicetraductor/releases/download/"
+    "v2.1.0/MilyVoiceTraductor_2.1.0_x64-setup.exe"
+)
+BETA_EXTENSION = (
+    "https://github.com/LORDMANUEL/milyvoicetraductor/releases/download/"
+    "v2.1.0/MilyVoiceTraductor-Chromium-Extension.zip"
+)
+BETA_RELEASE = "https://github.com/LORDMANUEL/milyvoicetraductor/releases/tag/v2.1.0"
 HISTORICAL_DOWNLOADS = [
     "https://github.com/LORDMANUEL/milyvoicetraductor/releases/download/v2.0.0/MilyVoiceTraductor_2.0.0_x64-setup.exe",
     "https://github.com/LORDMANUEL/milyvoicetraductor/releases/download/v1.0.5/MilyVoiceTraductor_1.0.5_x64-setup.exe",
@@ -21,8 +35,11 @@ if not index.exists():
     errors.append("Falta apps/site/index.html")
 else:
     html = index.read_text(encoding="utf-8")
-    for required in [
+    required_content = [
+        "2.0.1 ESTABLE",
+        "2.1.0 BETA",
         "MilyVoiceTraductor 2.0.1",
+        "MilyVoiceTraductor 2.1.0 Beta",
         'id="privacidad"',
         'id="compute"',
         'id="beta"',
@@ -30,27 +47,37 @@ else:
         'id="estado"',
         "Sin telemetría",
         "MilyCompute",
-        "MegaBench",
-        "2.0.1 · Runtime privado",
         "Engine Hub",
+        "MegaBench",
+        "Moonshine",
+        "Whisper Tiny",
+        "Sherpa Zipformer",
         "BetaAlpha",
-        "1.0.0 RC1",
-        "MilyVoiceTraductor 1.0.5",
         "MilyVoiceTraductor 2.0.0",
-        WINDOWS_DOWNLOAD,
+        "MilyVoiceTraductor 1.0.5",
+        "MilyVoiceTraductor 1.0.0 RC1",
+        STABLE_INSTALLER,
+        BETA_INSTALLER,
+        BETA_EXTENSION,
+        BETA_RELEASE,
         "https://github.com/LORDMANUEL/milyvoicetraductor/tree/pruebas",
         "https://github.com/LORDMANUEL/milyvoicetraductor/tree/betaalpha",
-    ] + HISTORICAL_DOWNLOADS:
+    ] + HISTORICAL_DOWNLOADS
+    for required in required_content:
         if required not in html:
             errors.append(f"Falta contenido requerido: {required}")
 
     for stale in [
+        "2.1.0 ESTABLE",
+        "Descargar estable 2.1.0",
+        "La versión estable recomendada es v2.1.0",
+        "La descarga estable ya es 2.1.0",
         "2.0 RC",
         "Candidata actual",
         "permanece RC",
     ]:
         if stale in html:
-            errors.append(f"Contenido obsoleto prohibido: {stale}")
+            errors.append(f"Contenido obsoleto/prohibido: {stale}")
 
     lowered = html.lower()
     for forbidden in ["google-analytics", "googletagmanager", "facebook.net", "segment.com"]:
@@ -64,10 +91,14 @@ for asset in [styles, logo, history]:
 if history.exists():
     registry = history.read_text(encoding="utf-8")
     for required in [
-        "v1.0.0-rc.1",
-        "v1.0.5",
-        "v2.0.0",
         "v2.0.1",
+        "Estable actual",
+        "v2.1.0",
+        "Beta pública",
+        "v2.0.0",
+        "v1.0.5",
+        "v1.0.0-rc.1",
+        "6645be5413a46d92e24b0c37c56b1bb851a94067",
         "875c182c67bcc4c2984cf15de474602017129f99",
         "1da9a1090535f8f69639c7def2cc760e4b76364d",
     ]:
@@ -77,6 +108,8 @@ if history.exists():
 if errors:
     print("SITE CHECK FAILED")
     for error in errors:
-        print(f"- {error}")
+        print("-", error)
     sys.exit(1)
-print("SITE CHECK OK: estable 2.0.1, historial 1.0.0-rc.1/1.0.5/2.0.0, Engine Hub y BetaAlpha presentes.")
+print(
+    "SITE CHECK OK: 2.0.1 estable, 2.1.0 beta, historial y referencias de I+D presentes."
+)

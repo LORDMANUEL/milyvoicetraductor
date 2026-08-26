@@ -54,6 +54,37 @@ if ($RequireRuntime) {
     if ($expected -notmatch '^[0-9a-f]{64}$') { throw 'El SHA-256 del runtime privado tiene formato inválido.' }
     $actual = Get-Sha256Hex $runtimeZip
     if ($expected -ne $actual) { throw 'El runtime privado no coincide con su SHA-256.' }
+
+    $expanded = Join-Path $Root '.build\bootstrap-runtime-contract'
+    Remove-Item $expanded -Recurse -Force -ErrorAction SilentlyContinue
+    try {
+        Expand-Archive -Path $runtimeZip -DestinationPath $expanded -Force
+        $manifestPath = Join-Path $expanded 'runtime-manifest.json'
+        if (-not (Test-Path $manifestPath -PathType Leaf)) { throw 'El runtime privado no contiene runtime-manifest.json.' }
+        $manifest = Get-Content $manifestPath -Raw -Encoding UTF8 | ConvertFrom-Json
+        $crtEntries = @($manifest.appLocalVisualCppRuntime)
+        if ($crtEntries.Count -lt 4) { throw 'El runtime privado no declara el Visual C++ Runtime app-local completo.' }
+
+        $requiredCrt = @('concrt140.dll', 'msvcp140.dll', 'vcruntime140.dll', 'vcruntime140_1.dll')
+        foreach ($dllName in $requiredCrt) {
+            $entry = @($crtEntries | Where-Object { ([string]$_.file).ToLowerInvariant() -eq $dllName }) | Select-Object -First 1
+            if ($null -eq $entry) { throw "Falta en manifest el Visual C++ Runtime app-local: $dllName" }
+            $dllPath = Join-Path $expanded $dllName
+            if (-not (Test-Path $dllPath -PathType Leaf)) { throw "Falta en runtime el Visual C++ Runtime app-local: $dllName" }
+            $declaredHash = ([string]$entry.sha256).Trim().ToLowerInvariant()
+            if ($declaredHash -notmatch '^[0-9a-f]{64}$') { throw "Hash inválido para $dllName en runtime-manifest.json." }
+            if ((Get-Sha256Hex $dllPath) -ne $declaredHash) { throw "Hash app-local no coincide para $dllName." }
+        }
+    } finally {
+        Remove-Item $expanded -Recurse -Force -ErrorAction SilentlyContinue
+    }
+
+    # El fixture de diagnóstico provoca a propósito un proceso nativo con exit
+    # code distinto de cero para verificar que el bootstrap capture el error.
+    # Si el .ps1 falla realmente, ErrorActionPreference=Stop propaga la excepción;
+    # no debemos reinterpretar el LASTEXITCODE nativo que deja su prueba interna.
+    & (Join-Path $Root 'installer\windows\test-runtime-import-diagnostics.ps1')
 }
 
 Write-Host 'BOOTSTRAP POLICY OK' -ForegroundColor Green
+exit 0

@@ -1,0 +1,38 @@
+{
+  "schemaVersion": 1,
+  "stable": {
+    "version": "2.0.1",
+    "channel": "stable",
+    "recommended": true,
+    "installer": "https://github.com/LORDMANUEL/milyvoicetraductor/releases/download/v2.0.1/MilyVoiceTraductor_2.0.1_x64-setup.exe"
+  },
+  "beta": {
+    "version": "2.1.0",
+    "channel": "beta",
+    "recommended": false,
+    "installer": "https://github.com/LORDMANUEL/milyvoicetraductor/releases/download/v2.1.0/MilyVoiceTraductor_2.1.0_x64-setup.exe",
+    "extension": "https://github.com/LORDMANUEL/milyvoicetraductor/releases/download/v2.1.0/MilyVoiceTraductor-Chromium-Extension.zip",
+    "release": "https://github.com/LORDMANUEL/milyvoicetraductor/releases/tag/v2.1.0",
+    "installerFix": {
+      "mergedToMain": true,
+      "sourcePullRequest": 29,
+      "certifiedPullRequestHead": "1796e63231f0e9012ea9c955e2012a214b744327",
+      "mergeCommit": "21463a4b3987b3b7476560ca7035c7cbf47d7553",
+      "validation": [
+        "private Python runtime",
+        "app-local Visual C++ runtime",
+        "Native Messaging",
+        "Engine Hub target-machine simulation",
+        "Moonshine Lite EN-ES",
+        "Whisper Tiny Lite EN-ES",
+        "Sherpa Zipformer Lite EN-ES",
+        "Mandarin Lite ZH-ES",
+        "Rust and Clippy",
+        "Windows GUI",
+        "NSIS build",
+        "clean install",
+        "reinstall over active runtime"
+      ]
+    }
+  }
+}

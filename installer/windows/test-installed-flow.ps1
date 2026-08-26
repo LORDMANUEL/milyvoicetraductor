@@ -98,6 +98,7 @@ try {
 
     Remove-Item $NativeCredential -Force -ErrorAction SilentlyContinue
     $Probe = Join-Path $FixtureRoot 'probe_native.py'
+    $ProbePort = Join-Path $FixtureRoot 'native-engine-port.txt'
     @'
 import asyncio
 import json
@@ -105,8 +106,9 @@ import struct
 import subprocess
 import sys
 import time
+from pathlib import Path
 
-bridge, origin = sys.argv[1], sys.argv[2]
+bridge, origin, port_output = sys.argv[1], sys.argv[2], Path(sys.argv[3])
 proc = subprocess.Popen(
     [bridge, origin],
     stdin=subprocess.PIPE,
@@ -143,6 +145,7 @@ if not credential or len(credential) < 32 or not (1024 <= port <= 65535):
     raise SystemExit("hello no devolvió credencial/puerto válidos")
 if expires_at <= int(time.time()):
     raise SystemExit("hello devolvió una credencial ya expirada")
+port_output.write_text(str(port), encoding="ascii")
 
 async def verify_live_engine():
     try:
@@ -163,15 +166,15 @@ proc.terminate()
 proc.wait(timeout=5)
 '@ | Set-Content -Path $Probe -Encoding UTF8
 
-    & $Python $Probe $Bridge 'chrome-extension://edcpjonegaempcifgodcmgejbcpdpddm/'
+    & $Python $Probe $Bridge 'chrome-extension://edcpjonegaempcifgodcmgejbcpdpddm/' $ProbePort
     if ($LASTEXITCODE -ne 0) { throw 'El bridge instalado no completó status + hello + WebSocket real.' }
     Assert-File $NativeCredential 'hello no generó native-credential.json.'
+    Assert-File $ProbePort 'El probe no registró el puerto real devuelto por hello.'
 
     # El engine arrancado por Native Messaging hereda el PID del bridge. Tras cerrar
     # el probe debe apagarse solo y no dejar procesos huérfanos/archivos bloqueados.
-    Start-Sleep -Seconds 3
-    $config = Get-Content (Join-Path $AppRoot 'config\config.json') -Raw -Encoding UTF8 | ConvertFrom-Json
-    $port = [int]$config.enginePort
+    Start-Sleep -Seconds 4
+    $port = [int]((Get-Content $ProbePort -Raw -Encoding ASCII).Trim())
     $stillOpen = $false
     try {
         $client = [System.Net.Sockets.TcpClient]::new()

@@ -93,6 +93,85 @@ function Assert-DesktopStartsWithWindow([string]$DesktopExe, [string]$Label) {
     }
 }
 
+function Get-ModelFileSnapshot([string]$ModelsRoot) {
+    if (-not (Test-Path $ModelsRoot -PathType Container)) { return @() }
+    return @(
+        Get-ChildItem -LiteralPath $ModelsRoot -File -Recurse -Force -ErrorAction SilentlyContinue |
+            Sort-Object FullName |
+            ForEach-Object { "$($_.FullName)|$($_.Length)" }
+    )
+}
+
+function Assert-FirstRunStartsWithoutModelDownload(
+    [string]$DesktopExe,
+    [string]$ModelsRoot,
+    [string]$CurrentModel,
+    [string]$StatusPath
+) {
+    if (Test-Path $CurrentModel -PathType Leaf) {
+        throw 'La instalación limpia activó un modelo antes de abrir MilyVoice.'
+    }
+
+    $status = Get-Content $StatusPath -Raw -Encoding UTF8 | ConvertFrom-Json
+    if ($status.state -ne 'model-pending') {
+        throw "Una instalación limpia sin modelos debe terminar en model-pending, no '$($status.state)'."
+    }
+    if ($status.code -ne 'BOOTSTRAP_OK') {
+        throw "El bootstrap limpio no terminó con BOOTSTRAP_OK: $($status.code)."
+    }
+
+    $modelFilesBeforeLaunch = @(Get-ModelFileSnapshot $ModelsRoot)
+    Write-Host 'Arrancando Desktop sin modelo para comprobar que Engine Hub conserva el control de descarga...' -ForegroundColor Cyan
+    $process = Start-Process -FilePath $DesktopExe -PassThru
+    try {
+        $windowReady = $false
+        for ($attempt = 0; $attempt -lt 30; $attempt++) {
+            Start-Sleep -Milliseconds 500
+            if ($process.HasExited) {
+                throw "MilyVoiceTraductor.exe terminó en el primer arranque sin modelo con código $($process.ExitCode)."
+            }
+            $process.Refresh()
+            if ($process.MainWindowHandle -ne 0) {
+                $windowReady = $true
+                break
+            }
+        }
+        if (-not $windowReady) {
+            throw 'MilyVoiceTraductor.exe no creó una ventana visible en el primer arranque sin modelo.'
+        }
+
+        # Si quedara cualquier descarga implícita del onboarding anterior, cinco
+        # segundos son suficientes para que aparezca staging/current.json o un
+        # archivo nuevo bajo models. Sin interacción del usuario no debe ocurrir.
+        Start-Sleep -Seconds 5
+        $process.Refresh()
+        if ($process.HasExited) {
+            throw "MilyVoiceTraductor.exe terminó después de abrir Engine Hub con código $($process.ExitCode)."
+        }
+        if (Test-Path $CurrentModel -PathType Leaf) {
+            throw 'El primer arranque activó un modelo automáticamente; la descarga debe iniciarse únicamente desde Engine Hub.'
+        }
+
+        $modelFilesAfterLaunch = @(Get-ModelFileSnapshot $ModelsRoot)
+        $modelChanges = @(Compare-Object -ReferenceObject $modelFilesBeforeLaunch -DifferenceObject $modelFilesAfterLaunch)
+        if ($modelChanges.Count -gt 0) {
+            $details = ($modelChanges | ForEach-Object { "$($_.SideIndicator) $($_.InputObject)" }) -join '; '
+            throw "El primer arranque modificó la carpeta de modelos sin consentimiento: $details"
+        }
+
+        $statusAfterLaunch = Get-Content $StatusPath -Raw -Encoding UTF8 | ConvertFrom-Json
+        if ($statusAfterLaunch.state -ne 'model-pending') {
+            throw "El primer arranque cambió model-pending sin que el usuario eligiera un modelo: $($statusAfterLaunch.state)."
+        }
+        Write-Host "FIRST RUN NO-MODEL OK: visible HWND=$($process.MainWindowHandle), model-pending intacto, cero descargas implícitas." -ForegroundColor Green
+    } finally {
+        if (-not $process.HasExited) {
+            Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
+            $process.WaitForExit(10000) | Out-Null
+        }
+    }
+}
+
 # Gate explícito del shell que ejecuta NSIS en PCs reales. pwsh y powershell.exe
 # no son intercambiables para compatibilidad de parser.
 foreach ($bundledScript in @(
@@ -119,6 +198,8 @@ $EnginePackage = Join-Path $AppRoot 'engine\app\mily_ai\__init__.py'
 $ExtensionManifest = Join-Path $AppRoot 'extension\manifest.json'
 $Bridge = Join-Path $AppRoot 'bridge\milyvoice-bridge.exe'
 $NativeManifest = Join-Path $AppRoot 'bridge\com.milyvoice.traductor.json'
+$ModelsRoot = Join-Path $AppRoot 'models'
+$CurrentModel = Join-Path $ModelsRoot 'current.json'
 
 Assert-File $DesktopExe 'NSIS no dejó MilyVoiceTraductor.exe.'
 Assert-File $BootstrapScript 'NSIS no incluyó bootstrap\setup-installed.ps1 junto al ejecutable.'
@@ -176,8 +257,9 @@ foreach ($key in @(
     }
 }
 
-# Gate crítico que faltaba en 2.0: abrir el EXE instalado y comprobar una ventana real.
-Assert-DesktopStartsWithWindow $DesktopExe 'instalación limpia'
+# Gate crítico: instalación limpia abre primero la app y NO descarga ni activa
+# modelos. La selección/descarga queda exclusivamente dentro de Mily Engine Hub.
+Assert-FirstRunStartsWithoutModelDownload $DesktopExe $ModelsRoot $CurrentModel $StatusPath
 
 # Gate de actualización: conserva configuración previa y reinstala encima. El CI 2.0
 # borraba LOCALAPPDATA antes de cada prueba y nunca cubría este escenario real.
@@ -287,7 +369,7 @@ if ($fixturePid -ne [string]$lockedRuntime.Id) {
 
 $installerStoppedRuntime = $false
 try {
-    Write-Host 'Reinstalando 2.0.1 sobre estado local existente y runtime privado activo...' -ForegroundColor Cyan
+    Write-Host 'Reinstalando 2.1.0 Beta sobre estado local existente y runtime privado activo...' -ForegroundColor Cyan
     Run-ProcessChecked $Installer.FullName @('/S', "/D=$InstallRoot") 300000
     $installerStoppedRuntime = $lockedRuntime.WaitForExit(5000)
 } finally {
@@ -305,4 +387,4 @@ if (-not $installerStoppedRuntime) {
 Assert-BootstrapReady $StatusPath
 Assert-DesktopStartsWithWindow $DesktopExe 'reinstalación sobre estado existente'
 
-Write-Host 'NSIS INSTALLER FLOW OK: PS5.1 parse + payload + bootstrap + Native Messaging + visible Desktop + locked-runtime reinstall' -ForegroundColor Green
+Write-Host 'NSIS INSTALLER FLOW OK: PS5.1 + payload + model-pending first-run + zero implicit model downloads + Native Messaging + visible Desktop + locked-runtime reinstall' -ForegroundColor Green

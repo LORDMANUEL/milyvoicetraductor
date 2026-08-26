@@ -247,8 +247,8 @@ fn read_request(
         return Err(WhisperBridgeError::InvalidMetadata);
     }
     let mut samples = Vec::with_capacity(metadata.sample_count);
-    for chunk in pcm_bytes.chunks_exact(4) {
-        let value = f32::from_le_bytes(chunk.try_into().unwrap());
+    for chunk in pcm_bytes.as_chunks::<4>().0 {
+        let value = f32::from_le_bytes(*chunk);
         if !value.is_finite() {
             return Err(WhisperBridgeError::InvalidFrame);
         }

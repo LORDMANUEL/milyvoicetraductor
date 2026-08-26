@@ -1,25 +1,26 @@
-# Runtime base de MilyVoice. Los adapters opcionales se importan únicamente
-# cuando MilyCompute los selecciona; instalados en disco no consumen RAM activa.
-fastapi>=0.116,<1
-uvicorn[standard]>=0.35,<1
-numpy>=2.2,<3
-faster-whisper>=1.1,<2
-huggingface-hub>=0.34,<2
-sentencepiece>=0.2,<1
-safetensors>=0.5,<1
+# Runtime base de MilyVoice. Estas versiones corresponden al conjunto ya
+# instalado y validado por el Windows smoke; no se resuelven rangos durante build.
+fastapi==0.141.1
+uvicorn[standard]==0.52.4
+numpy==2.5.2
+faster-whisper==1.2.1
+huggingface-hub==1.28.0
+sentencepiece==0.2.2
+safetensors==0.8.0
 
-# Calidad / compatibilidad histórica. Son imports diferidos y no se cargan en
-# el perfil Lite salvo que el usuario active explícitamente un pack Quality.
-transformers>=4.51,<6
-torch>=2.7,<3
+# Calidad / compatibilidad histórica. Imports diferidos: no consumen RAM activa
+# mientras un pack Quality no se seleccione explícitamente.
+transformers==5.15.1
+torch==2.13.0
 
-# Engine Hub 2.1: runtimes alternativos locales con wheels Windows x64.
+# Engine Hub 2.1: runtimes alternativos locales Windows x64.
 moonshine-voice==0.1.0
 sherpa-onnx==1.13.4
 vosk==0.3.45
 
-# Conector cloud opcional. Solo se importa y usa tras consentimiento explícito.
+# Conector cloud opcional. Solo se usa tras consentimiento explícito.
 google-cloud-speech==2.40.0
 
-# Audio del sistema Windows.
-PyAudioWPatch==0.2.12.8; sys_platform == "win32"
+# Audio del sistema Windows. requirements.runtime.txt se instala únicamente
+# dentro del runtime privado construido por el job Windows.
+PyAudioWPatch==0.2.12.8
