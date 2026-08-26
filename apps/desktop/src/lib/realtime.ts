@@ -3,6 +3,8 @@ import { shouldUseProtectedSystemAudioFallback } from './audio-source-policy';
 import type { AudioSourceMode, RealtimeEvent, SessionMode, SpeakerFocusMode } from '../types';
 
 export type RealtimeEventHandler = (event: RealtimeEvent) => void;
+export type RealtimeSourceLanguage = 'auto' | 'en' | 'es' | 'zh';
+export type RealtimeTargetLanguage = 'es' | 'en' | 'zh';
 
 export class LocalEngineError extends Error {
   constructor(public readonly code: string | undefined, message: string) {
@@ -24,7 +26,8 @@ function arrayBufferToBase64(buffer: ArrayBuffer): string {
 export class LocalRealtimeClient {
   private socket: WebSocket | null = null;
   private binaryPcm = false;
-  private sourceLanguage: 'auto' | 'en' | 'zh' = 'auto';
+  private sourceLanguage: RealtimeSourceLanguage = 'auto';
+  private targetLanguage: RealtimeTargetLanguage = 'es';
   private handler: RealtimeEventHandler;
 
   constructor(handler: RealtimeEventHandler) {
@@ -34,11 +37,12 @@ export class LocalRealtimeClient {
   private sendControl(payload: Record<string, unknown>): void {
     const socket = this.socket;
     if (!socket || socket.readyState !== WebSocket.OPEN) return;
-    socket.send(JSON.stringify({ protocol: 1, targetLanguage: 'es', ...payload }));
+    socket.send(JSON.stringify({ protocol: 1, targetLanguage: this.targetLanguage, ...payload }));
   }
 
   async connect(
-    sourceLanguage: 'auto' | 'en' | 'zh',
+    sourceLanguage: RealtimeSourceLanguage,
+    targetLanguage: RealtimeTargetLanguage,
     persistTranscript: boolean,
     sessionMode: SessionMode = 'meeting',
     sourceMode: AudioSourceMode = 'microphone',
@@ -50,6 +54,7 @@ export class LocalRealtimeClient {
     await this.close();
     const session = await desktopApi.getLocalEngineSession();
     this.sourceLanguage = sourceLanguage;
+    this.targetLanguage = targetLanguage;
     const socket = new WebSocket(
       `ws://127.0.0.1:${session.port}/ws?token=${encodeURIComponent(session.credential)}`
     );
@@ -69,7 +74,7 @@ export class LocalRealtimeClient {
           protocol: 1,
           type: 'client.hello',
           sourceLanguage,
-          targetLanguage: 'es',
+          targetLanguage,
           persistTranscript,
           sessionMode,
           sourceMode,
@@ -145,7 +150,7 @@ export class LocalRealtimeClient {
       protocol: 1,
       type: 'audio.chunk',
       sourceLanguage: this.sourceLanguage,
-      targetLanguage: 'es',
+      targetLanguage: this.targetLanguage,
       sampleRate: 16000,
       audioBase64: arrayBufferToBase64(buffer)
     }));
@@ -159,7 +164,7 @@ export class LocalRealtimeClient {
         protocol: 1,
         type: 'audio.stop',
         sourceLanguage: this.sourceLanguage,
-        targetLanguage: 'es'
+        targetLanguage: this.targetLanguage
       }));
       await new Promise((resolve) => window.setTimeout(resolve, 300));
     }
@@ -227,7 +232,8 @@ export class DesktopAudioCapture {
   }
 
   async startMicrophone(
-    sourceLanguage: 'auto' | 'en' | 'zh',
+    sourceLanguage: RealtimeSourceLanguage,
+    targetLanguage: RealtimeTargetLanguage,
     persistTranscript: boolean,
     sessionMode: SessionMode = 'meeting',
     speakerDetection = false,
@@ -235,7 +241,7 @@ export class DesktopAudioCapture {
     speakerId: string | null = null
   ): Promise<void> {
     await this.stop();
-    await this.client.connect(sourceLanguage, persistTranscript, sessionMode, 'microphone', speakerDetection, speakerFocusMode, speakerId);
+    await this.client.connect(sourceLanguage, targetLanguage, persistTranscript, sessionMode, 'microphone', speakerDetection, speakerFocusMode, speakerId);
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: {
@@ -257,7 +263,8 @@ export class DesktopAudioCapture {
   }
 
   async startSystemAudio(
-    sourceLanguage: 'auto' | 'en' | 'zh',
+    sourceLanguage: RealtimeSourceLanguage,
+    targetLanguage: RealtimeTargetLanguage,
     persistTranscript: boolean,
     sessionMode: SessionMode = 'meeting',
     speakerDetection = false,
@@ -269,6 +276,7 @@ export class DesktopAudioCapture {
     try {
       await this.client.connect(
         sourceLanguage,
+        targetLanguage,
         persistTranscript,
         sessionMode,
         'system_loopback',
@@ -289,6 +297,7 @@ export class DesktopAudioCapture {
     // recibe PCM externo desde el selector protegido de Windows/WebView2.
     await this.client.connect(
       sourceLanguage,
+      targetLanguage,
       persistTranscript,
       sessionMode,
       'system_loopback',
@@ -323,7 +332,8 @@ export class DesktopAudioCapture {
 
   async startMediaElement(
     element: HTMLMediaElement,
-    sourceLanguage: 'auto' | 'en' | 'zh',
+    sourceLanguage: RealtimeSourceLanguage,
+    targetLanguage: RealtimeTargetLanguage,
     persistTranscript: boolean,
     sessionMode: SessionMode = 'meeting',
     speakerDetection = false,
@@ -331,7 +341,7 @@ export class DesktopAudioCapture {
     speakerId: string | null = null
   ): Promise<void> {
     await this.stop();
-    await this.client.connect(sourceLanguage, persistTranscript, sessionMode, 'media_file', speakerDetection, speakerFocusMode, speakerId);
+    await this.client.connect(sourceLanguage, targetLanguage, persistTranscript, sessionMode, 'media_file', speakerDetection, speakerFocusMode, speakerId);
     try {
       const context = await this.createAudioGraph();
       this.elementSource = context.createMediaElementSource(element);
