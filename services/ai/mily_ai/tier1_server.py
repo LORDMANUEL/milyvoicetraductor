@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 from . import __version__
+from . import provider_factory
 from . import server as base_server
+from .tier1_marian_cascade import Tier1MarianCascadeTranslator
 from .tier1_model_advisor import Tier1ModelAdvisor
 from .tier1_model_operations import download_pack as tier1_download_pack
 from .tier1_pipeline import Tier1RealtimePipeline
@@ -13,6 +15,7 @@ from .tier1_routes import consume_route_failure, route_supported_by_definition
 def _install_tier1_hooks() -> None:
     """Instala hooks idempotentes sobre los puntos de extensión del servidor."""
 
+    provider_factory.CTranslate2MarianCascadeTranslator = Tier1MarianCascadeTranslator
     base_server.RealtimePipeline = Tier1RealtimePipeline
     base_server.download_pack = tier1_download_pack
     base_server.ModelAdvisor = Tier1ModelAdvisor
