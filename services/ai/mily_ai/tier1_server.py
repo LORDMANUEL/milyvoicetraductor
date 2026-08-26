@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from . import __version__
 from . import server as base_server
+from .tier1_model_advisor import Tier1ModelAdvisor
 from .tier1_model_operations import download_pack as tier1_download_pack
 from .tier1_pipeline import Tier1RealtimePipeline
 from .tier1_routes import consume_route_failure, route_supported_by_definition
@@ -14,6 +15,7 @@ def _install_tier1_hooks() -> None:
 
     base_server.RealtimePipeline = Tier1RealtimePipeline
     base_server.download_pack = tier1_download_pack
+    base_server.ModelAdvisor = Tier1ModelAdvisor
     if getattr(base_server, "_mily_tier1_event_hook", False):
         return
 
