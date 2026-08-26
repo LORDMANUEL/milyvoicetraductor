@@ -1,14 +1,27 @@
-/** Síntesis española opcional usando únicamente voces expuestas por Chrome/Windows. */
+/** Síntesis Tier 1 opcional usando únicamente voces expuestas por Chrome/Windows. */
+const TARGET_LOCALES = {
+  es: 'es-ES',
+  en: 'en-US',
+  zh: 'zh-CN'
+};
+
+function normalizeTargetLanguage(value) {
+  const candidate = String(value || 'es').toLowerCase();
+  return Object.hasOwn(TARGET_LOCALES, candidate) ? candidate : 'es';
+}
+
 export async function speakTranslation(payload, lifecycle = {}) {
   const text = String(payload?.translation || '').trim();
   if (!text) return false;
   const settings = await chrome.storage.local.get([
     'outputMode', 'ttsEnabled', 'ttsVoiceName', 'speakerVoiceNames',
-    'duckingEnabled', 'duckingLevel'
+    'duckingEnabled', 'duckingLevel', 'targetLanguage'
   ]);
   const outputMode = settings.outputMode || (settings.ttsEnabled ? 'subtitles-voice' : 'subtitles');
   if (outputMode === 'subtitles') return false;
 
+  const targetLanguage = normalizeTargetLanguage(payload?.targetLanguage || settings.targetLanguage);
+  const targetLocale = TARGET_LOCALES[targetLanguage];
   const speakerId = /^speaker-[a-z]$/.test(String(payload?.speakerId || '')) ? String(payload.speakerId) : null;
   const speakerVoice = speakerId && settings.speakerVoiceNames && typeof settings.speakerVoiceNames === 'object'
     ? settings.speakerVoiceNames[speakerId]
@@ -22,19 +35,19 @@ export async function speakTranslation(payload, lifecycle = {}) {
   const finish = (reason) => {
     if (finished) return;
     finished = true;
-    lifecycle.onEnd?.({ speakerId, reason, duckingEnabled, duckingLevel });
+    lifecycle.onEnd?.({ speakerId, reason, duckingEnabled, duckingLevel, targetLanguage });
   };
 
   const options = {
-    lang: 'es-ES',
-    rate: 1.08,
+    lang: targetLocale,
+    rate: targetLanguage === 'zh' ? 1.0 : 1.08,
     pitch: 1.0,
     volume: 1.0,
     enqueue: true,
     onEvent(event) {
       if (event.type === 'start' && !started) {
         started = true;
-        lifecycle.onStart?.({ text, speakerId, duckingEnabled, duckingLevel });
+        lifecycle.onStart?.({ text, speakerId, duckingEnabled, duckingLevel, targetLanguage });
       }
       if (['end', 'error', 'cancelled', 'interrupted'].includes(event.type)) finish(event.type);
     }
