@@ -3,7 +3,9 @@ import unittest
 from pathlib import Path
 
 
-CATALOG = Path(__file__).resolve().parents[1] / "mily_ai" / "model-packs.json"
+AI_ROOT = Path(__file__).resolve().parents[1] / "mily_ai"
+CATALOG = AI_ROOT / "model-packs.json"
+ENGINES = AI_ROOT / "engine-families.json"
 
 
 class ModelPackTier1RouteTests(unittest.TestCase):
@@ -23,6 +25,18 @@ class ModelPackTier1RouteTests(unittest.TestCase):
                 routes = set(packs[pack_id]["routes"])
                 self.assertNotIn("es-en", routes)
                 self.assertNotIn("es-zh", routes)
+
+    def test_engine_registry_matches_verified_quality_and_lite_capabilities(self):
+        payload = json.loads(ENGINES.read_text(encoding="utf-8"))
+        engines = {item["id"]: item for item in payload["engines"]}
+        self.assertEqual(
+            set(engines["local-ct2-quality"]["routes"]),
+            {"en-es", "zh-es", "es-en", "es-zh"},
+        )
+        lite_routes = set(engines["local-ct2-lite"]["routes"])
+        self.assertEqual(lite_routes, {"en-es", "zh-es"})
+        self.assertNotIn("es-en", lite_routes)
+        self.assertNotIn("es-zh", lite_routes)
 
 
 if __name__ == "__main__":
