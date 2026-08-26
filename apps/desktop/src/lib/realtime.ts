@@ -185,6 +185,7 @@ export type DesktopAudioSource = 'microphone' | 'system' | 'media';
 
 export class DesktopAudioCapture {
   private client: LocalRealtimeClient;
+  private targetLanguage: RealtimeTargetLanguage = 'es';
   private context: AudioContext | null = null;
   private worklet: AudioWorkletNode | null = null;
   private stream: MediaStream | null = null;
@@ -193,6 +194,10 @@ export class DesktopAudioCapture {
 
   constructor(handler: RealtimeEventHandler) {
     this.client = new LocalRealtimeClient(handler);
+  }
+
+  setTargetLanguage(targetLanguage: RealtimeTargetLanguage): void {
+    this.targetLanguage = targetLanguage;
   }
 
   /** Compatibilidad: ya no se descarta PCM durante TTS. */
@@ -233,7 +238,6 @@ export class DesktopAudioCapture {
 
   async startMicrophone(
     sourceLanguage: RealtimeSourceLanguage,
-    targetLanguage: RealtimeTargetLanguage,
     persistTranscript: boolean,
     sessionMode: SessionMode = 'meeting',
     speakerDetection = false,
@@ -241,7 +245,7 @@ export class DesktopAudioCapture {
     speakerId: string | null = null
   ): Promise<void> {
     await this.stop();
-    await this.client.connect(sourceLanguage, targetLanguage, persistTranscript, sessionMode, 'microphone', speakerDetection, speakerFocusMode, speakerId);
+    await this.client.connect(sourceLanguage, this.targetLanguage, persistTranscript, sessionMode, 'microphone', speakerDetection, speakerFocusMode, speakerId);
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: {
@@ -264,7 +268,6 @@ export class DesktopAudioCapture {
 
   async startSystemAudio(
     sourceLanguage: RealtimeSourceLanguage,
-    targetLanguage: RealtimeTargetLanguage,
     persistTranscript: boolean,
     sessionMode: SessionMode = 'meeting',
     speakerDetection = false,
@@ -276,7 +279,7 @@ export class DesktopAudioCapture {
     try {
       await this.client.connect(
         sourceLanguage,
-        targetLanguage,
+        this.targetLanguage,
         persistTranscript,
         sessionMode,
         'system_loopback',
@@ -285,7 +288,6 @@ export class DesktopAudioCapture {
         speakerId,
         false
       );
-      // El motor ya está capturando WASAPI. No crear otro stream PCM en Desktop.
       return;
     } catch (error) {
       const code = error instanceof LocalEngineError ? error.code : undefined;
@@ -293,11 +295,9 @@ export class DesktopAudioCapture {
       await this.client.close();
     }
 
-    // Recuperación explícita: el motor mantiene sourceMode=system_loopback pero
-    // recibe PCM externo desde el selector protegido de Windows/WebView2.
     await this.client.connect(
       sourceLanguage,
-      targetLanguage,
+      this.targetLanguage,
       persistTranscript,
       sessionMode,
       'system_loopback',
@@ -333,7 +333,6 @@ export class DesktopAudioCapture {
   async startMediaElement(
     element: HTMLMediaElement,
     sourceLanguage: RealtimeSourceLanguage,
-    targetLanguage: RealtimeTargetLanguage,
     persistTranscript: boolean,
     sessionMode: SessionMode = 'meeting',
     speakerDetection = false,
@@ -341,7 +340,7 @@ export class DesktopAudioCapture {
     speakerId: string | null = null
   ): Promise<void> {
     await this.stop();
-    await this.client.connect(sourceLanguage, targetLanguage, persistTranscript, sessionMode, 'media_file', speakerDetection, speakerFocusMode, speakerId);
+    await this.client.connect(sourceLanguage, this.targetLanguage, persistTranscript, sessionMode, 'media_file', speakerDetection, speakerFocusMode, speakerId);
     try {
       const context = await this.createAudioGraph();
       this.elementSource = context.createMediaElementSource(element);
