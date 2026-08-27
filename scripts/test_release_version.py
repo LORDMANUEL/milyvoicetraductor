@@ -102,17 +102,19 @@ required_publish_markers = (
     "docs/release/RELEASE_NOTES_2.1.1.md",
     "sha256sum -c SHA256SUMS.txt",
     "cmp release/SHA256SUMS.txt existing-release/SHA256SUMS.txt",
+    "! grep -q 'ZhEsLiteBench' <<<\"$assets\"",
 )
 for marker in required_publish_markers:
     if marker not in publish:
         FAILURES.append(f"Publish workflow: falta {marker}")
 for forbidden in (
     "RELEASE_TAG: v2.1.0",
-    "ZhEsLiteBench",
     "git tag -f",
     "git push origin \"refs/tags/$RELEASE_TAG\" --force",
     "gh release edit",
     "--clobber",
+    "test -f release/MilyVoiceTraductor-2.1.1-ZhEsLiteBench.json",
+    "grep -Fxq 'MilyVoiceTraductor-2.1.1-ZhEsLiteBench.json'",
 ):
     if forbidden in publish:
         FAILURES.append(f"Publish workflow: operación mutable/prohibida: {forbidden}")
