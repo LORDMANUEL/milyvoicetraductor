@@ -40,15 +40,22 @@ class ExtensionExeContractTests(unittest.TestCase):
         self.assertIn(origin, BRIDGE_RUNTIME)
         self.assertIn('"key"', MANIFEST)
 
-    def test_hello_is_the_only_capture_path_that_requests_ephemeral_session(self):
+    def test_prepare_route_is_the_capture_path_that_requests_ephemeral_session(self):
         capture = BACKGROUND.split("async function startCapture", 1)[1].split(
             "async function stopCapture", 1
         )[0]
-        self.assertIn("requestBridge('hello', 7000)", capture)
+        self.assertIn("requestBridge('prepare-route'", capture)
+        self.assertIn("route: routeKey", capture)
         self.assertIn("bridge.credential", capture)
         self.assertIn("bridge.port", capture)
         self.assertIn("credential: bridge.credential", capture)
         self.assertIn("enginePort: bridge.port", capture)
+        self.assertLess(capture.index("requestBridge('prepare-route'"), capture.index("ensureOverlay(tab.id)"))
+
+    def test_status_queries_never_issue_capture_credential(self):
+        self.assertIn("should_issue_credential(ensure_started", BRIDGE_RUNTIME)
+        self.assertIn("status_never_issues_a_credential", BRIDGE_RUNTIME)
+        self.assertIn("self.status(true)", BRIDGE_RUNTIME)
 
     def test_offscreen_connection_timeout_cleans_failed_capture(self):
         self.assertIn("8000", OFFSCREEN)
