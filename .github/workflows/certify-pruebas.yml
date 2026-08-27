@@ -190,12 +190,12 @@ jobs:
           $esZhBench = Get-Item "dist/performance/MilyVoiceTraductor-2.1.0-EsZhLiteBench.json"
           Copy-Item $installer.FullName "dist/release/$($installer.Name)"
           Copy-Item $extension.FullName "dist/release/$($extension.Name)"
-          Copy-Item $targetSimulation.FullName "dist/release/$($targetSimulation.Name)"
-          Copy-Item $moonshineBench.FullName "dist/release/$($moonshineBench.Name)"
-          Copy-Item $whisperTinyBench.FullName "dist/release/$($whisperTinyBench.Name)"
-          Copy-Item $sherpaBench.FullName "dist/release/$($sherpaBench.Name)"
-          Copy-Item $esEnBench.FullName "dist/release/$($esEnBench.Name)"
-          Copy-Item $esZhBench.FullName "dist/release/$($esZhBench.Name)"
+          Copy-Item $targetSimulation.FullName "dist/release/MilyVoiceTraductor-2.1.1-TargetMachineSimulation.json"
+          Copy-Item $moonshineBench.FullName "dist/release/MilyVoiceTraductor-2.1.1-MoonshineLiteBench.json"
+          Copy-Item $whisperTinyBench.FullName "dist/release/MilyVoiceTraductor-2.1.1-WhisperTinyLiteBench.json"
+          Copy-Item $sherpaBench.FullName "dist/release/MilyVoiceTraductor-2.1.1-SherpaLiteBench.json"
+          Copy-Item $esEnBench.FullName "dist/release/MilyVoiceTraductor-2.1.1-EsEnLiteBench.json"
+          Copy-Item $esZhBench.FullName "dist/release/MilyVoiceTraductor-2.1.1-EsZhLiteBench.json"
           $lines = foreach ($file in Get-ChildItem "dist/release" -File) {
             $hash = (Get-FileHash $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
             "$hash *$($file.Name)"
