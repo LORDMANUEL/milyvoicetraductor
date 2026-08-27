@@ -9,7 +9,7 @@ WINDOWS = ROOT / "installer" / "windows"
 
 
 class EngineHubCiReleasePolicyTests(unittest.TestCase):
-    """Impide liberar Engine Hub EN→ES sin evidencia Lite completa bajo 2 GiB."""
+    """Impide liberar Engine Hub 2.1 sin evidencia Lite bidireccional bajo 2 GiB."""
 
     @classmethod
     def setUpClass(cls):
@@ -46,7 +46,23 @@ class EngineHubCiReleasePolicyTests(unittest.TestCase):
                 self.assertIn(script, self.workflow)
                 self.assertTrue((WINDOWS / script).is_file())
 
-    def test_mandarin_is_experimental_and_non_blocking_for_english_release(self):
+    def test_two_outbound_benchmarks_are_blocking_before_nsis(self):
+        steps = (
+            ("Spanish Lite real ES to EN benchmark", "test-es-en-lite.ps1"),
+            ("Spanish Lite real ES to ZH benchmark", "test-es-zh-lite.ps1"),
+        )
+        nsis = self.workflow.index("Tauri NSIS bundle")
+        for label, script in steps:
+            with self.subTest(label=label):
+                start = self.workflow.index(label)
+                self.assertLess(start, nsis)
+                self.assertIn(script, self.workflow)
+                self.assertTrue((WINDOWS / script).is_file())
+                next_step = self.workflow.find("- name:", start + len(label))
+                block = self.workflow[start:next_step if next_step >= 0 else nsis]
+                self.assertNotIn("continue-on-error: true", block)
+
+    def test_mandarin_receiver_is_experimental_and_non_blocking(self):
         marker = "Mandarin Lite experimental ZH to ES benchmark"
         self.assertIn(marker, self.workflow)
         start = self.workflow.index(marker)
@@ -73,7 +89,7 @@ class EngineHubCiReleasePolicyTests(unittest.TestCase):
             with self.subTest(marker=marker):
                 self.assertIn(marker, text)
 
-    def test_zh_benchmark_remains_strict_while_experimental(self):
+    def test_zh_receiver_benchmark_remains_strict_while_experimental(self):
         text = (WINDOWS / "test-zh-es-lite.ps1").read_text(encoding="utf-8")
         for marker in (
             "analyze_translation_quality",
@@ -89,12 +105,14 @@ class EngineHubCiReleasePolicyTests(unittest.TestCase):
             with self.subTest(marker=marker):
                 self.assertIn(marker, text)
 
-    def test_release_bundle_requires_only_stable_english_benchmark_reports(self):
+    def test_release_bundle_requires_stable_bidirectional_benchmark_reports(self):
         required = (
             "MilyVoiceTraductor-2.1.0-TargetMachineSimulation.json",
             "MilyVoiceTraductor-2.1.0-MoonshineLiteBench.json",
             "MilyVoiceTraductor-2.1.0-WhisperTinyLiteBench.json",
             "MilyVoiceTraductor-2.1.0-SherpaLiteBench.json",
+            "MilyVoiceTraductor-2.1.0-EsEnLiteBench.json",
+            "MilyVoiceTraductor-2.1.0-EsZhLiteBench.json",
         )
         for filename in required:
             with self.subTest(filename=filename):
