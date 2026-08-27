@@ -40,7 +40,13 @@ def main() -> int:
         "test \"$tag_sha\" = \"$VERIFIED_SHA\"",
         "cmp release/SHA256SUMS.txt existing-release/SHA256SUMS.txt",
         "docs/release/RELEASE_NOTES_2.1.1.md",
-        "! grep -q 'ZhEsLiteBench' <<<\"$assets\"",
+        "MilyVoiceTraductor-2.1.1-TargetMachineSimulation.json",
+        "MilyVoiceTraductor-2.1.1-MoonshineLiteBench.json",
+        "MilyVoiceTraductor-2.1.1-WhisperTinyLiteBench.json",
+        "MilyVoiceTraductor-2.1.1-SherpaLiteBench.json",
+        "MilyVoiceTraductor-2.1.1-EsEnLiteBench.json",
+        "MilyVoiceTraductor-2.1.1-EsZhLiteBench.json",
+        "! grep -Fq 'ZhEsLiteBench' <<<\"$assets\"",
     )
     for marker in beta_required:
         if marker not in beta:

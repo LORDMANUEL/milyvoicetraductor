@@ -82,6 +82,12 @@ for marker in (
     "Spanish Lite real ES to EN benchmark",
     "Spanish Lite real ES to ZH benchmark",
     "Mandarin Lite experimental ZH to ES benchmark",
+    "MilyVoiceTraductor-2.1.1-TargetMachineSimulation.json",
+    "MilyVoiceTraductor-2.1.1-MoonshineLiteBench.json",
+    "MilyVoiceTraductor-2.1.1-WhisperTinyLiteBench.json",
+    "MilyVoiceTraductor-2.1.1-SherpaLiteBench.json",
+    "MilyVoiceTraductor-2.1.1-EsEnLiteBench.json",
+    "MilyVoiceTraductor-2.1.1-EsZhLiteBench.json",
 ):
     if marker not in certify:
         FAILURES.append(f"Exact-SHA certification: falta {marker}")
@@ -99,10 +105,16 @@ required_publish_markers = (
     "RELEASE_TAG: v2.1.1",
     "RELEASE_TITLE: MilyVoiceTraductor 2.1.1 Beta",
     "release/MilyVoiceTraductor_2.1.1_x64-setup.exe",
+    "release/MilyVoiceTraductor-2.1.1-TargetMachineSimulation.json",
+    "release/MilyVoiceTraductor-2.1.1-MoonshineLiteBench.json",
+    "release/MilyVoiceTraductor-2.1.1-WhisperTinyLiteBench.json",
+    "release/MilyVoiceTraductor-2.1.1-SherpaLiteBench.json",
+    "release/MilyVoiceTraductor-2.1.1-EsEnLiteBench.json",
+    "release/MilyVoiceTraductor-2.1.1-EsZhLiteBench.json",
     "docs/release/RELEASE_NOTES_2.1.1.md",
     "sha256sum -c SHA256SUMS.txt",
     "cmp release/SHA256SUMS.txt existing-release/SHA256SUMS.txt",
-    "! grep -q 'ZhEsLiteBench' <<<\"$assets\"",
+    "! grep -Fq 'ZhEsLiteBench' <<<\"$assets\"",
 )
 for marker in required_publish_markers:
     if marker not in publish:

@@ -138,7 +138,7 @@ class EngineHubCiReleasePolicyTests(unittest.TestCase):
             self.certify.index("Collect sanitized diagnostics")
         ]
         self.assertNotIn(mandarin_report, certify_bundle)
-        self.assertIn("! grep -q 'ZhEsLiteBench'", self.publish)
+        self.assertIn("! grep -Fq 'ZhEsLiteBench'", self.publish)
         self.assertNotIn(
             "test -f release/MilyVoiceTraductor-2.1.1-ZhEsLiteBench.json",
             self.publish,
