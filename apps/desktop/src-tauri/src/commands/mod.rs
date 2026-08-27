@@ -14,7 +14,7 @@ use mily_system::SystemSnapshot;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::Path;
-use tauri::State;
+use tauri::{Manager, State};
 
 fn public_error(code: &str, message: &str) -> PublicError {
     PublicError::new(code, message)
@@ -115,7 +115,7 @@ fn model_operation_status(state: &AppState) -> (String, Option<String>) {
 }
 
 #[tauri::command]
-pub fn get_app_status(state: State<'_, AppState>) -> AppStatus {
+pub fn get_app_status(app: tauri::AppHandle, state: State<'_, AppState>) -> AppStatus {
     let config = state.config.load_or_default().unwrap_or_default();
     let installed = state.models.installed();
     let active_model_pack = installed
@@ -123,7 +123,7 @@ pub fn get_app_status(state: State<'_, AppState>) -> AppStatus {
         .find(|pack| pack.active)
         .map(|pack| format!("{}@{}", pack.id, pack.version));
     AppStatus {
-        version: env!("CARGO_PKG_VERSION").to_string(),
+        version: app.package_info().version.to_string(),
         engine: state.engine.status(config.engine_port).state,
         models: state.models.status(),
         installed_models: state.models.installed_count(),

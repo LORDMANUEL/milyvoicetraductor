@@ -5,4 +5,4 @@ las tareas administrativas, diagnósticos y pruebas puedan ejecutarse sin
 cargar Torch/Whisper en memoria.
 """
 
-__version__ = "2.1.0"
+__version__ = "2.1.1"

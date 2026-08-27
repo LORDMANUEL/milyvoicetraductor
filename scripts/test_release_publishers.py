@@ -5,13 +5,14 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 STABLE_PUBLISHER = ROOT / ".github/workflows/publish-stable-2.0.2.yml"
+BETA_PUBLISHER = ROOT / ".github/workflows/publish-rc.yml"
 
 
 def main() -> int:
     failures: list[str] = []
-    source = STABLE_PUBLISHER.read_text(encoding="utf-8")
 
-    required = (
+    stable = STABLE_PUBLISHER.read_text(encoding="utf-8")
+    stable_required = (
         "head_branch == 'stable/2.0.x'",
         "ARTIFACT_NAME: MilyVoiceTraductor-Full-2.0.2-Windows-x64-${{ github.event.workflow_run.head_sha }}",
         "RELEASE_TAG: v2.0.2",
@@ -20,25 +21,47 @@ def main() -> int:
         "targetCommitish",
         "cmp release/SHA256SUMS.txt existing-release/SHA256SUMS.txt",
     )
-    for marker in required:
-        if marker not in source:
+    for marker in stable_required:
+        if marker not in stable:
             failures.append(f"Falta contrato de publicación estable: {marker}")
-
-    forbidden = (
+    for marker in (
         "gh release edit \"$RELEASE_TAG\"",
         "gh release upload \"$RELEASE_TAG\" release/* --repo \"$REPOSITORY\" --clobber",
-    )
-    for marker in forbidden:
-        if marker in source:
+    ):
+        if marker in stable:
             failures.append(f"La release estable no puede sobrescribirse: {marker}")
 
+    beta = BETA_PUBLISHER.read_text(encoding="utf-8")
+    beta_required = (
+        "ARTIFACT_NAME: MilyVoiceTraductor-Certified-2.1.1-Windows-x64-${{ github.event.workflow_run.head_sha }}",
+        "RELEASE_TAG: v2.1.1",
+        "RELEASE_TITLE: MilyVoiceTraductor 2.1.1 Beta",
+        "head_branch == 'main'",
+        "test \"$tag_sha\" = \"$VERIFIED_SHA\"",
+        "cmp release/SHA256SUMS.txt existing-release/SHA256SUMS.txt",
+        "docs/release/RELEASE_NOTES_2.1.1.md",
+    )
+    for marker in beta_required:
+        if marker not in beta:
+            failures.append(f"Falta contrato de publicación beta inmutable: {marker}")
+    for marker in (
+        "RELEASE_TAG: v2.1.0",
+        "git tag -f",
+        "--force",
+        "gh release edit",
+        "--clobber",
+        "ZhEsLiteBench",
+    ):
+        if marker in beta:
+            failures.append(f"La beta 2.1.1 no puede mutar historia ni publicar evidencia experimental: {marker}")
+
     if failures:
-        print("STABLE PUBLISHER IMMUTABILITY FAILED")
+        print("RELEASE PUBLISHER IMMUTABILITY FAILED")
         for failure in failures:
             print(f" - {failure}")
         return 1
 
-    print("STABLE PUBLISHER IMMUTABILITY OK: v2.0.2 se publica una sola vez y luego se verifica sin clobber.")
+    print("RELEASE PUBLISHER IMMUTABILITY OK: 2.0.2 estable y 2.1.1 beta son releases inmutables.")
     return 0
 
 

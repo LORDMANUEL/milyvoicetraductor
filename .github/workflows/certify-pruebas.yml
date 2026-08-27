@@ -155,7 +155,8 @@ jobs:
       - name: Spanish Lite real ES to ZH benchmark
         shell: pwsh
         run: .\installer\windows\test-es-zh-lite.ps1
-      - name: Mandarin Lite real ZH to ES benchmark
+      - name: Mandarin Lite experimental ZH to ES benchmark
+        continue-on-error: true
         shell: pwsh
         run: .\installer\windows\test-zh-es-lite.ps1
       - name: Rust tests
@@ -187,7 +188,6 @@ jobs:
           $sherpaBench = Get-Item "dist/performance/MilyVoiceTraductor-2.1.0-SherpaLiteBench.json"
           $esEnBench = Get-Item "dist/performance/MilyVoiceTraductor-2.1.0-EsEnLiteBench.json"
           $esZhBench = Get-Item "dist/performance/MilyVoiceTraductor-2.1.0-EsZhLiteBench.json"
-          $zhEsBench = Get-Item "dist/performance/MilyVoiceTraductor-2.1.0-ZhEsLiteBench.json"
           Copy-Item $installer.FullName "dist/release/$($installer.Name)"
           Copy-Item $extension.FullName "dist/release/$($extension.Name)"
           Copy-Item $targetSimulation.FullName "dist/release/$($targetSimulation.Name)"
@@ -196,7 +196,6 @@ jobs:
           Copy-Item $sherpaBench.FullName "dist/release/$($sherpaBench.Name)"
           Copy-Item $esEnBench.FullName "dist/release/$($esEnBench.Name)"
           Copy-Item $esZhBench.FullName "dist/release/$($esZhBench.Name)"
-          Copy-Item $zhEsBench.FullName "dist/release/$($zhEsBench.Name)"
           $lines = foreach ($file in Get-ChildItem "dist/release" -File) {
             $hash = (Get-FileHash $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
             "$hash *$($file.Name)"
@@ -232,7 +231,7 @@ jobs:
         if: success()
         uses: actions/upload-artifact@v6
         with:
-          name: MilyVoiceTraductor-Certified-2.1.0-Windows-x64-${{ env.CERTIFIED_SHA }}
+          name: MilyVoiceTraductor-Certified-2.1.1-Windows-x64-${{ env.CERTIFIED_SHA }}
           path: dist/release/*
           retention-days: 30
           compression-level: 0

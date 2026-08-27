@@ -10,6 +10,7 @@ try:
 except Exception:
     HAS_FASTAPI = False
 
+from mily_ai import __version__
 from mily_ai.runtime import RuntimePaths
 from mily_ai.security import PairingTokenService
 
@@ -37,7 +38,7 @@ class LocalServerTests(unittest.TestCase):
         )
 
     def test_health_and_auth_are_local_contracts(self):
-        from mily_ai.server import create_app
+        from mily_ai.tier1_server import create_app
 
         with tempfile.TemporaryDirectory() as tmp:
             paths = self.make_paths(Path(tmp))
@@ -46,15 +47,14 @@ class LocalServerTests(unittest.TestCase):
                 health = client.get("/health")
                 self.assertEqual(health.status_code, 200)
                 self.assertTrue(health.json()["ok"])
+                self.assertEqual(health.json()["version"], __version__)
                 self.assertEqual(health.json()["protocol"], 1)
                 self.assertEqual(client.get("/v1/models").status_code, 401)
 
-            # El lifespan debe liberar el RotatingFileHandler. En Windows, dejarlo
-            # abierto impide que TemporaryDirectory elimine ai-engine.log.
             self.assertEqual(logging.getLogger("milyvoice.ai").handlers, [])
 
     def test_websocket_rejects_session_without_model_pack(self):
-        from mily_ai.server import create_app
+        from mily_ai.tier1_server import create_app
 
         with tempfile.TemporaryDirectory() as tmp:
             paths = self.make_paths(Path(tmp))
@@ -64,7 +64,9 @@ class LocalServerTests(unittest.TestCase):
             ).get_or_create()
             with TestClient(app) as client:
                 with client.websocket_connect(f"/ws?token={token}") as ws:
-                    self.assertEqual(ws.receive_json()["type"], "engine.ready")
+                    ready = ws.receive_json()
+                    self.assertEqual(ready["type"], "engine.ready")
+                    self.assertEqual(ready["version"], __version__)
                     ws.send_json(
                         {
                             "protocol": 1,
