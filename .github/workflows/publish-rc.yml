@@ -2,7 +2,7 @@ name: Publish 2.1.0 Beta
 
 on:
   workflow_run:
-    workflows: ["CI"]
+    workflows: ["Certify exact SHA"]
     types: [completed]
 
 permissions:
@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   publish:
-    name: Publish verified 2.1.0 beta downloads
+    name: Publish exact-SHA verified 2.1.0 beta downloads
     if: ${{ github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main' }}
     runs-on: ubuntu-latest
     env:
@@ -19,16 +19,23 @@ jobs:
       REPOSITORY: ${{ github.repository }}
       RUN_ID: ${{ github.event.workflow_run.id }}
       VERIFIED_SHA: ${{ github.event.workflow_run.head_sha }}
-      ARTIFACT_NAME: MilyVoiceTraductor-Full-2.1.0-Windows-x64-${{ github.event.workflow_run.head_sha }}
+      ARTIFACT_NAME: MilyVoiceTraductor-Certified-2.1.0-Windows-x64-${{ github.event.workflow_run.head_sha }}
       RELEASE_TAG: v2.1.0
       RELEASE_TITLE: MilyVoiceTraductor 2.1.0 Beta
     steps:
-      - name: Checkout the verified source revision
+      - name: Checkout the exact verified source revision
         uses: actions/checkout@v5
         with:
           ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 0
 
-      - name: Download the exact Windows artifact produced by CI
+      - name: Assert checkout provenance
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$VERIFIED_SHA"
+
+      - name: Download exact-SHA Windows artifact
         shell: bash
         run: |
           set -euo pipefail
@@ -36,7 +43,7 @@ jobs:
           mkdir -p release
           gh run download "$RUN_ID" --repo "$REPOSITORY" --name "$ARTIFACT_NAME" --dir release
 
-      - name: Verify published file set and SHA-256 checksums
+      - name: Verify complete certified evidence and SHA-256 checksums
         shell: bash
         run: |
           set -euo pipefail
@@ -48,11 +55,21 @@ jobs:
           test -f release/MilyVoiceTraductor-2.1.0-SherpaLiteBench.json
           test -f release/MilyVoiceTraductor-2.1.0-EsEnLiteBench.json
           test -f release/MilyVoiceTraductor-2.1.0-EsZhLiteBench.json
+          test -f release/MilyVoiceTraductor-2.1.0-ZhEsLiteBench.json
           test -f release/SHA256SUMS.txt
           cd release
           sha256sum -c SHA256SUMS.txt
 
-      - name: Create or update the public 2.1.0 beta release
+      - name: Retarget beta tag to exact certified SHA
+        shell: bash
+        run: |
+          set -euo pipefail
+          git tag -f "$RELEASE_TAG" "$VERIFIED_SHA"
+          git push origin "refs/tags/$RELEASE_TAG" --force
+          remote_sha="$(git ls-remote --tags origin "refs/tags/$RELEASE_TAG" | awk '{print $1}')"
+          test "$remote_sha" = "$VERIFIED_SHA"
+
+      - name: Create or update public 2.1.0 beta release
         shell: bash
         run: |
           set -euo pipefail
@@ -71,10 +88,12 @@ jobs:
               --prerelease
           fi
 
-      - name: Confirm beta release assets
+      - name: Confirm release provenance and assets
         shell: bash
         run: |
           set -euo pipefail
+          tag_sha="$(git ls-remote --tags origin "refs/tags/$RELEASE_TAG" | awk '{print $1}')"
+          test "$tag_sha" = "$VERIFIED_SHA"
           assets="$(gh release view "$RELEASE_TAG" --repo "$REPOSITORY" --json assets --jq '.assets[].name')"
           grep -Fxq 'MilyVoiceTraductor_2.1.0_x64-setup.exe' <<<"$assets"
           grep -Fxq 'MilyVoiceTraductor-Chromium-Extension.zip' <<<"$assets"
@@ -84,5 +103,6 @@ jobs:
           grep -Fxq 'MilyVoiceTraductor-2.1.0-SherpaLiteBench.json' <<<"$assets"
           grep -Fxq 'MilyVoiceTraductor-2.1.0-EsEnLiteBench.json' <<<"$assets"
           grep -Fxq 'MilyVoiceTraductor-2.1.0-EsZhLiteBench.json' <<<"$assets"
+          grep -Fxq 'MilyVoiceTraductor-2.1.0-ZhEsLiteBench.json' <<<"$assets"
           grep -Fxq 'SHA256SUMS.txt' <<<"$assets"
-          gh release view "$RELEASE_TAG" --repo "$REPOSITORY" --json url,isPrerelease --jq '{url:.url,isPrerelease:.isPrerelease}'
+          gh release view "$RELEASE_TAG" --repo "$REPOSITORY" --json url,isPrerelease,targetCommitish --jq '{url:.url,isPrerelease:.isPrerelease,targetCommitish:.targetCommitish}'
