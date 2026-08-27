@@ -1,0 +1,239 @@
+name: Certify pruebas exact SHA
+
+on:
+  push:
+    branches: [pruebas]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: certify-pruebas-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CERTIFIED_SHA: ${{ github.sha }}
+
+jobs:
+  linux-contracts:
+    name: Exact SHA source, AI, frontend and Rust contracts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ env.CERTIFIED_SHA }}
+      - name: Assert exact certified checkout
+        shell: bash
+        run: test "$(git rev-parse HEAD)" = "$CERTIFIED_SHA"
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+      - uses: dtolnay/rust-toolchain@1.98.0
+        with:
+          components: rustfmt, clippy
+      - name: Pin npm
+        run: npm install --global npm@10.9.9
+      - name: Install source-verification dependencies
+        run: python -m pip install --disable-pip-version-check "fastapi>=0.116,<1" "httpx>=0.28,<1" "numpy>=2.2,<3"
+      - name: Release version consistency
+        run: python scripts/test_release_version.py
+      - name: Source verification
+        run: python scripts/verify_source.py
+      - name: Privacy scan
+        run: python scripts/privacy_scan.py .
+      - name: Chromium extension guard
+        run: python scripts/test_extension.py
+      - name: GitHub Pages smoke test
+        run: python scripts/test_site.py
+      - name: AI unit and local server tests
+        env:
+          PYTHONPATH: services/ai
+        run: python scripts/run_ai_tests.py --timeout 120
+      - name: Realtime stress and MegaBench contracts
+        env:
+          PYTHONPATH: services/ai
+        run: |
+          python services/ai/tests/test_benchmarking.py
+          python services/ai/tests/test_realtime_optimization.py
+          python services/ai/tests/test_realtime_queueing.py
+          python services/ai/tests/test_realtime_telemetry.py
+          python services/ai/tests/test_cpu_budget.py
+      - name: Compile Python sources
+        run: python -m compileall -q services/ai
+      - name: Install frontend dependencies from committed lock
+        run: npm ci --prefix apps/desktop --workspaces=false --legacy-peer-deps --no-audit --no-fund
+      - name: Frontend typecheck
+        run: npm run --prefix apps/desktop typecheck
+      - name: Frontend tests
+        run: npm run --prefix apps/desktop test
+      - name: Frontend build
+        run: npm run --prefix apps/desktop build
+      - name: Rust formatting
+        run: cargo fmt --all -- --check
+      - name: Rust core tests
+        run: cargo test --locked --workspace --exclude milyvoicetraductor-desktop
+      - name: Rust core Clippy
+        run: cargo clippy --locked --workspace --all-targets --exclude milyvoicetraductor-desktop -- -D warnings
+
+  windows-release:
+    name: Exact SHA Windows release MegaGate
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ env.CERTIFIED_SHA }}
+      - name: Assert exact certified checkout
+        shell: pwsh
+        run: |
+          $actual = (git rev-parse HEAD).Trim()
+          if ($actual -ne $env:CERTIFIED_SHA) { throw "CERTIFIED_SHA_MISMATCH: $actual != $env:CERTIFIED_SHA" }
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+      - name: Pin npm
+        run: npm install --global npm@10.9.9
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+      - uses: dtolnay/rust-toolchain@1.98.0
+        with:
+          components: rustfmt, clippy
+      - name: Install frontend dependencies from committed lock
+        run: npm ci --prefix apps/desktop --workspaces=false --legacy-peer-deps --no-audit --no-fund
+      - name: Frontend typecheck
+        run: npm run --prefix apps/desktop typecheck
+      - name: Frontend tests
+        run: npm run --prefix apps/desktop test
+      - name: Frontend build
+        run: npm run --prefix apps/desktop build
+      - name: Install lightweight AI test dependencies
+        run: python -m pip install --disable-pip-version-check "fastapi>=0.116,<1" "httpx>=0.28,<1" "numpy>=2.2,<3"
+      - name: AI unit tests
+        id: windows_ai
+        shell: pwsh
+        run: |
+          $output = & python scripts/run_ai_tests.py --timeout 120 2>&1
+          $code = $LASTEXITCODE
+          $output | Tee-Object -FilePath ai-windows.log
+          if ($code -ne 0) { exit $code }
+      - name: Offline bootstrap policy
+        shell: pwsh
+        run: .\installer\windows\test-bootstrap.ps1
+      - name: Native Messaging bridge release build
+        run: cargo build --locked -p mily-bridge --release
+      - name: Build private Python 3.13 runtime
+        shell: pwsh
+        run: .\installer\windows\build-python-runtime.ps1
+      - name: Validate embedded runtime and offline bootstrap
+        shell: pwsh
+        run: .\installer\windows\test-bootstrap.ps1 -RequireRuntime
+      - name: Exercise installed runtime, bridge and registration
+        shell: pwsh
+        run: .\installer\windows\test-installed-flow.ps1
+      - name: Engine Hub target-machine simulation
+        shell: pwsh
+        run: .\installer\windows\test-engine-hub-target-machine.ps1
+      - name: Quality pack policy under 2 GiB
+        shell: pwsh
+        run: .\installer\windows\test-quality-pack-policy.ps1
+      - name: Moonshine Lite real EN to ES benchmark
+        shell: pwsh
+        run: .\installer\windows\test-moonshine-lite.ps1
+      - name: Whisper Tiny Lite real EN to ES benchmark
+        shell: pwsh
+        run: .\installer\windows\test-whisper-tiny-lite.ps1
+      - name: Sherpa Zipformer Lite real EN to ES benchmark
+        shell: pwsh
+        run: .\installer\windows\test-sherpa-lite.ps1
+      - name: Spanish Lite real ES to EN benchmark
+        shell: pwsh
+        run: .\installer\windows\test-es-en-lite.ps1
+      - name: Spanish Lite real ES to ZH benchmark
+        shell: pwsh
+        run: .\installer\windows\test-es-zh-lite.ps1
+      - name: Mandarin Lite real ZH to ES benchmark
+        shell: pwsh
+        run: .\installer\windows\test-zh-es-lite.ps1
+      - name: Rust tests
+        run: cargo test --locked --workspace
+      - name: Clippy
+        run: cargo clippy --locked --workspace --all-targets -- -D warnings
+      - name: Windows desktop release build
+        run: cargo build --locked -p milyvoicetraductor-desktop --release
+      - name: Verify Windows GUI subsystem
+        shell: pwsh
+        run: .\installer\windows\test-windows-gui.ps1
+      - name: Tauri NSIS bundle
+        run: npm run --prefix apps/desktop tauri -- build
+      - name: Exercise generated NSIS installer
+        shell: pwsh
+        run: .\installer\windows\test-nsis-installer.ps1
+      - name: Package Chromium extension
+        run: python scripts/build_extension_zip.py
+      - name: Prepare release bundle and SHA-256 checksums
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force "dist/release" | Out-Null
+          $installer = Get-ChildItem "target/release/bundle/nsis/*-setup.exe" | Select-Object -First 1
+          if (-not $installer) { throw "No se encontró el instalador NSIS generado." }
+          $extension = Get-Item "dist/MilyVoiceTraductor-Chromium-Extension.zip"
+          $targetSimulation = Get-Item "dist/performance/MilyVoiceTraductor-2.1.0-TargetMachineSimulation.json"
+          $moonshineBench = Get-Item "dist/performance/MilyVoiceTraductor-2.1.0-MoonshineLiteBench.json"
+          $whisperTinyBench = Get-Item "dist/performance/MilyVoiceTraductor-2.1.0-WhisperTinyLiteBench.json"
+          $sherpaBench = Get-Item "dist/performance/MilyVoiceTraductor-2.1.0-SherpaLiteBench.json"
+          $esEnBench = Get-Item "dist/performance/MilyVoiceTraductor-2.1.0-EsEnLiteBench.json"
+          $esZhBench = Get-Item "dist/performance/MilyVoiceTraductor-2.1.0-EsZhLiteBench.json"
+          $zhEsBench = Get-Item "dist/performance/MilyVoiceTraductor-2.1.0-ZhEsLiteBench.json"
+          Copy-Item $installer.FullName "dist/release/$($installer.Name)"
+          Copy-Item $extension.FullName "dist/release/$($extension.Name)"
+          Copy-Item $targetSimulation.FullName "dist/release/$($targetSimulation.Name)"
+          Copy-Item $moonshineBench.FullName "dist/release/$($moonshineBench.Name)"
+          Copy-Item $whisperTinyBench.FullName "dist/release/$($whisperTinyBench.Name)"
+          Copy-Item $sherpaBench.FullName "dist/release/$($sherpaBench.Name)"
+          Copy-Item $esEnBench.FullName "dist/release/$($esEnBench.Name)"
+          Copy-Item $esZhBench.FullName "dist/release/$($esZhBench.Name)"
+          Copy-Item $zhEsBench.FullName "dist/release/$($zhEsBench.Name)"
+          $lines = foreach ($file in Get-ChildItem "dist/release" -File) {
+            $hash = (Get-FileHash $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+            "$hash *$($file.Name)"
+          }
+          $lines | Set-Content -Encoding ascii "dist/release/SHA256SUMS.txt"
+      - name: Collect sanitized diagnostics
+        if: always()
+        shell: pwsh
+        run: |
+          $diagnostics = "dist/diagnostics"
+          New-Item -ItemType Directory -Force $diagnostics | Out-Null
+          if (Test-Path "ai-windows.log") { Copy-Item "ai-windows.log" "$diagnostics/ai-windows.log" -Force }
+          if (Test-Path "dist/performance") { Copy-Item "dist/performance" "$diagnostics/performance" -Recurse -Force }
+          [ordered]@{
+            schemaVersion = 1
+            sha = $env:CERTIFIED_SHA
+            checkout = (git rev-parse HEAD).Trim()
+            runId = $env:GITHUB_RUN_ID
+            runAttempt = $env:GITHUB_RUN_ATTEMPT
+            workflow = $env:GITHUB_WORKFLOW
+            job = $env:GITHUB_JOB
+          } | ConvertTo-Json | Set-Content "$diagnostics/run-context.json" -Encoding UTF8
+      - name: Upload diagnostic evidence even on failure
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: MilyVoiceTraductor-Certification-Diagnostics-${{ env.CERTIFIED_SHA }}
+          path: dist/diagnostics/*
+          retention-days: 30
+          compression-level: 6
+          if-no-files-found: warn
+      - name: Upload exact-SHA verified Windows release
+        if: success()
+        uses: actions/upload-artifact@v6
+        with:
+          name: MilyVoiceTraductor-Certified-2.1.0-Windows-x64-${{ env.CERTIFIED_SHA }}
+          path: dist/release/*
+          retention-days: 30
+          compression-level: 0
+          if-no-files-found: error
