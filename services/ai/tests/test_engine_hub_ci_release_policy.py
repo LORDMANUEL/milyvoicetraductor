@@ -4,6 +4,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
 WORKFLOW = ROOT / ".github" / "workflows" / "ci.yml"
+CERTIFY_WORKFLOW = ROOT / ".github" / "workflows" / "certify-pruebas.yml"
 PUBLISH_WORKFLOW = ROOT / ".github" / "workflows" / "publish-rc.yml"
 WINDOWS = ROOT / "installer" / "windows"
 
@@ -14,6 +15,7 @@ class EngineHubCiReleasePolicyTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.workflow = WORKFLOW.read_text(encoding="utf-8")
+        cls.certify = CERTIFY_WORKFLOW.read_text(encoding="utf-8")
         cls.publish = PUBLISH_WORKFLOW.read_text(encoding="utf-8")
 
     def test_quality_pack_is_policy_checked_not_activated_in_two_gib_gate(self):
@@ -25,12 +27,15 @@ class EngineHubCiReleasePolicyTests(unittest.TestCase):
         self.assertIn("realtime-m2m100", text)
         self.assertIn("PROCESS_MEMORY_LIMIT", text)
 
-    def test_target_machine_simulation_is_explicit_and_published(self):
+    def test_target_machine_simulation_is_explicit_and_certified(self):
         self.assertIn("Engine Hub target-machine simulation", self.workflow)
         self.assertIn("test-engine-hub-target-machine.ps1", self.workflow)
-        report = "MilyVoiceTraductor-2.1.0-TargetMachineSimulation.json"
-        self.assertIn(report, self.workflow)
-        self.assertIn(report, self.publish)
+        internal_report = "MilyVoiceTraductor-2.1.0-TargetMachineSimulation.json"
+        public_report = "MilyVoiceTraductor-2.1.1-TargetMachineSimulation.json"
+        self.assertIn(internal_report, self.workflow)
+        self.assertIn(internal_report, self.certify)
+        self.assertIn(public_report, self.certify)
+        self.assertIn(public_report, self.publish)
         self.assertTrue((WINDOWS / "test-engine-hub-target-machine.ps1").is_file())
 
     def test_three_stable_english_benchmarks_run_before_nsis(self):
@@ -72,6 +77,11 @@ class EngineHubCiReleasePolicyTests(unittest.TestCase):
         self.assertIn("test-zh-es-lite.ps1", block)
         self.assertTrue((WINDOWS / "test-zh-es-lite.ps1").is_file())
 
+        self.assertIn(marker, self.certify)
+        cert_start = self.certify.index(marker)
+        cert_rust = self.certify.index("- name: Rust tests", cert_start)
+        self.assertIn("continue-on-error: true", self.certify[cert_start:cert_rust])
+
     def test_sherpa_gate_enforces_real_memory_rtf_and_latency_limits(self):
         text = (WINDOWS / "test-sherpa-lite.ps1").read_text(encoding="utf-8")
         for marker in (
@@ -106,7 +116,7 @@ class EngineHubCiReleasePolicyTests(unittest.TestCase):
                 self.assertIn(marker, text)
 
     def test_release_bundle_requires_stable_bidirectional_benchmark_reports(self):
-        required = (
+        internal_required = (
             "MilyVoiceTraductor-2.1.0-TargetMachineSimulation.json",
             "MilyVoiceTraductor-2.1.0-MoonshineLiteBench.json",
             "MilyVoiceTraductor-2.1.0-WhisperTinyLiteBench.json",
@@ -114,24 +124,31 @@ class EngineHubCiReleasePolicyTests(unittest.TestCase):
             "MilyVoiceTraductor-2.1.0-EsEnLiteBench.json",
             "MilyVoiceTraductor-2.1.0-EsZhLiteBench.json",
         )
-        for filename in required:
-            with self.subTest(filename=filename):
-                self.assertIn(filename, self.workflow)
-                self.assertIn(filename, self.publish)
+        public_required = tuple(name.replace("2.1.0", "2.1.1") for name in internal_required)
+        for internal_name, public_name in zip(internal_required, public_required):
+            with self.subTest(filename=public_name):
+                self.assertIn(internal_name, self.workflow)
+                self.assertIn(internal_name, self.certify)
+                self.assertIn(public_name, self.certify)
+                self.assertIn(public_name, self.publish)
 
         mandarin_report = "MilyVoiceTraductor-2.1.0-ZhEsLiteBench.json"
-        release_bundle = self.workflow[
-            self.workflow.index("Prepare release bundle and SHA-256 checksums"):
-            self.workflow.index("Collect sanitized diagnostics")
+        certify_bundle = self.certify[
+            self.certify.index("Prepare release bundle and SHA-256 checksums"):
+            self.certify.index("Collect sanitized diagnostics")
         ]
-        self.assertNotIn(mandarin_report, release_bundle)
-        self.assertNotIn(mandarin_report, self.publish)
+        self.assertNotIn(mandarin_report, certify_bundle)
+        self.assertIn("! grep -q 'ZhEsLiteBench'", self.publish)
+        self.assertNotIn(
+            "test -f release/MilyVoiceTraductor-2.1.1-ZhEsLiteBench.json",
+            self.publish,
+        )
         self.assertNotIn(
             'Get-Item "dist/performance/MilyVoiceTraductor-2.1.0-MegaBench.json"',
             self.workflow,
         )
         self.assertNotIn(
-            "release/MilyVoiceTraductor-2.1.0-MegaBench.json",
+            "release/MilyVoiceTraductor-2.1.1-MegaBench.json",
             self.publish,
         )
 
