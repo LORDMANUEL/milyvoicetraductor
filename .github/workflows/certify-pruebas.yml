@@ -1,15 +1,15 @@
-name: Certify pruebas exact SHA
+name: Certify exact SHA
 
 on:
   push:
-    branches: [pruebas]
+    branches: [pruebas, main]
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: certify-pruebas-${{ github.ref }}
+  group: certify-exact-${{ github.ref }}
   cancel-in-progress: true
 
 env:
