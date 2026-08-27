@@ -15,6 +15,9 @@ ENGINES = AI_ROOT / "engine-families.json"
 PRODUCT_RESERVE_MB = 320
 PROCESS_LIMIT_MB = 2048
 VRAM_LIMIT_MB = 384
+TINY_ES_EN_REPO = "Helsinki-NLP/opus-mt_tiny_spa-eng"
+TINY_ES_EN_REVISION = "ca15fbd0a8412a473b95e010ad54429a7a34a7ba"
+TINY_ES_EN_VERSION = "1.0.1"
 DIRECT_ES_ZH_REPO = "Helsinki-NLP/opus-tatoeba-es-zh"
 DIRECT_ES_ZH_REVISION = "66c9fde497d230664c53c4c91c21d2e30f8cab47"
 DIRECT_ES_ZH_PREFIX = ">>cmn_Hans<<"
@@ -48,6 +51,19 @@ class ModelPackTier1RouteTests(unittest.TestCase):
                 self.assertLessEqual(pack["ramMb"] + PRODUCT_RESERVE_MB, PROCESS_LIMIT_MB)
                 self.assertLessEqual(pack["vramMb"], VRAM_LIMIT_MB)
                 self.assertEqual(pack["components"]["asr"]["repoId"], "Systran/faster-whisper-tiny")
+
+    def test_spanish_to_english_uses_pinned_tiny_marian(self):
+        pack = _packs(CATALOG)["lite-es-en"]
+        self.assertEqual(pack["version"], TINY_ES_EN_VERSION)
+        translation = pack["components"]["translation"]
+        self.assertEqual(translation["provider"], "marian-ct2")
+        self.assertEqual(translation["repoId"], TINY_ES_EN_REPO)
+        self.assertEqual(translation["revision"], TINY_ES_EN_REVISION)
+        self.assertEqual(translation["quantization"], "int8")
+        self.assertEqual(translation["sourceLanguage"], "es")
+        self.assertEqual(translation["targetLanguage"], "en")
+        self.assertIn("model.safetensors", translation["allowPatterns"])
+        self.assertNotIn("pytorch_model.bin", translation["allowPatterns"])
 
     def test_spanish_to_chinese_uses_pinned_direct_marian(self):
         pack = _packs(CATALOG)["lite-es-zh"]
