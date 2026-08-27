@@ -8,6 +8,8 @@ POPUP_JS = ROOT / "apps/extension/popup.js"
 BACKGROUND = ROOT / "apps/extension/background.js"
 OFFSCREEN = ROOT / "apps/extension/offscreen.js"
 TTS = ROOT / "apps/extension/tts.js"
+BRIDGE_MAIN = ROOT / "crates/mily-bridge/src/main.rs"
+BRIDGE_RUNTIME = ROOT / "crates/mily-bridge/src/runtime.rs"
 
 
 class ExtensionTargetLanguageContractTests(unittest.TestCase):
@@ -28,6 +30,27 @@ class ExtensionTargetLanguageContractTests(unittest.TestCase):
         self.assertIn("targetLanguage: options.targetLanguage", background)
         self.assertIn("targetLanguage: message.targetLanguage", offscreen)
         self.assertNotIn("targetLanguage: 'es'", offscreen)
+
+    def test_extension_prepares_exact_route_before_capture(self):
+        background = BACKGROUND.read_text(encoding="utf-8")
+        self.assertIn("prepare-route", background)
+        self.assertIn("route: routeKey", background)
+        self.assertLess(background.index("prepare-route"), background.index("ensureOverlay(tab.id)"))
+
+    def test_native_bridge_supports_prepare_route(self):
+        main = BRIDGE_MAIN.read_text(encoding="utf-8")
+        runtime = BRIDGE_RUNTIME.read_text(encoding="utf-8")
+        self.assertIn('"prepare-route"', main)
+        self.assertIn("route: Option<String>", main)
+        self.assertIn("pub fn prepare_route", runtime)
+        self.assertIn("preferred_pack_for_route", runtime)
+        for route, pack in (
+            ("en-es", "lite-en-es"),
+            ("zh-es", "lite-zh-es"),
+            ("es-en", "lite-es-en"),
+            ("es-zh", "lite-es-zh"),
+        ):
+            self.assertIn(f'"{route}" => Some("{pack}")', runtime)
 
     def test_tts_is_target_language_aware(self):
         source = TTS.read_text(encoding="utf-8")
