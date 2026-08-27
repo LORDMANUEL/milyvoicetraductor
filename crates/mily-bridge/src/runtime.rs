@@ -76,8 +76,8 @@ impl BridgeRuntime {
 
     pub fn prepare_route(&self, route: &str) -> Result<BridgeReply, BridgeRuntimeError> {
         let normalized = route.trim().to_ascii_lowercase();
-        let preferred_pack = preferred_pack_for_route(&normalized)
-            .ok_or(BridgeRuntimeError::RouteUnsupported)?;
+        let preferred_pack =
+            preferred_pack_for_route(&normalized).ok_or(BridgeRuntimeError::RouteUnsupported)?;
 
         let mut catalog = self.models.catalog();
         let preferred = catalog
