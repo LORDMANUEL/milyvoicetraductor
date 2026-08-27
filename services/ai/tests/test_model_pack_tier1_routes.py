@@ -18,6 +18,7 @@ VRAM_LIMIT_MB = 384
 DIRECT_ES_ZH_REPO = "Helsinki-NLP/opus-tatoeba-es-zh"
 DIRECT_ES_ZH_REVISION = "66c9fde497d230664c53c4c91c21d2e30f8cab47"
 DIRECT_ES_ZH_PREFIX = ">>cmn_Hans<<"
+DIRECT_ES_ZH_VERSION = "1.0.1"
 
 
 def _packs(path: Path):
@@ -50,6 +51,7 @@ class ModelPackTier1RouteTests(unittest.TestCase):
 
     def test_spanish_to_chinese_uses_pinned_direct_marian(self):
         pack = _packs(CATALOG)["lite-es-zh"]
+        self.assertEqual(pack["version"], DIRECT_ES_ZH_VERSION)
         translation = pack["components"]["translation"]
         self.assertEqual(translation["provider"], "marian-ct2")
         self.assertEqual(translation["repoId"], DIRECT_ES_ZH_REPO)
@@ -71,6 +73,10 @@ class ModelPackTier1RouteTests(unittest.TestCase):
         self.assertEqual(provider.source_language, "es")
         self.assertEqual(provider.target_language, "zh")
         self.assertEqual(provider.target_prefix, DIRECT_ES_ZH_PREFIX)
+        self.assertEqual(
+            provider._model_input("Confirme el pedido 1038."),
+            ">>cmn_Hans<< Confirme el pedido 1038.",
+        )
 
     def test_receive_lite_packs_do_not_claim_outbound_routes(self):
         packs = _packs(CATALOG)

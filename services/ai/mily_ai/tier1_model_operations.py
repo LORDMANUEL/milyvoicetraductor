@@ -1,7 +1,7 @@
 """Operaciones de descarga exclusivas de las rutas Tier 1 añadidas en 2.1.
 
-El descargador estable permanece intacto. Esta capa sólo intercepta packs nuevos
-que necesitan una cascada Marian de dos etapas y delega el resto al módulo base.
+El descargador estable permanece intacto. Esta capa sólo intercepta packs que
+realmente declaran una cascada Marian de dos etapas y delega el resto al módulo base.
 """
 
 from __future__ import annotations
@@ -191,9 +191,14 @@ def download_pack(
     catalog: ModelCatalog,
     pack_id: str,
 ) -> InstalledPack:
-    """Intercepta sólo los packs nuevos de 2.1 y conserva la selección previa."""
+    """Intercepta cascadas Tier 1 y conserva la selección previa."""
 
     if pack_id not in _TIER1_CASCADE_PACKS:
+        return stable_download_pack(installer, catalog, pack_id)
+    definition = catalog.definition(pack_id)
+    components = definition.get("components")
+    translation = components.get("translation") if isinstance(components, dict) else None
+    if not isinstance(translation, dict) or str(translation.get("provider", "")) != "marian-cascade-ct2":
         return stable_download_pack(installer, catalog, pack_id)
 
     previous_state = dict(catalog._state())

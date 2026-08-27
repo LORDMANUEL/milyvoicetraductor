@@ -8,7 +8,9 @@ ejecutan rescates acotados antes de exponer la traducción.
 from __future__ import annotations
 
 import re
+from pathlib import Path
 
+from .cpu_budget import CpuBudget
 from .optional_providers import (
     CTranslate2MarianTranslator as _BaseMarianTranslator,
     OptionalProviderRuntimeError,
@@ -36,8 +38,8 @@ _CONTRACTION_EXPANSIONS = (
     (re.compile(r"\bmustn['’]t\b", re.IGNORECASE), "must not"),
 )
 _IDENTIFIER_NUMBER_RE = re.compile(
-    r"\b(?:order|id|code|ticket|case|serial|vin|part)"
-    r"(?:\s+(?:number|no\.?))?\s*(?:#\s*)?"
+    r"\b(?:order|pedido|orden|id|code|c[oó]digo|ticket|case|caso|serial|serie|vin|part|pieza|parte)"
+    r"(?:\s+(?:number|n[uú]mero|nro\.?|no\.?))?\s*(?:#\s*)?"
     r"(\d+(?:[.,]\d+)?)\b",
     re.IGNORECASE,
 )
@@ -49,6 +51,31 @@ class CTranslate2RealtimeMarianTranslator(_BaseMarianTranslator):
 
     repetition_penalty = 1.12
     no_repeat_ngram_size = 3
+
+    def __init__(
+        self,
+        model_path: Path,
+        compute_profile: str = "auto",
+        cpu_budget: CpuBudget | None = None,
+        *,
+        source_language: str = "en",
+        target_language: str = "es",
+        target_prefix: str = "",
+    ):
+        super().__init__(
+            model_path,
+            compute_profile,
+            cpu_budget=cpu_budget,
+            source_language=source_language,
+            target_language=target_language,
+        )
+        self.target_prefix = " ".join(str(target_prefix or "").split())
+
+    def _model_input(self, text: str) -> str:
+        cleaned = str(text).strip()
+        if not self.target_prefix or cleaned.startswith(self.target_prefix):
+            return cleaned
+        return f"{self.target_prefix} {cleaned}"
 
     def _decode(
         self,
@@ -64,7 +91,7 @@ class CTranslate2RealtimeMarianTranslator(_BaseMarianTranslator):
         assert self._translator is not None
         assert self._source_sp is not None and self._target_sp is not None
 
-        source_tokens = self._source_sp.encode(text.strip(), out_type=str)
+        source_tokens = self._source_sp.encode(self._model_input(text), out_type=str)
         decoding_limit = self._decoding_limit(len(source_tokens))
         if severe_limit:
             decoding_limit = min(
@@ -111,14 +138,7 @@ class CTranslate2RealtimeMarianTranslator(_BaseMarianTranslator):
 
     @staticmethod
     def _restore_exact_identifiers(source: str, target: str) -> str:
-        """Restaura IDs numéricos verbalizados sin aceptar números contradictorios.
-
-        Marian puede traducir ``order 1038`` como ``pedido mil treinta y ocho``.
-        Un identificador debe seguir siendo copiable literalmente. Esta normalización
-        solo añade un valor que ya existe en la fuente y se rehúsa a actuar cuando la
-        salida contiene cualquier dígito ajeno a la fuente. Después se vuelven a
-        ejecutar todas las guardas de calidad y fidelidad.
-        """
+        """Restaura IDs numéricos verbalizados sin aceptar números contradictorios."""
 
         identifiers: list[str] = []
         for match in _IDENTIFIER_NUMBER_RE.finditer(str(source or "")):
@@ -168,9 +188,6 @@ class CTranslate2RealtimeMarianTranslator(_BaseMarianTranslator):
                 prefix = builder(output)
                 if not prefix:
                     continue
-                # Un prefijo es contenido sintéticamente recortado, no una salida
-                # completa del modelo. Nunca se le restauran IDs: debe preservar por
-                # sí mismo todos los datos críticos o se obliga a otro decode.
                 if not analyze_translation_quality(prefix).passed:
                     continue
                 if not self._fidelity(source, prefix, source_language).passed:

@@ -25,6 +25,7 @@ class CTranslate2FastRealtimeMarianTranslator(CTranslate2RealtimeMarianTranslato
         *,
         source_language: str = "en",
         target_language: str = "es",
+        target_prefix: str = "",
         punctuation_cache_entries: int = 192,
     ):
         super().__init__(
@@ -33,6 +34,7 @@ class CTranslate2FastRealtimeMarianTranslator(CTranslate2RealtimeMarianTranslato
             cpu_budget=cpu_budget,
             source_language=source_language,
             target_language=target_language,
+            target_prefix=target_prefix,
         )
         if punctuation_cache_entries <= 0:
             raise ValueError("punctuation_cache_entries debe ser positivo")
@@ -48,9 +50,6 @@ class CTranslate2FastRealtimeMarianTranslator(CTranslate2RealtimeMarianTranslato
         cleaned = str(value).rstrip()
         if not cleaned:
             return None
-        # Si Marian infirió por sí mismo pregunta/exclamación en el parcial,
-        # el punto final del ASR puede cambiar la intención. En ese caso se
-        # fuerza una inferencia nueva en vez de reutilizar una salida ambigua.
         if cleaned.endswith(("?", "!", "？", "！")):
             return None
         if cleaned.endswith((".", "。")):
@@ -70,9 +69,6 @@ class CTranslate2FastRealtimeMarianTranslator(CTranslate2RealtimeMarianTranslato
         if not normalized:
             return ""
 
-        # Únicamente se reutiliza partial→final cuando el cambio es exactamente
-        # un punto y la salida parcial no contiene una intención interrogativa
-        # o exclamativa propia. '?' y '!' en la fuente siempre recorren Marian.
         if normalized.endswith("."):
             periodless = normalized[:-1].rstrip()
             key = (source_language, periodless)

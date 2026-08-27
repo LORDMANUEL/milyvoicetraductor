@@ -136,6 +136,7 @@ def _marian(
         cpu_budget=cpu_budget,
         source_language=source,
         target_language=target,
+        target_prefix=str(component.get("targetPrefix", "")).strip(),
     )
 
 

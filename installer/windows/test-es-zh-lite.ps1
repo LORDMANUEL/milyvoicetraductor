@@ -15,6 +15,7 @@ $CacheRoot = Join-Path $AppRoot 'cache'
 $ModelsRoot = Join-Path $AppRoot 'models'
 $RuntimeZip = Join-Path $Root 'dist\runtime\milyvoice-python-runtime.zip'
 $ReportPath = Join-Path $Root 'dist\performance\MilyVoiceTraductor-2.1.0-EsZhLiteBench.json'
+$PackVersion = '1.0.1'
 
 Remove-Item $FixtureRoot -Recurse -Force -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Force -Path $RuntimeRoot,$EngineApp,$ConfigRoot,$CacheRoot,$ModelsRoot,(Split-Path $ReportPath) | Out-Null
@@ -28,7 +29,7 @@ try {
     $EngineMain = Join-Path $EngineApp 'main.py'
     if (-not (Test-Path $Python -PathType Leaf)) { throw 'El runtime privado no contiene python.exe.' }
 
-    Write-Host '[ES-ZH-LITE] Descargando Whisper Tiny + Marian ES→EN→ZH sin activarlo...'
+    Write-Host '[ES-ZH-LITE] Descargando Whisper Tiny + Marian directo ES→ZH sin activarlo...'
     & $Python $EngineMain models `
         --data-dir $AppRoot `
         --config-dir $ConfigRoot `
@@ -42,7 +43,7 @@ try {
         --config-dir $ConfigRoot `
         --cache-dir $CacheRoot `
         --models-dir $ModelsRoot `
-        verify lite-es-zh 1.0.0 | Out-Host
+        verify lite-es-zh $PackVersion | Out-Host
     if ($LASTEXITCODE -ne 0) { throw 'El pack ES→ZH Lite no pasó verify.' }
 
     & $Python $EngineMain models `
@@ -50,7 +51,7 @@ try {
         --config-dir $ConfigRoot `
         --cache-dir $CacheRoot `
         --models-dir $ModelsRoot `
-        activate lite-es-zh 1.0.0 | Out-Host
+        activate lite-es-zh $PackVersion | Out-Host
     if ($LASTEXITCODE -ne 0) { throw 'No se pudo activar lite-es-zh.' }
 
     $Probe = Join-Path $FixtureRoot 'benchmark_es_zh.py'
@@ -71,8 +72,8 @@ from mily_ai.models import ModelCatalog
 
 catalog = ModelCatalog(models_root)
 pack = catalog.active_pack()
-if pack is None or pack.id != 'lite-es-zh':
-    raise SystemExit('El pack ES→ZH Lite no quedó activo')
+if pack is None or pack.id != 'lite-es-zh' or pack.version != '1.0.1':
+    raise SystemExit('El pack ES→ZH Lite 1.0.1 no quedó activo')
 definition = catalog.definition(pack.id)
 report = benchmark_tier1_installed_pack(pack, definition, compute_profile='cpu', repeats=3)
 report_path.parent.mkdir(parents=True, exist_ok=True)
