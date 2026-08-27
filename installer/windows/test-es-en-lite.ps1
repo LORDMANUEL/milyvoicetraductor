@@ -28,7 +28,7 @@ try {
     $EngineMain = Join-Path $EngineApp 'main.py'
     if (-not (Test-Path $Python -PathType Leaf)) { throw 'El runtime privado no contiene python.exe.' }
 
-    Write-Host '[ES-EN-LITE] Descargando Whisper Tiny + Marian ES→EN sin activarlo...'
+    Write-Host '[ES-EN-LITE] Descargando Whisper Tiny + Marian Tiny ES→EN sin activarlo...'
     & $Python $EngineMain models `
         --data-dir $AppRoot `
         --config-dir $ConfigRoot `
@@ -42,7 +42,7 @@ try {
         --config-dir $ConfigRoot `
         --cache-dir $CacheRoot `
         --models-dir $ModelsRoot `
-        verify lite-es-en 1.0.0 | Out-Host
+        verify lite-es-en 1.0.1 | Out-Host
     if ($LASTEXITCODE -ne 0) { throw 'El pack ES→EN Lite no pasó verify.' }
 
     & $Python $EngineMain models `
@@ -50,7 +50,7 @@ try {
         --config-dir $ConfigRoot `
         --cache-dir $CacheRoot `
         --models-dir $ModelsRoot `
-        activate lite-es-en 1.0.0 | Out-Host
+        activate lite-es-en 1.0.1 | Out-Host
     if ($LASTEXITCODE -ne 0) { throw 'No se pudo activar lite-es-en.' }
 
     $Probe = Join-Path $FixtureRoot 'benchmark_es_en.py'
