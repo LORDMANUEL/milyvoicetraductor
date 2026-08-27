@@ -102,7 +102,7 @@ function connectNativeHost() {
   return nativePort;
 }
 
-function requestBridgeNow(type = 'status', timeoutMs = 3500) {
+function requestBridgeNow(type = 'status', timeoutMs = 3500, fields = {}) {
   return new Promise((resolve, reject) => {
     const port = connectNativeHost();
     if (!port) {
@@ -119,7 +119,7 @@ function requestBridgeNow(type = 'status', timeoutMs = 3500) {
       reject: (error) => { clearTimeout(timer); reject(error); }
     };
     try {
-      port.postMessage({ protocol: 1, type });
+      port.postMessage({ protocol: 1, type, ...fields });
     } catch (error) {
       clearTimeout(timer);
       pendingBridgeRequest = null;
@@ -129,8 +129,8 @@ function requestBridgeNow(type = 'status', timeoutMs = 3500) {
   });
 }
 
-function requestBridge(type = 'status', timeoutMs = 3500) {
-  const execute = () => requestBridgeNow(type, timeoutMs);
+function requestBridge(type = 'status', timeoutMs = 3500, fields = {}) {
+  const execute = () => requestBridgeNow(type, timeoutMs, fields);
   const scheduled = bridgeRequestChain.then(execute, execute);
   bridgeRequestChain = scheduled.catch(() => undefined);
   return scheduled;
@@ -163,6 +163,15 @@ function normalizeRoute(options = {}) {
   return { sourceLanguage, targetLanguage };
 }
 
+function routeKeyFor(sourceLanguage, targetLanguage) {
+  if (targetLanguage === 'en') return 'es-en';
+  if (targetLanguage === 'zh') return 'es-zh';
+  if (sourceLanguage === 'zh') return 'zh-es';
+  // En modo Auto se prepara EN→ES como carril seguro inicial; el usuario puede
+  // fijar Chino para seleccionar explícitamente ZH→ES en equipos de 2 GB.
+  return 'en-es';
+}
+
 async function setCaptureState(state) {
   await chrome.storage.session.set({ captureState: state });
 }
@@ -180,12 +189,14 @@ async function startCapture(options) {
   if (!tab?.id) throw new Error('No hay una pestaña activa.');
   assertCapturableTab(tab);
 
-  const bridge = await requestBridge('hello', 7000);
+  const { sourceLanguage, targetLanguage } = normalizeRoute(options);
+  const routeKey = routeKeyFor(sourceLanguage, targetLanguage);
+  const bridge = await requestBridge('prepare-route', 600_000, { route: routeKey });
   if (bridge.engine !== 'ready') {
     throw new Error(bridge.message || 'El motor local todavía no está listo.');
   }
   if (!bridge.modelPack) {
-    throw new Error('MilyVoiceTraductor está preparando el modelo local.');
+    throw new Error('MilyVoiceTraductor no pudo preparar un modelo para esta ruta.');
   }
   if (!bridge.credential || !bridge.port) {
     throw new Error('No se pudo crear una sesión segura con el motor local.');
@@ -208,7 +219,6 @@ async function startCapture(options) {
     throw new Error('Selecciona un hablante antes de usar el modo Fijado.');
   }
   const speakerDetection = Boolean(options.speakerDetection);
-  const { sourceLanguage, targetLanguage } = normalizeRoute(options);
   const response = await chrome.runtime.sendMessage({
     target: 'offscreen',
     type: 'START_CAPTURE',
