@@ -40,6 +40,7 @@ def main() -> int:
         "test \"$tag_sha\" = \"$VERIFIED_SHA\"",
         "cmp release/SHA256SUMS.txt existing-release/SHA256SUMS.txt",
         "docs/release/RELEASE_NOTES_2.1.1.md",
+        "! grep -q 'ZhEsLiteBench' <<<\"$assets\"",
     )
     for marker in beta_required:
         if marker not in beta:
@@ -50,7 +51,8 @@ def main() -> int:
         "--force",
         "gh release edit",
         "--clobber",
-        "ZhEsLiteBench",
+        "test -f release/MilyVoiceTraductor-2.1.1-ZhEsLiteBench.json",
+        "grep -Fxq 'MilyVoiceTraductor-2.1.1-ZhEsLiteBench.json'",
     ):
         if marker in beta:
             failures.append(f"La beta 2.1.1 no puede mutar historia ni publicar evidencia experimental: {marker}")
