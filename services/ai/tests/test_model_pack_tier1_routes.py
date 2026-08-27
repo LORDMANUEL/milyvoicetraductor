@@ -1,6 +1,10 @@
 import json
+import tempfile
 import unittest
 from pathlib import Path
+
+from mily_ai.cpu_budget import detect_cpu_budget
+from mily_ai.provider_factory import build_translation_provider
 
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -11,6 +15,9 @@ ENGINES = AI_ROOT / "engine-families.json"
 PRODUCT_RESERVE_MB = 320
 PROCESS_LIMIT_MB = 2048
 VRAM_LIMIT_MB = 384
+DIRECT_ES_ZH_REPO = "Helsinki-NLP/opus-tatoeba-es-zh"
+DIRECT_ES_ZH_REVISION = "66c9fde497d230664c53c4c91c21d2e30f8cab47"
+DIRECT_ES_ZH_PREFIX = ">>cmn_Hans<<"
 
 
 def _packs(path: Path):
@@ -41,15 +48,29 @@ class ModelPackTier1RouteTests(unittest.TestCase):
                 self.assertLessEqual(pack["vramMb"], VRAM_LIMIT_MB)
                 self.assertEqual(pack["components"]["asr"]["repoId"], "Systran/faster-whisper-tiny")
 
-    def test_spanish_to_chinese_uses_local_marian_cascade(self):
+    def test_spanish_to_chinese_uses_pinned_direct_marian(self):
         pack = _packs(CATALOG)["lite-es-zh"]
         translation = pack["components"]["translation"]
-        self.assertEqual(translation["provider"], "marian-cascade-ct2")
-        stages = translation["stages"]
-        self.assertEqual(
-            [(stage["sourceLanguage"], stage["targetLanguage"]) for stage in stages],
-            [("es", "en"), ("en", "zh")],
-        )
+        self.assertEqual(translation["provider"], "marian-ct2")
+        self.assertEqual(translation["repoId"], DIRECT_ES_ZH_REPO)
+        self.assertEqual(translation["revision"], DIRECT_ES_ZH_REVISION)
+        self.assertEqual(translation["sourceLanguage"], "es")
+        self.assertEqual(translation["targetLanguage"], "zh")
+        self.assertEqual(translation["targetPrefix"], DIRECT_ES_ZH_PREFIX)
+        self.assertNotIn("stages", translation)
+
+    def test_direct_spanish_to_chinese_prefix_reaches_provider(self):
+        translation = _packs(CATALOG)["lite-es-zh"]["components"]["translation"]
+        with tempfile.TemporaryDirectory() as temp:
+            provider = build_translation_provider(
+                translation,
+                Path(temp),
+                "cpu",
+                detect_cpu_budget("light", physical_cores=2),
+            )
+        self.assertEqual(provider.source_language, "es")
+        self.assertEqual(provider.target_language, "zh")
+        self.assertEqual(provider.target_prefix, DIRECT_ES_ZH_PREFIX)
 
     def test_receive_lite_packs_do_not_claim_outbound_routes(self):
         packs = _packs(CATALOG)
