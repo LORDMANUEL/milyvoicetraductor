@@ -48,9 +48,25 @@ class CpuBudgetTests(unittest.TestCase):
             budget = detect_cpu_budget("balanced", physical_cores=4)
         self.assertEqual(budget.physical_cores, 4)
 
-    def test_light_profile_caps_compute_threads(self):
-        budget = detect_cpu_budget("light", physical_cores=12)
-        self.assertLessEqual(budget.asr_threads + budget.translation_threads, 2)
+    def test_light_profile_reuses_two_cores_serially(self):
+        """Lite limita CPU simultánea a 2 cores, pero cada etapa reutiliza ambos."""
+
+        for cores in (2, 4, 12):
+            with self.subTest(cores=cores):
+                budget = detect_cpu_budget("light", physical_cores=cores)
+                self.assertFalse(budget.parallel_stages)
+                self.assertEqual(budget.asr_threads, 2)
+                self.assertEqual(budget.translation_threads, 2)
+                self.assertLessEqual(
+                    max(budget.asr_threads, budget.translation_threads),
+                    2,
+                )
+
+    def test_light_profile_single_core_stays_single_threaded(self):
+        budget = detect_cpu_budget("light", physical_cores=1)
+        self.assertFalse(budget.parallel_stages)
+        self.assertEqual(budget.asr_threads, 1)
+        self.assertEqual(budget.translation_threads, 1)
 
     def test_max_profile_uses_available_budget_without_overflow(self):
         budget = detect_cpu_budget("max", physical_cores=8)

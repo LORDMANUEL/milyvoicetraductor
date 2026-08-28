@@ -51,6 +51,16 @@ pub struct BridgeRuntime {
     models: ModelManagerService,
 }
 
+pub fn preferred_pack_for_route(route: &str) -> Option<&'static str> {
+    match route.trim().to_ascii_lowercase().as_str() {
+        "en-es" => Some("lite-en-es"),
+        "zh-es" => Some("lite-zh-es"),
+        "es-en" => Some("lite-es-en"),
+        "es-zh" => Some("lite-es-zh"),
+        _ => None,
+    }
+}
+
 impl BridgeRuntime {
     pub fn discover() -> Result<Self, BridgeRuntimeError> {
         let paths = AppPaths::discover()?;
@@ -62,6 +72,43 @@ impl BridgeRuntime {
             paths,
             config,
         })
+    }
+
+    pub fn prepare_route(&self, route: &str) -> Result<BridgeReply, BridgeRuntimeError> {
+        let normalized = route.trim().to_ascii_lowercase();
+        let preferred_pack =
+            preferred_pack_for_route(&normalized).ok_or(BridgeRuntimeError::RouteUnsupported)?;
+
+        let mut catalog = self.models.catalog();
+        let preferred = catalog
+            .iter()
+            .find(|pack| pack.id == preferred_pack)
+            .ok_or(BridgeRuntimeError::RoutePackMissing)?;
+        if !preferred.resource_allowed {
+            return Err(BridgeRuntimeError::RouteResourceLimit);
+        }
+
+        if !preferred.installed {
+            self.models.install(preferred_pack)?;
+            catalog = self.models.catalog();
+            let installed = catalog
+                .iter()
+                .find(|pack| pack.id == preferred_pack && pack.installed)
+                .ok_or(BridgeRuntimeError::RoutePackMissing)?;
+            if !installed.resource_allowed {
+                return Err(BridgeRuntimeError::RouteResourceLimit);
+            }
+        }
+
+        // auto_select reutiliza un benchmark válido cuando existe y mide en caso
+        // contrario. Además activa el ganador compatible con la ruta solicitada.
+        let selection = self.models.auto_select(&normalized, false)?;
+        if selection.selected.trim().is_empty() {
+            return Err(BridgeRuntimeError::RouteSelectionFailed);
+        }
+
+        // La credencial se emite sólo después de descargar/medir/activar la ruta.
+        self.status(true)
     }
 
     pub fn status(&self, ensure_started: bool) -> Result<BridgeReply, BridgeRuntimeError> {
@@ -80,7 +127,7 @@ impl BridgeRuntime {
             .map(|pack| format!("{}@{}", pack.id, pack.version));
 
         // Una consulta de estado jamás debe crear credenciales. La credencial efímera
-        // se emite únicamente para `hello`, que es la operación usada al iniciar captura.
+        // se emite únicamente para una operación que va a iniciar captura.
         let (credential, expires_at) =
             if should_issue_credential(ensure_started, &engine_status.state) {
                 let credential = self.issue_ephemeral_credential()?;
@@ -145,7 +192,7 @@ impl BridgeRuntime {
         let path = self.paths.config_dir.join("native-credential.json");
         let temp = self.paths.config_dir.join("native-credential.json.tmp");
         fs::write(&temp, serde_json::to_vec(&payload)?)?;
-        fs::rename(temp, path)?;
+        fs::rename(temp, &path)?;
         Ok((token, expires_at))
     }
 }
@@ -173,12 +220,50 @@ pub enum BridgeRuntimeError {
     Config(#[from] mily_config::ConfigError),
     #[error("motor local no disponible: {0}")]
     Engine(#[from] mily_engine::EngineError),
+    #[error("operación de modelo no disponible: {0}")]
+    Model(#[from] mily_models::ModelError),
+    #[error("ruta Tier 1 no soportada")]
+    RouteUnsupported,
+    #[error("el catálogo no contiene un pack para esta ruta")]
+    RoutePackMissing,
+    #[error("el pack de esta ruta supera el presupuesto del equipo")]
+    RouteResourceLimit,
+    #[error("Engine Hub no seleccionó un motor para esta ruta")]
+    RouteSelectionFailed,
     #[error("error de archivo local: {0}")]
     Io(#[from] std::io::Error),
     #[error("error serializando estado local: {0}")]
     Json(#[from] serde_json::Error),
     #[error("reloj del sistema inválido")]
     Clock,
+}
+
+impl BridgeRuntimeError {
+    pub fn public_code(&self) -> &'static str {
+        match self {
+            Self::RouteUnsupported => "BRIDGE_ROUTE_UNSUPPORTED",
+            Self::RoutePackMissing => "BRIDGE_ROUTE_MODEL",
+            Self::RouteResourceLimit => "BRIDGE_ROUTE_RESOURCE",
+            Self::RouteSelectionFailed => "BRIDGE_ROUTE_SELECTION",
+            Self::Model(_) => "BRIDGE_MODEL_PREPARE",
+            _ => "BRIDGE_RUNTIME",
+        }
+    }
+
+    pub fn public_message(&self) -> &'static str {
+        match self {
+            Self::RouteUnsupported => "La ruta de traducción solicitada no es compatible.",
+            Self::RoutePackMissing => "No existe un modelo local para esta ruta.",
+            Self::RouteResourceLimit => {
+                "El modelo de esta ruta excede el presupuesto de recursos del equipo."
+            }
+            Self::RouteSelectionFailed => {
+                "Engine Hub no encontró un motor que pase las pruebas para esta ruta."
+            }
+            Self::Model(_) => "No se pudo preparar el modelo local para esta ruta.",
+            _ => "No se pudo preparar el runtime local.",
+        }
+    }
 }
 
 #[cfg(test)]
@@ -209,5 +294,14 @@ mod tests {
             &ComponentState::NotInstalled
         ));
         assert!(!should_issue_credential(true, &ComponentState::Error));
+    }
+
+    #[test]
+    fn tier1_routes_have_a_lite_bootstrap_pack() {
+        assert_eq!(preferred_pack_for_route("en-es"), Some("lite-en-es"));
+        assert_eq!(preferred_pack_for_route("zh-es"), Some("lite-zh-es"));
+        assert_eq!(preferred_pack_for_route("es-en"), Some("lite-es-en"));
+        assert_eq!(preferred_pack_for_route("es-zh"), Some("lite-es-zh"));
+        assert_eq!(preferred_pack_for_route("fr-es"), None);
     }
 }

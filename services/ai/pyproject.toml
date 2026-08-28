@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "milyvoice-ai-engine"
-version = "2.1.0"
+version = "2.1.1"
 description = "Motor local de ASR y traducción de MilyVoiceTraductor"
 requires-python = ">=3.13"
 dependencies = [
@@ -28,7 +28,7 @@ dependencies = [
 build = ["nuitka>=2.7,<3", "ordered-set>=4.1", "zstandard>=0.23"]
 
 [project.scripts]
-mily-ai-engine = "mily_ai.cli:main"
+mily-ai-engine = "mily_ai.tier1_cli:main"
 
 [tool.setuptools.packages.find]
 where = ["."]

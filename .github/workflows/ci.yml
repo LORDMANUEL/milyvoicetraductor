@@ -202,6 +202,14 @@ jobs:
         if: success()
         shell: pwsh
         run: .\installer\windows\test-sherpa-lite.ps1
+      - name: Spanish Lite real ES to EN benchmark
+        if: success()
+        shell: pwsh
+        run: .\installer\windows\test-es-en-lite.ps1
+      - name: Spanish Lite real ES to ZH benchmark
+        if: success()
+        shell: pwsh
+        run: .\installer\windows\test-es-zh-lite.ps1
       - name: Mandarin Lite experimental ZH to ES benchmark
         if: success()
         continue-on-error: true
@@ -242,12 +250,16 @@ jobs:
           $moonshineBench = Get-Item "dist/performance/MilyVoiceTraductor-2.1.0-MoonshineLiteBench.json"
           $whisperTinyBench = Get-Item "dist/performance/MilyVoiceTraductor-2.1.0-WhisperTinyLiteBench.json"
           $sherpaBench = Get-Item "dist/performance/MilyVoiceTraductor-2.1.0-SherpaLiteBench.json"
+          $esEnBench = Get-Item "dist/performance/MilyVoiceTraductor-2.1.0-EsEnLiteBench.json"
+          $esZhBench = Get-Item "dist/performance/MilyVoiceTraductor-2.1.0-EsZhLiteBench.json"
           Copy-Item $installer.FullName "dist/release/$($installer.Name)"
           Copy-Item $extension.FullName "dist/release/$($extension.Name)"
           Copy-Item $targetSimulation.FullName "dist/release/$($targetSimulation.Name)"
           Copy-Item $moonshineBench.FullName "dist/release/$($moonshineBench.Name)"
           Copy-Item $whisperTinyBench.FullName "dist/release/$($whisperTinyBench.Name)"
           Copy-Item $sherpaBench.FullName "dist/release/$($sherpaBench.Name)"
+          Copy-Item $esEnBench.FullName "dist/release/$($esEnBench.Name)"
+          Copy-Item $esZhBench.FullName "dist/release/$($esZhBench.Name)"
           $lines = foreach ($file in Get-ChildItem "dist/release" -File) {
             $hash = (Get-FileHash $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
             "$hash *$($file.Name)"

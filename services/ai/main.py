@@ -12,7 +12,9 @@ engine_root_text = str(ENGINE_ROOT)
 if engine_root_text not in sys.path:
     sys.path.insert(0, engine_root_text)
 
-from mily_ai.cli import main  # noqa: E402
+# 2.1 entra por la capa que instala los hooks Tier 1 de servidor, descargadores,
+# benchmark y providers. Los demás comandos siguen delegándose al CLI estable.
+from mily_ai.tier1_cli import main  # noqa: E402
 
 if __name__ == "__main__":
     raise SystemExit(main())

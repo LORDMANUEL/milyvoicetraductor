@@ -1,5 +1,39 @@
 # Changelog
 
+## [2.1.1] - Unreleased
+
+### Tier 1 bidireccional
+- Se consolidan las rutas locales EN→ES, ES→EN, ZH→ES y ES→ZH en protocolo, pipeline, Desktop, extensión y Native Messaging.
+- `lite-es-en@1.0.1` añade el carril Lite bloqueante ES→EN con Whisper Tiny multilingüe + Marian Tiny INT8.
+- `lite-es-zh@1.0.1` añade el carril Lite bloqueante ES→ZH con Whisper Tiny multilingüe + Marian directo INT8.
+- ZH→ES permanece disponible, pero su benchmark Lite continúa experimental/no bloqueante y no entra al bundle obligatorio de 2.1.1.
+- Se mantienen guardas de fidelidad para números, identificadores y negaciones antes de mostrar traducciones finales.
+
+### Engine Hub y recursos
+- Moonshine, Whisper Tiny y Sherpa Zipformer continúan como carriles Lite reales EN→ES.
+- `realtime-m2m100` queda explícitamente como Quality opcional y no certifica el presupuesto Lite de 2 GiB.
+- El selector conserva CPU como fallback seguro y mide memoria total del producto, RTF P95 y latencia E2E antes de promover una ruta.
+- Los modelos se descargan/activan sólo desde Engine Hub por acción del usuario.
+
+### Windows / distribución
+- Runtime Python 3.13 privado, bridge Native Messaging, diagnóstico local y pruebas de instalación continúan dentro del instalador.
+- El cierre de 2.1.1 exige Rust/Clippy, Desktop Release, `WINDOWS_GUI`, Tauri NSIS, instalación real, reinstalación y `SHA256SUMS.txt` sobre un único SHA.
+- Se elimina el import Tauri `Manager` no utilizado que bloqueaba Clippy Windows con `-D warnings`.
+
+### Release
+- `v2.1.0` se conserva como beta histórica inmutable.
+- `v2.1.1` sólo puede publicarse desde el SHA exacto certificado que llegue a `main`.
+- El publicador no puede retargetear tags ni sobrescribir assets existentes.
+- README, landing, registro de versiones y catálogo de modelos se sincronizan con el estado 2.1.1.
+
+## [2.1.0] - 2026-08-20
+
+### Beta pública
+- Introdujo Engine Hub, selección adaptativa y carriles Lite con evidencia real de Windows.
+- Publicó Moonshine, Whisper Tiny y Sherpa Zipformer EN→ES junto con simulación del equipo objetivo.
+- Se mantuvo 2.0.2 como canal estable recomendado.
+- La beta se conserva como referencia histórica y no se retargetea al cierre de 2.1.1.
+
 ## [2.0.1] - 2026-08-18
 
 ### Corregido

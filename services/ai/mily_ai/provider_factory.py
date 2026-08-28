@@ -13,13 +13,15 @@ from .marian_fast import CTranslate2FastRealtimeMarianTranslator
 from .moonshine_provider import MoonshineStreamingAsr
 from .providers import (
     AsrProvider,
-    FasterWhisperAsr,
-    M2M100CTranslate2Translator,
     NllbTranslator,
     QwenTranslator,
     Translator,
 )
 from .sherpa_streaming_provider import SherpaStreamingAsr
+from .tier1_providers import (
+    TargetAwareM2M100CTranslate2Translator,
+    Tier1FasterWhisperAsr,
+)
 from .vosk_provider import VoskAsr
 from .whispercpp_provider import BundledWhisperCppBridgeAsr
 
@@ -92,7 +94,7 @@ def _asr_builder(cls):
 
 
 ASR_BUILDERS: dict[str, AsrBuilder] = {
-    "faster-whisper": _asr_builder(FasterWhisperAsr),
+    "faster-whisper": _asr_builder(Tier1FasterWhisperAsr),
     "moonshine": _asr_builder(MoonshineStreamingAsr),
     "sherpa-onnx": _asr_builder(SherpaStreamingAsr),
     "whisper-cpp": _asr_builder(BundledWhisperCppBridgeAsr),
@@ -102,15 +104,16 @@ ASR_BUILDERS: dict[str, AsrBuilder] = {
 
 
 def _m2m100(
-    _component: dict[str, Any],
+    component: dict[str, Any],
     model_path: Path,
     compute_profile: str,
     cpu_budget: CpuBudget,
 ) -> Translator:
-    return M2M100CTranslate2Translator(
+    return TargetAwareM2M100CTranslate2Translator(
         model_path,
         compute_profile,
         cpu_budget=cpu_budget,
+        target_language=str(component.get("targetLanguage", "es")),
     )
 
 
@@ -133,6 +136,7 @@ def _marian(
         cpu_budget=cpu_budget,
         source_language=source,
         target_language=target,
+        target_prefix=str(component.get("targetPrefix", "")).strip(),
     )
 
 
@@ -235,8 +239,20 @@ def build_translation_provider(
     model_path: Path,
     compute_profile: str,
     cpu_budget: CpuBudget,
+    *,
+    target_language: str | None = None,
 ) -> Translator:
     provider = str(component.get("provider", "")).strip().lower()
+    normalized_compute = _translation_compute_profile(compute_profile)
+    if provider == "m2m100-ct2" and target_language is not None:
+        routed_component = dict(component)
+        routed_component["targetLanguage"] = target_language
+        return TRANSLATION_BUILDERS[provider](
+            routed_component,
+            Path(model_path),
+            normalized_compute,
+            cpu_budget,
+        )
     builder = TRANSLATION_BUILDERS.get(provider)
     if builder is None:
         raise ProviderConfigurationError(
@@ -246,6 +262,6 @@ def build_translation_provider(
     return builder(
         component,
         Path(model_path),
-        _translation_compute_profile(compute_profile),
+        normalized_compute,
         cpu_budget,
     )

@@ -1,9 +1,9 @@
 {
   "manifest_version": 3,
   "name": "MilyVoiceTraductor",
-  "version": "2.1.0",
-  "version_name": "2.1.0",
-  "description": "Traducción local en tiempo real EN→ES con MilyVoiceTraductor 2.1.0; chino experimental.",
+  "version": "2.1.1",
+  "version_name": "2.1.1",
+  "description": "Traducción local Tier 1 EN/ES/ZH en tiempo real con MilyVoiceTraductor 2.1.1 Beta.",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA62pKq0LqE3a49RBjJoXDBc3c3FBJD2YMTVbdcrwWzT+UcXeUKXE/wdwEyccwmnG2Jx4u+1cDQVV4AdjGRjyg1B3DP9flVvEL+Xnbja1hI/Hook+bQxsVnSJ6VTtDVb57fm8MyE2uL02iUrmJXz8i3MLCfQiEoLuBRBMh4+t8ppXW3s0SE2bGtHmG3cBhzFiLMZF8CS03wNdLpnJ6bGIID4Wctjjlg2nHiFdBs83vALqWKPm4VG3R/a9LV8VYLzIITZtYSdBDNRXapGKg0jwLiIDbVm+fhSmyF00P9xaUSdZ7BAX2CB950IJsHMHM5mjAqQkVunZQbM5mXAE2HvaUowIDAQAB",
   "permissions": [
     "activeTab",

@@ -1,8 +1,8 @@
-name: Publish 2.1.0 Beta
+name: Publish 2.1.1 Beta
 
 on:
   workflow_run:
-    workflows: ["CI"]
+    workflows: ["Certify exact SHA"]
     types: [completed]
 
 permissions:
@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   publish:
-    name: Publish verified 2.1.0 beta downloads
+    name: Publish exact-SHA verified 2.1.1 beta downloads
     if: ${{ github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main' }}
     runs-on: ubuntu-latest
     env:
@@ -19,16 +19,23 @@ jobs:
       REPOSITORY: ${{ github.repository }}
       RUN_ID: ${{ github.event.workflow_run.id }}
       VERIFIED_SHA: ${{ github.event.workflow_run.head_sha }}
-      ARTIFACT_NAME: MilyVoiceTraductor-Full-2.1.0-Windows-x64-${{ github.event.workflow_run.head_sha }}
-      RELEASE_TAG: v2.1.0
-      RELEASE_TITLE: MilyVoiceTraductor 2.1.0 Beta
+      ARTIFACT_NAME: MilyVoiceTraductor-Certified-2.1.1-Windows-x64-${{ github.event.workflow_run.head_sha }}
+      RELEASE_TAG: v2.1.1
+      RELEASE_TITLE: MilyVoiceTraductor 2.1.1 Beta
     steps:
-      - name: Checkout the verified source revision
+      - name: Checkout the exact verified source revision
         uses: actions/checkout@v5
         with:
           ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 0
 
-      - name: Download the exact Windows artifact produced by CI
+      - name: Assert checkout provenance
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$VERIFIED_SHA"
+
+      - name: Download exact-SHA Windows artifact
         shell: bash
         run: |
           set -euo pipefail
@@ -36,49 +43,61 @@ jobs:
           mkdir -p release
           gh run download "$RUN_ID" --repo "$REPOSITORY" --name "$ARTIFACT_NAME" --dir release
 
-      - name: Verify published file set and SHA-256 checksums
+      - name: Verify complete certified evidence and SHA-256 checksums
         shell: bash
         run: |
           set -euo pipefail
-          test -f release/MilyVoiceTraductor_2.1.0_x64-setup.exe
+          test -f release/MilyVoiceTraductor_2.1.1_x64-setup.exe
           test -f release/MilyVoiceTraductor-Chromium-Extension.zip
-          test -f release/MilyVoiceTraductor-2.1.0-TargetMachineSimulation.json
-          test -f release/MilyVoiceTraductor-2.1.0-MoonshineLiteBench.json
-          test -f release/MilyVoiceTraductor-2.1.0-WhisperTinyLiteBench.json
-          test -f release/MilyVoiceTraductor-2.1.0-SherpaLiteBench.json
+          test -f release/MilyVoiceTraductor-2.1.1-TargetMachineSimulation.json
+          test -f release/MilyVoiceTraductor-2.1.1-MoonshineLiteBench.json
+          test -f release/MilyVoiceTraductor-2.1.1-WhisperTinyLiteBench.json
+          test -f release/MilyVoiceTraductor-2.1.1-SherpaLiteBench.json
+          test -f release/MilyVoiceTraductor-2.1.1-EsEnLiteBench.json
+          test -f release/MilyVoiceTraductor-2.1.1-EsZhLiteBench.json
+          test ! -e release/MilyVoiceTraductor-2.1.1-ZhEsLiteBench.json
           test -f release/SHA256SUMS.txt
           cd release
           sha256sum -c SHA256SUMS.txt
 
-      - name: Create or update the public 2.1.0 beta release
+      - name: Publish once or verify immutable existing beta
         shell: bash
         run: |
           set -euo pipefail
+          remote_tag_sha="$(git ls-remote --tags origin "refs/tags/$RELEASE_TAG" | awk '{print $1}')"
           if gh release view "$RELEASE_TAG" --repo "$REPOSITORY" >/dev/null 2>&1; then
-            gh release edit "$RELEASE_TAG" --repo "$REPOSITORY" \
-              --title "$RELEASE_TITLE" \
-              --notes-file docs/release/RELEASE_NOTES_2.1.0.md \
-              --prerelease \
-              --latest=false
-            gh release upload "$RELEASE_TAG" release/* --repo "$REPOSITORY" --clobber
+            test -n "$remote_tag_sha"
+            test "$remote_tag_sha" = "$VERIFIED_SHA"
+            rm -rf existing-release
+            mkdir -p existing-release
+            gh release download "$RELEASE_TAG" --repo "$REPOSITORY" --pattern SHA256SUMS.txt --dir existing-release
+            cmp release/SHA256SUMS.txt existing-release/SHA256SUMS.txt
           else
+            if test -n "$remote_tag_sha"; then
+              test "$remote_tag_sha" = "$VERIFIED_SHA"
+            fi
             gh release create "$RELEASE_TAG" release/* --repo "$REPOSITORY" \
               --target "$VERIFIED_SHA" \
               --title "$RELEASE_TITLE" \
-              --notes-file docs/release/RELEASE_NOTES_2.1.0.md \
+              --notes-file docs/release/RELEASE_NOTES_2.1.1.md \
               --prerelease
           fi
 
-      - name: Confirm beta release assets
+      - name: Confirm release provenance and mandatory assets
         shell: bash
         run: |
           set -euo pipefail
+          tag_sha="$(git ls-remote --tags origin "refs/tags/$RELEASE_TAG" | awk '{print $1}')"
+          test "$tag_sha" = "$VERIFIED_SHA"
           assets="$(gh release view "$RELEASE_TAG" --repo "$REPOSITORY" --json assets --jq '.assets[].name')"
-          grep -Fxq 'MilyVoiceTraductor_2.1.0_x64-setup.exe' <<<"$assets"
+          grep -Fxq 'MilyVoiceTraductor_2.1.1_x64-setup.exe' <<<"$assets"
           grep -Fxq 'MilyVoiceTraductor-Chromium-Extension.zip' <<<"$assets"
-          grep -Fxq 'MilyVoiceTraductor-2.1.0-TargetMachineSimulation.json' <<<"$assets"
-          grep -Fxq 'MilyVoiceTraductor-2.1.0-MoonshineLiteBench.json' <<<"$assets"
-          grep -Fxq 'MilyVoiceTraductor-2.1.0-WhisperTinyLiteBench.json' <<<"$assets"
-          grep -Fxq 'MilyVoiceTraductor-2.1.0-SherpaLiteBench.json' <<<"$assets"
+          grep -Fxq 'MilyVoiceTraductor-2.1.1-TargetMachineSimulation.json' <<<"$assets"
+          grep -Fxq 'MilyVoiceTraductor-2.1.1-MoonshineLiteBench.json' <<<"$assets"
+          grep -Fxq 'MilyVoiceTraductor-2.1.1-WhisperTinyLiteBench.json' <<<"$assets"
+          grep -Fxq 'MilyVoiceTraductor-2.1.1-SherpaLiteBench.json' <<<"$assets"
+          grep -Fxq 'MilyVoiceTraductor-2.1.1-EsEnLiteBench.json' <<<"$assets"
+          grep -Fxq 'MilyVoiceTraductor-2.1.1-EsZhLiteBench.json' <<<"$assets"
+          ! grep -Fq 'ZhEsLiteBench' <<<"$assets"
           grep -Fxq 'SHA256SUMS.txt' <<<"$assets"
-          gh release view "$RELEASE_TAG" --repo "$REPOSITORY" --json url,isPrerelease --jq '{url:.url,isPrerelease:.isPrerelease}'
+          gh release view "$RELEASE_TAG" --repo "$REPOSITORY" --json url,isPrerelease,targetCommitish --jq '{url:.url,isPrerelease:.isPrerelease,targetCommitish:.targetCommitish}'

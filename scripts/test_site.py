@@ -13,9 +13,11 @@ logo = ROOT / "apps" / "site" / "assets" / "logo.svg"
 history = ROOT / "docs" / "release" / "VERSION_HISTORY.md"
 release_status = ROOT / "apps" / "site" / "release-status.json"
 stable_notes = ROOT / "docs" / "release" / "RELEASE_NOTES_2.0.2.md"
+beta_notes = ROOT / "docs" / "release" / "RELEASE_NOTES_2.1.1.md"
 
 STABLE_VERSION = "2.0.2"
-BETA_VERSION = "2.1.0"
+BETA_VERSION = "2.1.1"
+HISTORICAL_BETA_VERSION = "2.1.0"
 STABLE_INSTALLER = (
     "https://github.com/LORDMANUEL/milyvoicetraductor/releases/download/"
     "v2.0.2/MilyVoiceTraductor_2.0.2_x64-setup.exe"
@@ -27,13 +29,14 @@ STABLE_EXTENSION = (
 STABLE_RELEASE = "https://github.com/LORDMANUEL/milyvoicetraductor/releases/tag/v2.0.2"
 BETA_INSTALLER = (
     "https://github.com/LORDMANUEL/milyvoicetraductor/releases/download/"
-    "v2.1.0/MilyVoiceTraductor_2.1.0_x64-setup.exe"
+    "v2.1.1/MilyVoiceTraductor_2.1.1_x64-setup.exe"
 )
 BETA_EXTENSION = (
     "https://github.com/LORDMANUEL/milyvoicetraductor/releases/download/"
-    "v2.1.0/MilyVoiceTraductor-Chromium-Extension.zip"
+    "v2.1.1/MilyVoiceTraductor-Chromium-Extension.zip"
 )
-BETA_RELEASE = "https://github.com/LORDMANUEL/milyvoicetraductor/releases/tag/v2.1.0"
+BETA_RELEASE = "https://github.com/LORDMANUEL/milyvoicetraductor/releases/tag/v2.1.1"
+HISTORICAL_BETA_RELEASE = "https://github.com/LORDMANUEL/milyvoicetraductor/releases/tag/v2.1.0"
 HISTORICAL_DOWNLOADS = [
     "https://github.com/LORDMANUEL/milyvoicetraductor/releases/tag/v2.0.1",
     "https://github.com/LORDMANUEL/milyvoicetraductor/releases/download/v2.0.0/MilyVoiceTraductor_2.0.0_x64-setup.exe",
@@ -48,8 +51,9 @@ else:
     html = index.read_text(encoding="utf-8")
     required_content = [
         "2.0.2 ESTABLE",
-        "2.1.0 BETA",
+        "2.1.1 BETA",
         "MilyVoiceTraductor 2.0.2",
+        "MilyVoiceTraductor 2.1.1 Beta",
         "MilyVoiceTraductor 2.1.0 Beta",
         'id="privacidad"',
         'id="compute"',
@@ -59,10 +63,11 @@ else:
         "Sin telemetría",
         "MilyCompute",
         "Engine Hub",
-        "MegaBench",
         "Moonshine",
         "Whisper Tiny",
         "Sherpa Zipformer",
+        "ES→EN",
+        "ES→ZH",
         "BetaAlpha",
         "MilyVoiceTraductor 2.0.1",
         "MilyVoiceTraductor 2.0.0",
@@ -73,6 +78,7 @@ else:
         BETA_INSTALLER,
         BETA_EXTENSION,
         BETA_RELEASE,
+        HISTORICAL_BETA_RELEASE,
         "https://github.com/LORDMANUEL/milyvoicetraductor/tree/pruebas",
         "https://github.com/LORDMANUEL/milyvoicetraductor/tree/betaalpha",
     ] + HISTORICAL_DOWNLOADS
@@ -100,7 +106,7 @@ else:
         if forbidden in lowered:
             errors.append(f"Tracker externo prohibido: {forbidden}")
 
-for asset in [styles, logo, history, release_status, stable_notes]:
+for asset in [styles, logo, history, release_status, stable_notes, beta_notes]:
     if not asset.exists():
         errors.append(f"Falta asset/registro: {asset.relative_to(ROOT)}")
 
@@ -108,6 +114,7 @@ if release_status.exists():
     payload = json.loads(release_status.read_text(encoding="utf-8"))
     stable = payload.get("stable", {})
     beta = payload.get("beta", {})
+    historical_beta = payload.get("historicalBeta", {})
     if stable.get("version") != STABLE_VERSION or stable.get("channel") != "stable" or stable.get("recommended") is not True:
         errors.append("release-status.json: canal estable no apunta a 2.0.2 recomendado")
     if stable.get("installer") != STABLE_INSTALLER:
@@ -115,7 +122,16 @@ if release_status.exists():
     if stable.get("extension") != STABLE_EXTENSION or stable.get("release") != STABLE_RELEASE:
         errors.append("release-status.json: assets/release estable incorrectos")
     if beta.get("version") != BETA_VERSION or beta.get("channel") != "beta" or beta.get("recommended") is not False:
-        errors.append("release-status.json: canal beta no apunta a 2.1.0")
+        errors.append("release-status.json: canal beta no apunta a 2.1.1")
+    if beta.get("installer") != BETA_INSTALLER or beta.get("extension") != BETA_EXTENSION or beta.get("release") != BETA_RELEASE:
+        errors.append("release-status.json: assets/release beta 2.1.1 incorrectos")
+    certification = beta.get("certification", {})
+    if certification.get("exactShaRequired") is not True:
+        errors.append("release-status.json: beta 2.1.1 debe exigir SHA exacto")
+    if "zh-es" not in certification.get("experimentalRoutes", []):
+        errors.append("release-status.json: ZH→ES debe permanecer experimental en 2.1.1")
+    if historical_beta.get("version") != HISTORICAL_BETA_VERSION or historical_beta.get("release") != HISTORICAL_BETA_RELEASE:
+        errors.append("release-status.json: falta preservar 2.1.0 como beta histórica")
 
 if history.exists():
     registry = history.read_text(encoding="utf-8")
@@ -123,14 +139,16 @@ if history.exists():
         "v2.0.2",
         "Estable actual",
         "cfd3946644c41242e6345c2c593f4edb7a1047b4",
+        "v2.1.1",
+        "publicación tras certificación",
+        "v2.1.0",
+        "Beta histórica",
+        "6645be5413a46d92e24b0c37c56b1bb851a94067",
         "v2.0.1",
         "Histórica estable",
-        "v2.1.0",
-        "Beta pública",
         "v2.0.0",
         "v1.0.5",
         "v1.0.0-rc.1",
-        "6645be5413a46d92e24b0c37c56b1bb851a94067",
         "875c182c67bcc4c2984cf15de474602017129f99",
         "1da9a1090535f8f69639c7def2cc760e4b76364d",
     ]:
@@ -143,5 +161,5 @@ if errors:
         print("-", error)
     sys.exit(1)
 print(
-    "SITE CHECK OK: 2.0.2 estable, 2.1.0 beta, historial y referencias de I+D presentes."
+    "SITE CHECK OK: 2.0.2 estable, 2.1.1 beta, 2.1.0 histórica y referencias de I+D presentes."
 )

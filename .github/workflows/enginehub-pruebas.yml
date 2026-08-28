@@ -16,8 +16,7 @@ concurrency:
 
 # Este workflow es deliberadamente Linux-only. La certificación Windows completa
 # vive en ci.yml y ya compila el bridge MSVC, runtime privado, modelos reales,
-# Rust/Clippy, Desktop y NSIS. Pedir aquí otros dos windows-latest duplicaba el
-# trabajo y dejaba varios jobs de la misma candidata esperando runners Windows.
+# Rust/Clippy, Desktop y NSIS.
 jobs:
   target-machine:
     name: Engine Hub preflight / Ubuntu
@@ -45,6 +44,20 @@ jobs:
         env:
           PYTHONPATH: services/ai
         run: python -m unittest discover -s services/ai/tests -p "test_moonshine_model_layout.py" -v
+      - name: Verify Tier 1 bidirectional contracts
+        env:
+          PYTHONPATH: services/ai
+        run: |
+          python -m unittest discover -s services/ai/tests -p "test_protocol.py" -v
+          python -m unittest discover -s services/ai/tests -p "test_m2m100_target_language.py" -v
+          python -m unittest discover -s services/ai/tests -p "test_tier1_session_route.py" -v
+          python -m unittest discover -s services/ai/tests -p "test_server_route_contract.py" -v
+          python -m unittest discover -s services/ai/tests -p "test_model_pack_tier1_routes.py" -v
+          python -m unittest discover -s services/ai/tests -p "test_tier1_cascade_download.py" -v
+          python -m unittest discover -s services/ai/tests -p "test_tier1_marian_cascade.py" -v
+          python -m unittest discover -s services/ai/tests -p "test_tier1_engine_benchmark.py" -v
+          python -m unittest discover -s services/ai/tests -p "test_desktop_target_language_contract.py" -v
+          python -m unittest discover -s services/ai/tests -p "test_extension_target_language_contract.py" -v
       - name: Verify resources, queues, backend truth and deterministic unload
         env:
           PYTHONPATH: services/ai
@@ -66,7 +79,7 @@ jobs:
           python -m unittest discover -s services/ai/tests -p "test_marian_fast_cache.py" -v
 
   rustfmt:
-    name: Rust formatting gate
+    name: Rust formatting and bridge gate
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -74,3 +87,4 @@ jobs:
         with:
           components: rustfmt
       - run: cargo fmt --all -- --check
+      - run: cargo test -p mily-bridge --all-targets

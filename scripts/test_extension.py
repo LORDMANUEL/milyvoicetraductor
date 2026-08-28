@@ -29,7 +29,7 @@ assert set(manifest["permissions"]) <= {
     "activeTab", "tabCapture", "offscreen", "storage", "notifications", "nativeMessaging", "scripting", "tts"
 }
 assert "scripting" in manifest["permissions"], "La inyección bajo demanda requiere scripting"
-assert "tts" in manifest["permissions"], "La voz española del navegador requiere permiso tts local"
+assert "tts" in manifest["permissions"], "La voz del navegador requiere permiso tts local"
 assert manifest["host_permissions"] == ["http://127.0.0.1/*"]
 assert not manifest.get("content_scripts"), "El overlay no debe inyectarse permanentemente en todas las webs"
 public_key = manifest.get("key", "")
@@ -75,7 +75,7 @@ assert "frame = requestAnimationFrame(animate);" not in content, (
 )
 
 # Un motor instalado pero detenido NO debe bloquear Teams Web. START_CAPTURE usa
-# `hello`, y es precisamente esa llamada la que arranca el motor automáticamente.
+# prepare-route: instala/mide/activa el pack correcto y después arranca el motor.
 assert "state?.engine === 'ready' && state?.modelPack" not in popup_script, (
     "El popup no debe deshabilitar Inicio solo porque el motor esté detenido."
 )
@@ -108,17 +108,24 @@ assert resampling.returncode == 0, (
     f"stdout:\n{resampling.stdout}\nstderr:\n{resampling.stderr}"
 )
 
-# Consultar el popup debe ser pasivo. Solo START_CAPTURE puede usar `hello`, que
-# arranca el motor y solicita una credencial efímera al bridge.
+# Consultar el popup debe ser pasivo. START_CAPTURE usa prepare-route: la única
+# operación que prepara el modelo y recibe una credencial efímera de captura.
 status_block = background.split("if (message?.type === 'GET_BRIDGE_STATUS')", 1)[1].split(
     "if (message?.type === 'START_CAPTURE')", 1
 )[0]
 assert "requestBridge('status'" in status_block, "GET_BRIDGE_STATUS debe usar status pasivo"
 assert "requestBridge('hello'" not in status_block, "Consultar estado no debe arrancar el motor"
+assert "prepare-route" not in status_block, "Consultar estado no debe preparar ni cambiar modelos"
 start_capture_function = background.split("async function startCapture", 1)[1].split(
     "async function stopCapture", 1
 )[0]
-assert "requestBridge('hello'" in start_capture_function, "START_CAPTURE debe solicitar sesión efímera"
+assert "requestBridge('prepare-route'" in start_capture_function, (
+    "START_CAPTURE debe preparar la ruta y solicitar la sesión efímera"
+)
+assert "route: routeKey" in start_capture_function, "START_CAPTURE debe enviar la ruta exacta"
+assert start_capture_function.index("requestBridge('prepare-route'") < start_capture_function.index("ensureOverlay(tab.id)"), (
+    "La ruta debe quedar lista antes de inyectar overlay o capturar audio"
+)
 
 # El camino caliente negociado debe enviar el ArrayBuffer PCM directamente.
 assert "binaryPcm: true" in offscreen, "La extensión debe negociar PCM binario"

@@ -2,7 +2,7 @@
   import { onMount } from 'svelte';
   import Sidebar from './components/Sidebar.svelte';
   import Panel from './pages/Panel.svelte';
-  import LiveTranslation from './pages/LiveTranslation.svelte';
+  import LiveTranslation from './pages/Tier1LiveTranslation.svelte';
   import Sessions from './pages/Sessions.svelte';
   import Models from './pages/Models.svelte';
   import Permissions from './pages/Permissions.svelte';
@@ -36,9 +36,6 @@
         desktopApi.getCacheStatus(), desktopApi.getConfig()
       ]);
 
-      // Primer arranque: el shell se abre antes de descargar modelos. Si no hay
-      // un pack listo, aterrizamos dentro de Engine Hub para que el usuario vea
-      // únicamente la compatibilidad real de su equipo antes de descargar.
       if (!initialRouteResolved) {
         initialRouteResolved = true;
         if (onboarding.modelState !== 'ready') activePage = 'models';

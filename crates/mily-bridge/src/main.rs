@@ -13,6 +13,8 @@ use std::io::{self, BufReader, BufWriter};
 struct BridgeRequest {
     protocol: u8,
     r#type: String,
+    #[serde(default)]
+    route: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -87,9 +89,24 @@ fn main() {
             }
         };
 
-        let ensure_started = match request.r#type.as_str() {
-            "hello" => true,
-            "status" => false,
+        let result = match request.r#type.as_str() {
+            "hello" => runtime.status(true),
+            "status" => runtime.status(false),
+            "prepare-route" => {
+                let Some(route) = request.route.as_deref() else {
+                    let _ = write_json(
+                        &mut writer,
+                        &ErrorReply {
+                            protocol: 1,
+                            r#type: "bridge.error",
+                            code: "BRIDGE_ROUTE_REQUIRED",
+                            message: "prepare-route requiere una ruta Tier 1.",
+                        },
+                    );
+                    continue;
+                };
+                runtime.prepare_route(route)
+            }
             _ => {
                 let _ = write_json(
                     &mut writer,
@@ -104,20 +121,20 @@ fn main() {
             }
         };
 
-        match runtime.status(ensure_started) {
+        match result {
             Ok(reply) => {
                 if write_json(&mut writer, &reply).is_err() {
                     break;
                 }
             }
-            Err(_) => {
+            Err(error) => {
                 if write_json(
                     &mut writer,
                     &ErrorReply {
                         protocol: 1,
                         r#type: "bridge.error",
-                        code: "BRIDGE_RUNTIME",
-                        message: "No se pudo consultar el runtime local.",
+                        code: error.public_code(),
+                        message: error.public_message(),
                     },
                 )
                 .is_err()

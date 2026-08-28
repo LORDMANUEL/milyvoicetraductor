@@ -48,7 +48,8 @@ def detect_cpu_budget(profile: str = "balanced", physical_cores: int | None = No
     """Calcula threads de ASR/traducción sin exceder núcleos físicos.
 
     Perfiles:
-    - ``light``: limita trabajo concurrente a dos núcleos.
+    - ``light``: limita cada etapa a dos núcleos y las serializa para que ASR y
+      MT reutilicen esos mismos cores sin competir entre sí.
     - ``balanced``: reserva capacidad para UI/audio en >=3 cores. En equipos
       dual-core reutiliza ambos cores para ASR y MT porque ambas etapas se
       serializan mediante un único executor y nunca compiten simultáneamente.
@@ -70,6 +71,20 @@ def detect_cpu_budget(profile: str = "balanced", physical_cores: int | None = No
             parallel_stages=False,
         )
 
+    # El perfil Lite representa el mínimo funcional de producto. ASR y MT se
+    # ejecutan mediante el mismo executor cuando parallel_stages=False, por lo
+    # que pueden reutilizar hasta dos cores físicos sin sobresuscripción. Esto
+    # reduce latencia por frase y mantiene un techo simultáneo de dos cores.
+    if normalized == "light":
+        compute = min(2, physical)
+        return CpuBudget(
+            profile=normalized,
+            physical_cores=physical,
+            asr_threads=compute,
+            translation_threads=compute,
+            parallel_stages=False,
+        )
+
     # En un i3 Haswell 2C/4T el servidor usa el mismo executor para ASR y MT.
     # Como no se ejecutan en paralelo, ambos pueden reutilizar los dos cores
     # físicos sin sobresuscripción. Antes MT recibía solo un core y se convertía
@@ -83,9 +98,7 @@ def detect_cpu_budget(profile: str = "balanced", physical_cores: int | None = No
             parallel_stages=False,
         )
 
-    if normalized == "light":
-        compute = min(2, physical)
-    elif normalized == "max":
+    if normalized == "max":
         compute = physical
     else:
         compute = max(2, physical - 1)

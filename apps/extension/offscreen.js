@@ -7,9 +7,26 @@ let audioContext = null;
 let workletNode = null;
 let websocket = null;
 let activeTabId = null;
+let activeSourceLanguage = 'auto';
+let activeTargetLanguage = 'es';
 let stopping = false;
 let binaryPcmActive = false;
 let sessionReady = false;
+
+const SOURCE_LANGUAGES = new Set(['auto', 'en', 'es', 'zh']);
+const TARGET_LANGUAGES = new Set(['es', 'en', 'zh']);
+
+function normalizeSource(value, targetLanguage) {
+  const candidate = String(value || 'auto').toLowerCase();
+  if (targetLanguage !== 'es') return 'es';
+  if (!SOURCE_LANGUAGES.has(candidate) || candidate === 'es') return 'auto';
+  return candidate;
+}
+
+function normalizeTarget(value) {
+  const candidate = String(value || 'es').toLowerCase();
+  return TARGET_LANGUAGES.has(candidate) ? candidate : 'es';
+}
 
 function arrayBufferToBase64(buffer) {
   const bytes = new Uint8Array(buffer);
@@ -27,19 +44,28 @@ function publishEngineEvent(payload) {
 
 function publishTranslation(payload) {
   if (!activeTabId) return;
-  chrome.runtime.sendMessage({ type: 'TRANSLATION_EVENT', tabId: activeTabId, payload }).catch(() => undefined);
+  chrome.runtime.sendMessage({
+    type: 'TRANSLATION_EVENT',
+    tabId: activeTabId,
+    payload: { ...payload, targetLanguage: activeTargetLanguage }
+  }).catch(() => undefined);
 }
 
 function sendControl(type, fields = {}) {
   if (websocket?.readyState !== WebSocket.OPEN || !sessionReady) return false;
-  websocket.send(JSON.stringify({ protocol: 1, type, targetLanguage: 'es', ...fields }));
+  websocket.send(JSON.stringify({ protocol: 1, type, targetLanguage: activeTargetLanguage, ...fields }));
   return true;
 }
 
 async function cleanup() {
   stopping = true;
   if (websocket && websocket.readyState === WebSocket.OPEN && sessionReady) {
-    websocket.send(JSON.stringify({ protocol: 1, type: 'audio.stop', sourceLanguage: 'auto', targetLanguage: 'es' }));
+    websocket.send(JSON.stringify({
+      protocol: 1,
+      type: 'audio.stop',
+      sourceLanguage: activeSourceLanguage,
+      targetLanguage: activeTargetLanguage
+    }));
     await new Promise((resolve) => setTimeout(resolve, 250));
   }
   try { websocket?.close(1000, 'user stop'); } catch (_) {}
@@ -51,6 +77,8 @@ async function cleanup() {
   audioContext = null;
   mediaStream = null;
   activeTabId = null;
+  activeSourceLanguage = 'auto';
+  activeTargetLanguage = 'es';
   binaryPcmActive = false;
   sessionReady = false;
   stopping = false;
@@ -62,6 +90,8 @@ async function startCapture(message) {
     throw new Error('No se recibió una sesión segura desde MilyVoiceTraductor.');
   }
   activeTabId = message.tabId;
+  activeTargetLanguage = normalizeTarget(message.targetLanguage);
+  activeSourceLanguage = normalizeSource(message.sourceLanguage, activeTargetLanguage);
   const constraints = {
     audio: {
       mandatory: {
@@ -111,8 +141,8 @@ async function startCapture(message) {
       websocket.send(JSON.stringify({
         protocol: 1,
         type: 'client.hello',
-        sourceLanguage: message.sourceLanguage || 'auto',
-        targetLanguage: 'es',
+        sourceLanguage: activeSourceLanguage,
+        targetLanguage: message.targetLanguage,
         sessionMode: message.sessionMode || 'meeting',
         sourceMode: 'browser_tab',
         speakerDetection: Boolean(message.speakerDetection),
@@ -172,8 +202,8 @@ async function startCapture(message) {
     websocket.send(JSON.stringify({
       protocol: 1,
       type: 'audio.chunk',
-      sourceLanguage: message.sourceLanguage || 'auto',
-      targetLanguage: 'es',
+      sourceLanguage: activeSourceLanguage,
+      targetLanguage: activeTargetLanguage,
       sampleRate: 16000,
       audioBase64: arrayBufferToBase64(event.data)
     }));
