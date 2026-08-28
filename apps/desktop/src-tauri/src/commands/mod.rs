@@ -14,7 +14,7 @@ use mily_system::SystemSnapshot;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::Path;
-use tauri::{Manager, State};
+use tauri::State;
 
 fn public_error(code: &str, message: &str) -> PublicError {
     PublicError::new(code, message)
