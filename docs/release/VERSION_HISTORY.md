@@ -2,22 +2,37 @@
 
 Este archivo conserva el historial público de releases y de las líneas experimentales del proyecto.
 
-La versión estable recomendada es **v2.0.2**. Las versiones nuevas de la serie 2.1.x se publican como **beta** hasta que exista una promoción explícita a estable.
+La versión estable recomendada es **v2.0.2**. La serie 2.1.x permanece en canal **beta** hasta una promoción explícita a estable.
 
-## Versiones publicadas
+## Canal vigente
+
+- **Estable:** `v2.0.2`.
+- **Beta en cierre/publicación:** `v2.1.1`, condicionada a certificación exacta del SHA y publicación inmutable desde `main`.
+- **Beta histórica preservada:** `v2.1.0`.
+
+## Versiones
 
 | Versión | Estado | Referencia | Descarga / registro |
 |---|---|---|---|
 | `v2.0.2` | **Estable actual** | Release estable `cfd3946644c41242e6345c2c593f4edb7a1047b4` | [Instalador](https://github.com/LORDMANUEL/milyvoicetraductor/releases/download/v2.0.2/MilyVoiceTraductor_2.0.2_x64-setup.exe) · [Extensión](https://github.com/LORDMANUEL/milyvoicetraductor/releases/download/v2.0.2/MilyVoiceTraductor-Chromium-Extension.zip) · [SHA-256](https://github.com/LORDMANUEL/milyvoicetraductor/releases/download/v2.0.2/SHA256SUMS.txt) · [Release/Tag](https://github.com/LORDMANUEL/milyvoicetraductor/releases/tag/v2.0.2) · [Notas](RELEASE_NOTES_2.0.2.md) |
-| `v2.1.0` | **Beta pública** | Merge beta `6645be5413a46d92e24b0c37c56b1bb851a94067` | [Instalador beta](https://github.com/LORDMANUEL/milyvoicetraductor/releases/download/v2.1.0/MilyVoiceTraductor_2.1.0_x64-setup.exe) · [Extensión beta](https://github.com/LORDMANUEL/milyvoicetraductor/releases/download/v2.1.0/MilyVoiceTraductor-Chromium-Extension.zip) · [Release/Tag](https://github.com/LORDMANUEL/milyvoicetraductor/releases/tag/v2.1.0) · [Notas](RELEASE_NOTES_2.1.0.md) |
+| `v2.1.1` | **Beta — publicación tras certificación** | PR `#54`; el tag sólo puede apuntar al SHA exacto certificado que llegue a `main` | [Instalador beta](https://github.com/LORDMANUEL/milyvoicetraductor/releases/download/v2.1.1/MilyVoiceTraductor_2.1.1_x64-setup.exe) · [Extensión beta](https://github.com/LORDMANUEL/milyvoicetraductor/releases/download/v2.1.1/MilyVoiceTraductor-Chromium-Extension.zip) · [Release/Tag](https://github.com/LORDMANUEL/milyvoicetraductor/releases/tag/v2.1.1) · [Notas](RELEASE_NOTES_2.1.1.md) |
+| `v2.1.0` | **Beta histórica** | Merge beta `6645be5413a46d92e24b0c37c56b1bb851a94067`; publicada 2026-08-20 | [Instalador beta](https://github.com/LORDMANUEL/milyvoicetraductor/releases/download/v2.1.0/MilyVoiceTraductor_2.1.0_x64-setup.exe) · [Extensión beta](https://github.com/LORDMANUEL/milyvoicetraductor/releases/download/v2.1.0/MilyVoiceTraductor-Chromium-Extension.zip) · [Release/Tag](https://github.com/LORDMANUEL/milyvoicetraductor/releases/tag/v2.1.0) · [Notas](RELEASE_NOTES_2.1.0.md) |
 | `v2.0.1` | Histórica estable | Merge estable `c8ab5398a82379064de1ac1c9c71738e1e517bbd` | [Instalador](https://github.com/LORDMANUEL/milyvoicetraductor/releases/download/v2.0.1/MilyVoiceTraductor_2.0.1_x64-setup.exe) · [Release/Tag](https://github.com/LORDMANUEL/milyvoicetraductor/releases/tag/v2.0.1) · [Notas](RELEASE_NOTES_2.0.1.md) |
 | `v2.0.0` | Histórica estable | Merge estable `a92b1b183343a0b17757d31d1b61be9f8de07fe6` | [Instalador](https://github.com/LORDMANUEL/milyvoicetraductor/releases/download/v2.0.0/MilyVoiceTraductor_2.0.0_x64-setup.exe) · [Release/Tag](https://github.com/LORDMANUEL/milyvoicetraductor/releases/tag/v2.0.0) · [Notas](RELEASE_NOTES_2.0.0.md) |
 | `v1.0.5` | Histórica | Hito de publicación `0a9a8768de5b2b04d64f5f116a7771fdf61ddf12` | [Instalador](https://github.com/LORDMANUEL/milyvoicetraductor/releases/download/v1.0.5/MilyVoiceTraductor_1.0.5_x64-setup.exe) · [Release/Tag](https://github.com/LORDMANUEL/milyvoicetraductor/releases/tag/v1.0.5) · [Notas](RELEASE_NOTES_1.0.5.md) |
 | `v1.0.0-rc.1` | Release Candidate histórica | Hito `d901c1b9534fcddb660a59534ad64434299e96b7` | [Instalador](https://github.com/LORDMANUEL/milyvoicetraductor/releases/download/v1.0.0-rc.1/MilyVoiceTraductor_1.0.0-rc.1_x64-setup.exe) · [Release/Tag](https://github.com/LORDMANUEL/milyvoicetraductor/releases/tag/v1.0.0-rc.1) · [Notas](RELEASE_NOTES_RC1.md) |
 
+## Qué incorpora 2.1.1
+
+- Tier 1 local: EN→ES, ES→EN, ZH→ES y ES→ZH.
+- Benchmarks bloqueantes reales en Windows para EN→ES, ES→EN y ES→ZH.
+- ZH→ES conserva benchmark experimental/no bloqueante y queda fuera del bundle obligatorio.
+- Runtime Python privado, Native Messaging, Desktop Release, `WINDOWS_GUI`, NSIS, instalación/reinstalación real y `SHA256SUMS.txt` forman parte de la certificación.
+- `v2.1.0` no se retargetea ni se sobrescribe.
+
 ## Historia de Engine Hub y BetaAlpha
 
-Engine Hub y BetaAlpha forman parte de la historia técnica del canal beta 2.1. Se conservan sus referencias para trazabilidad y comparación de rendimiento.
+Engine Hub y BetaAlpha forman parte de la historia técnica del canal beta 2.1 y se conservan para trazabilidad.
 
 ### Engine Hub
 
@@ -35,9 +50,10 @@ Engine Hub y BetaAlpha forman parte de la historia técnica del canal beta 2.1. 
 
 ## Política de canales
 
-1. `v2.0.2` es la **estable recomendada** mientras 2.1.x continúe en validación externa.
+1. `v2.0.2` es la **estable recomendada** mientras 2.1.x continúe en beta.
 2. `v2.1.x` se considera **beta** hasta una promoción explícita y certificada.
-3. La portada y README deben ofrecer primero la estable y, por separado, la beta vigente.
+3. La portada y README ofrecen primero la estable y, por separado, la beta vigente/candidata.
 4. Cada release conserva tag, notas, hashes y referencia del artefacto certificado.
 5. Los experimentos conservan SHA de referencia para trazabilidad, pero no se confunden con ramas activas de producto.
-6. Un release beta no debe convertirse automáticamente en “latest stable” solo porque su CI termine en verde.
+6. Un release beta no se convierte automáticamente en “latest stable” sólo porque su CI termine en verde.
+7. La publicación 2.1.1 es inmutable: no se permite retargetear tags ni sobrescribir assets de una release existente.

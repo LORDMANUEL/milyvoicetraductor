@@ -4,8 +4,8 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="theme-color" content="#00a878" />
-  <meta name="description" content="MilyVoiceTraductor: 2.0.2 estable y 2.1.0 beta pública para Windows x64." />
-  <title>MilyVoiceTraductor · Estable 2.0.2 · Beta 2.1.0</title>
+  <meta name="description" content="MilyVoiceTraductor: 2.0.2 estable y 2.1.1 beta para Windows x64, con Tier 1 bidireccional y Engine Hub." />
+  <title>MilyVoiceTraductor · Estable 2.0.2 · Beta 2.1.1</title>
   <link rel="stylesheet" href="./styles.css" />
 </head>
 <body>
@@ -28,12 +28,12 @@
   <main id="inicio">
     <section class="hero wrap">
       <div class="hero-copy">
-        <div class="eyebrow">2.0.2 ESTABLE · 2.1.0 BETA PÚBLICA</div>
+        <div class="eyebrow">2.0.2 ESTABLE · 2.1.1 BETA</div>
         <h1>Escucha. Traduce.<br /><span>Sin regalar el audio.</span></h1>
-        <p>MilyVoiceTraductor convierte reuniones, pestañas web, audio de Windows, micrófonos y archivos multimedia en subtítulos y traducción al español, directamente en tu computadora.</p>
+        <p>MilyVoiceTraductor convierte reuniones, pestañas web, audio de Windows, micrófonos y archivos multimedia en subtítulos y traducción local, directamente en tu computadora.</p>
         <div class="actions">
           <a class="primary-button" href="https://github.com/LORDMANUEL/milyvoicetraductor/releases/download/v2.0.2/MilyVoiceTraductor_2.0.2_x64-setup.exe">Descargar estable 2.0.2</a>
-          <a class="text-link" href="#beta">Probar beta 2.1.0 →</a>
+          <a class="text-link" href="#beta">Ver beta 2.1.1 →</a>
         </div>
         <ul class="trust-row" aria-label="Principios principales">
           <li><span>✓</span> Procesamiento local</li>
@@ -50,12 +50,12 @@
               <b></b><b></b><b></b><b></b><b></b>
             </div>
             <div class="mini-content">
-              <small>INGLÉS / 中文 → ESPAÑOL</small>
-              <h2>Good morning / 早上好</h2>
+              <small>EN / ES / 中文 · TIER 1</small>
+              <h2>Good morning / Buenos días / 早上好</h2>
               <div class="arrow">↓</div>
               <div class="subtitle-card">
-                <span>ES</span>
-                <p>Buenos días. La reunión comienza a las nueve.</p>
+                <span>LOCAL</span>
+                <p>Ruta preparada por Engine Hub antes de capturar audio.</p>
               </div>
               <div class="privacy-chip"><i></i>Local · realtime</div>
             </div>
@@ -82,34 +82,36 @@
       <div class="section-heading">
         <span>MilyCompute</span>
         <h2>El hardware se adapta al trabajo.</h2>
-        <p>MilyCompute examina CPU, memoria y aceleradores disponibles. La CPU permanece como fallback seguro y las rutas nuevas se validan por rendimiento real.</p>
+        <p>MilyCompute examina CPU, memoria y aceleradores disponibles. La CPU permanece como fallback seguro y cada ruta se valida por rendimiento real antes de activarse.</p>
       </div>
       <div class="architecture-card">
         <div class="arch-node"><small>DETECTAR</small><strong>CPU / iGPU / GPU</strong><p>Núcleos, memoria y runtimes disponibles.</p></div>
         <div class="connector">→</div>
-        <div class="arch-node highlighted"><small>MEDIR</small><strong>P50 · P95 · RTF</strong><p>Latencia, RAM y estabilidad.</p></div>
+        <div class="arch-node highlighted"><small>MEDIR</small><strong>P50 · P95 · RTF</strong><p>Latencia, RAM y estabilidad del producto completo.</p></div>
         <div class="connector">→</div>
-        <div class="arch-node future"><small>EJECUTAR</small><strong>Ruta verificada</strong><p>Solo se activa la combinación necesaria.</p></div>
+        <div class="arch-node future"><small>EJECUTAR</small><strong>Ruta verificada</strong><p>Solo se activa la combinación compatible.</p></div>
       </div>
     </section>
 
     <section id="beta" class="section wrap">
       <div class="section-heading">
         <span>Canal beta</span>
-        <h2>MilyVoiceTraductor 2.1.0 Beta</h2>
-        <p>La serie 2.1.x es un canal de pruebas. No sustituye todavía a 2.0.2 como estable.</p>
+        <h2>MilyVoiceTraductor 2.1.1 Beta</h2>
+        <p>La serie 2.1.x es un canal de pruebas. 2.1.1 no sustituye a 2.0.2 como estable y su tag sólo se publica desde el SHA exacto certificado en main.</p>
       </div>
       <div class="beta-lanes">
         <article class="beta-lane">
-          <div class="version-badge beta">BETA PÚBLICA</div>
-          <h3>Engine Hub 2.1.0</h3>
-          <p>Prueba selección adaptativa de motores, perfiles Lite, límites de memoria y nuevas rutas de reconocimiento/traducción.</p>
-          <p><strong>Motores probados:</strong> Moonshine, Whisper Tiny y Sherpa Zipformer. Incluye MegaBench y evidencia de instalación NSIS.</p>
+          <div class="version-badge beta">BETA · TIER 1</div>
+          <h3>Engine Hub 2.1.1</h3>
+          <p>Consolida rutas locales EN→ES, ES→EN, ZH→ES y ES→ZH con preparación de ruta antes de capturar audio.</p>
+          <p><strong>Gates bloqueantes:</strong> Moonshine, Whisper Tiny y Sherpa Zipformer EN→ES, además de ES→EN y ES→ZH reales. ZH→ES continúa con benchmark experimental/no bloqueante.</p>
+          <p><strong>Recursos:</strong> memoria total, RTF P95 y E2E P95 se miden antes del bundle. `realtime-m2m100` queda como Quality opcional fuera del presupuesto Lite de 2 GiB.</p>
           <div class="version-actions">
-            <a class="primary-button" href="https://github.com/LORDMANUEL/milyvoicetraductor/releases/download/v2.1.0/MilyVoiceTraductor_2.1.0_x64-setup.exe">Descargar beta 2.1.0</a>
-            <a class="secondary-button" href="https://github.com/LORDMANUEL/milyvoicetraductor/releases/download/v2.1.0/MilyVoiceTraductor-Chromium-Extension.zip">Extensión beta</a>
-            <a class="secondary-button" href="https://github.com/LORDMANUEL/milyvoicetraductor/releases/tag/v2.1.0">Release / evidencia</a>
+            <a class="primary-button" href="https://github.com/LORDMANUEL/milyvoicetraductor/releases/download/v2.1.1/MilyVoiceTraductor_2.1.1_x64-setup.exe">Instalador beta 2.1.1</a>
+            <a class="secondary-button" href="https://github.com/LORDMANUEL/milyvoicetraductor/releases/download/v2.1.1/MilyVoiceTraductor-Chromium-Extension.zip">Extensión beta</a>
+            <a class="secondary-button" href="https://github.com/LORDMANUEL/milyvoicetraductor/releases/tag/v2.1.1">Release / evidencia</a>
           </div>
+          <p><small>Si el tag v2.1.1 todavía no existe, la candidata sigue en certificación. Usa 2.0.2 para producción.</small></p>
         </article>
         <article class="beta-lane">
           <div class="version-badge alpha">HISTORIA DE I+D</div>
@@ -127,7 +129,7 @@
       <div class="section-heading">
         <span>Versiones</span>
         <h2>Estable separada de las betas.</h2>
-        <p>La estable permanece disponible mientras nuevas generaciones se prueban como beta.</p>
+        <p>La estable permanece disponible mientras las nuevas generaciones se prueban y certifican como beta.</p>
       </div>
       <div class="version-grid">
         <article class="version-card current">
@@ -141,12 +143,21 @@
         </article>
 
         <article class="version-card beta-card">
-          <div class="version-top"><span class="version-badge beta">BETA</span><code>v2.1.0</code></div>
-          <h3>MilyVoiceTraductor 2.1.0 Beta</h3>
-          <p>Engine Hub, Moonshine, Whisper Tiny, Sherpa Zipformer y nuevas pruebas de bajo consumo. Canal para pruebas externas.</p>
+          <div class="version-top"><span class="version-badge beta">BETA</span><code>v2.1.1</code></div>
+          <h3>MilyVoiceTraductor 2.1.1 Beta</h3>
+          <p>Tier 1 bidireccional, Engine Hub, carriles Lite reales y certificación exacta de Windows/NSIS.</p>
           <div class="version-actions">
-            <a class="primary-button" href="https://github.com/LORDMANUEL/milyvoicetraductor/releases/download/v2.1.0/MilyVoiceTraductor_2.1.0_x64-setup.exe">Instalador beta</a>
-            <a class="secondary-button" href="https://github.com/LORDMANUEL/milyvoicetraductor/releases/tag/v2.1.0">Release beta</a>
+            <a class="primary-button" href="https://github.com/LORDMANUEL/milyvoicetraductor/releases/download/v2.1.1/MilyVoiceTraductor_2.1.1_x64-setup.exe">Instalador beta</a>
+            <a class="secondary-button" href="https://github.com/LORDMANUEL/milyvoicetraductor/releases/tag/v2.1.1">Release beta</a>
+          </div>
+        </article>
+
+        <article class="version-card">
+          <div class="version-top"><span class="version-badge historical">BETA HISTÓRICA</span><code>v2.1.0</code></div>
+          <h3>MilyVoiceTraductor 2.1.0 Beta</h3>
+          <p>Primera beta pública de Engine Hub. Se preserva sin retargetear el tag ni sobrescribir sus assets.</p>
+          <div class="version-actions">
+            <a class="secondary-button" href="https://github.com/LORDMANUEL/milyvoicetraductor/releases/tag/v2.1.0">Release beta histórica</a>
           </div>
         </article>
 
@@ -198,17 +209,17 @@
     <section id="estado" class="section wrap">
       <div class="section-heading">
         <span>Descargas actuales</span>
-        <h2>2.0.2 estable · 2.1.0 beta</h2>
-        <p>Para uso normal descarga 2.0.2. Para probar las funciones nuevas descarga 2.1.0 Beta.</p>
+        <h2>2.0.2 estable · 2.1.1 beta</h2>
+        <p>Para uso normal descarga 2.0.2. Para probar Tier 1 bidireccional usa 2.1.1 cuando el tag certificado esté publicado.</p>
       </div>
       <div class="roadmap">
         <article class="done"><span>1</span><div><b>2.0.2 estable</b><p>Canal recomendado y mantenido.</p></div></article>
-        <article class="done"><span>2</span><div><b>2.1.0 beta</b><p>Engine Hub disponible para pruebas externas.</p></div></article>
-        <article class="done"><span>3</span><div><b>Historial preservado</b><p>2.0.1, 2.0.0, 1.0.5 y RC1 continúan disponibles.</p></div></article>
+        <article class="done"><span>2</span><div><b>2.1.1 beta</b><p>Tier 1, Engine Hub y release exact-SHA.</p></div></article>
+        <article class="done"><span>3</span><div><b>2.1.0 preservada</b><p>La beta anterior permanece disponible como histórico.</p></div></article>
         <article class="done"><span>4</span><div><b>BetaAlpha</b><p>Se conserva como referencia de I+D.</p></div></article>
       </div>
       <div class="cta-card">
-        <div><small>ESTABLE · WINDOWS X64 · TAG v2.0.2</small><h2>La versión recomendada es 2.0.2.</h2><p>Usa 2.1.0 únicamente cuando quieras probar el canal beta.</p></div>
+        <div><small>ESTABLE · WINDOWS X64 · TAG v2.0.2</small><h2>La versión recomendada es 2.0.2.</h2><p>2.1.1 permanece en canal beta incluso después de completar su CI.</p></div>
         <a class="primary-button" href="https://github.com/LORDMANUEL/milyvoicetraductor/releases/download/v2.0.2/MilyVoiceTraductor_2.0.2_x64-setup.exe">Descargar estable 2.0.2</a>
       </div>
     </section>
@@ -216,7 +227,7 @@
 
   <footer class="wrap">
     <div class="brand footer-brand"><img src="./assets/logo.svg" alt="" /><span><b>Mily</b><em>Voice</em>Traductor</span></div>
-    <p>2.0.2 estable · 2.1.0 beta · Runtime privado · Engine Hub · Realtime.</p>
+    <p>2.0.2 estable · 2.1.1 beta · Runtime privado · Engine Hub · Realtime.</p>
   </footer>
   <script src="./app.js" defer></script>
 </body>

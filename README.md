@@ -6,18 +6,18 @@
 
 <h1 align="center">MilyVoiceTraductor</h1>
 
-<p align="center"><strong>Traducción local al español en tiempo real para reuniones, cursos, videos y audio de Windows.</strong></p>
+<p align="center"><strong>Traducción local en tiempo real para reuniones, cursos, videos y audio de Windows.</strong></p>
 
 <p align="center">
   <a href="https://lordmanuel.github.io/milyvoicetraductor/"><img alt="Sitio oficial" src="https://img.shields.io/badge/Sitio_oficial-Ver_producto-00a878?style=for-the-badge" /></a>
   <a href="https://github.com/LORDMANUEL/milyvoicetraductor/releases/download/v2.0.2/MilyVoiceTraductor_2.0.2_x64-setup.exe"><img alt="Descargar estable para Windows" src="https://img.shields.io/badge/Windows_x64-Descargar_estable_2.0.2-0078d4?style=for-the-badge&logo=windows" /></a>
-  <a href="https://github.com/LORDMANUEL/milyvoicetraductor/releases/tag/v2.1.0"><img alt="Beta 2.1.0" src="https://img.shields.io/badge/Beta-2.1.0-f59e0b?style=for-the-badge" /></a>
+  <a href="https://github.com/LORDMANUEL/milyvoicetraductor/releases/tag/v2.1.1"><img alt="Beta 2.1.1" src="https://img.shields.io/badge/Beta-2.1.1-f59e0b?style=for-the-badge" /></a>
 </p>
 
 <p align="center">
   <a href="https://github.com/LORDMANUEL/milyvoicetraductor/releases/download/v2.0.2/MilyVoiceTraductor_2.0.2_x64-setup.exe"><strong>Descargar estable 2.0.2</strong></a>
   ·
-  <a href="https://github.com/LORDMANUEL/milyvoicetraductor/releases/tag/v2.1.0">Probar beta 2.1.0</a>
+  <a href="https://github.com/LORDMANUEL/milyvoicetraductor/releases/tag/v2.1.1">Beta 2.1.1</a>
   ·
   <a href="docs/INSTALLATION.md">Instalación</a>
   ·
@@ -30,17 +30,23 @@
 
 ### Estable actual — `v2.0.2`
 
-La versión recomendada para uso normal es **MilyVoiceTraductor 2.0.2 para Windows x64**. Es el hotfix estable que corrige el primer arranque, evita descargas automáticas de modelos y endurece el runtime/instalador en Windows limpio.
+La versión recomendada para uso normal sigue siendo **MilyVoiceTraductor 2.0.2 para Windows x64**. Corrige el primer arranque, evita descargas automáticas de modelos y mantiene el runtime/instalador endurecido para Windows limpio.
 
 **[Descargar estable 2.0.2](https://github.com/LORDMANUEL/milyvoicetraductor/releases/download/v2.0.2/MilyVoiceTraductor_2.0.2_x64-setup.exe)**
 
-### Beta actual — `v2.1.0`
+### Beta 2.1.1 — Tier 1 bidireccional
 
-**MilyVoiceTraductor 2.1.0 es una beta pública para pruebas.** No sustituye todavía a 2.0.2 como estable.
+**MilyVoiceTraductor 2.1.1 pertenece al canal Beta y no reemplaza a 2.0.2 como estable.** El tag `v2.1.1` sólo se publica desde el SHA exacto certificado en `main`; durante el PR puede aparecer como candidata pendiente de publicación.
 
-La beta 2.1.0 incorpora Engine Hub, rutas Lite, selección adaptativa de motores y nuevas pruebas de Windows. Debe usarse para validación externa, reporte de fallos y comparación de rendimiento.
+2.1.1 consolida Engine Hub y las rutas Tier 1 locales:
 
-**[Descargar beta 2.1.0](https://github.com/LORDMANUEL/milyvoicetraductor/releases/download/v2.1.0/MilyVoiceTraductor_2.1.0_x64-setup.exe)**
+- **EN→ES** con carriles Lite certificados Moonshine, Whisper Tiny y Sherpa Zipformer;
+- **ES→EN** mediante `lite-es-en@1.0.1`;
+- **ES→ZH** mediante `lite-es-zh@1.0.1`;
+- **ZH→ES** disponible como ruta Tier 1, con benchmark Lite todavía experimental/no bloqueante para la publicación 2.1.1;
+- `realtime-m2m100` permanece como perfil Quality opcional y no certifica el presupuesto de 2 GiB.
+
+El flujo Desktop y extensión prepara la ruta mediante Engine Hub/Native Messaging antes de capturar audio. Los modelos se descargan y activan sólo por acción del usuario.
 
 ### Descargas oficiales
 
@@ -49,16 +55,18 @@ La beta 2.1.0 incorpora Engine Hub, rutas Lite, selección adaptativa de motores
 | **Estable** | Instalador Windows x64 | [MilyVoiceTraductor 2.0.2](https://github.com/LORDMANUEL/milyvoicetraductor/releases/download/v2.0.2/MilyVoiceTraductor_2.0.2_x64-setup.exe) |
 | **Estable** | Extensión Chromium | [Extensión 2.0.2](https://github.com/LORDMANUEL/milyvoicetraductor/releases/download/v2.0.2/MilyVoiceTraductor-Chromium-Extension.zip) |
 | **Estable** | Hashes SHA-256 | [SHA256SUMS.txt](https://github.com/LORDMANUEL/milyvoicetraductor/releases/download/v2.0.2/SHA256SUMS.txt) |
-| **Beta** | Instalador Windows x64 | [MilyVoiceTraductor 2.1.0 Beta](https://github.com/LORDMANUEL/milyvoicetraductor/releases/download/v2.1.0/MilyVoiceTraductor_2.1.0_x64-setup.exe) |
-| **Beta** | Extensión Chromium | [Extensión 2.1.0](https://github.com/LORDMANUEL/milyvoicetraductor/releases/download/v2.1.0/MilyVoiceTraductor-Chromium-Extension.zip) |
-| **Beta** | Hashes SHA-256 | [SHA256SUMS.txt](https://github.com/LORDMANUEL/milyvoicetraductor/releases/download/v2.1.0/SHA256SUMS.txt) |
-| **Beta** | Release / evidencia | [Tag v2.1.0](https://github.com/LORDMANUEL/milyvoicetraductor/releases/tag/v2.1.0) |
+| **Beta** | Instalador Windows x64 | [MilyVoiceTraductor 2.1.1 Beta](https://github.com/LORDMANUEL/milyvoicetraductor/releases/download/v2.1.1/MilyVoiceTraductor_2.1.1_x64-setup.exe) |
+| **Beta** | Extensión Chromium | [Extensión 2.1.1](https://github.com/LORDMANUEL/milyvoicetraductor/releases/download/v2.1.1/MilyVoiceTraductor-Chromium-Extension.zip) |
+| **Beta** | Hashes SHA-256 | [SHA256SUMS.txt](https://github.com/LORDMANUEL/milyvoicetraductor/releases/download/v2.1.1/SHA256SUMS.txt) |
+| **Beta** | Release / evidencia | [Tag v2.1.1](https://github.com/LORDMANUEL/milyvoicetraductor/releases/tag/v2.1.1) |
+
+> Si `v2.1.1` todavía no existe, la candidata sigue en certificación y **2.0.2 continúa siendo la descarga recomendada**.
 
 ---
 
 ## Qué hace MilyVoiceTraductor
 
-MilyVoiceTraductor convierte voz y contenido multimedia en subtítulos y traducción al español, con procesamiento local y una aplicación de escritorio para Windows junto con una extensión Chromium.
+MilyVoiceTraductor convierte voz y contenido multimedia en transcripción, subtítulos y traducción local, con una aplicación de escritorio para Windows y una extensión Chromium.
 
 ### Fuentes de audio
 
@@ -70,7 +78,7 @@ MilyVoiceTraductor convierte voz y contenido multimedia en subtítulos y traducc
 
 ### Resultados
 
-- subtítulos originales y traducción al español;
+- subtítulos originales y traducidos;
 - transcripción local;
 - identificación visual de hablantes;
 - TTS con voces instaladas en Windows;
@@ -80,20 +88,21 @@ MilyVoiceTraductor convierte voz y contenido multimedia en subtítulos y traducc
 ## Arquitectura local
 
 ```text
-audio → motor local → ASR → traducción → subtítulos / TTS / sesión
+audio → motor local → ASR → MT → subtítulos / TTS / sesión
 ```
 
-El instalador incorpora runtime Python privado, motor local, bridge Native Messaging y herramientas de reparación. No depende del Python del usuario ni de copiar tokens o puertos manualmente. Los modelos se descargan/activan únicamente cuando el usuario lo solicita desde el Gestor de modelos.
+El instalador incorpora runtime Python privado, motor local, bridge Native Messaging y herramientas de reparación. No depende del Python del usuario ni de copiar tokens o puertos manualmente.
 
 ### MilyCompute / Engine Hub
 
-En el canal beta 2.1.0 se prueban rutas como Moonshine, Whisper Tiny y Sherpa Zipformer con selección automática según hardware, memoria y rendimiento. La CPU permanece como fallback seguro.
+Engine Hub mide rutas reales según CPU, memoria y backend disponible. El presupuesto Lite mantiene límites de memoria total, RTF P95 y latencia E2E; la CPU permanece como fallback seguro. Los perfiles Quality no se activan automáticamente en equipos que no cumplen el presupuesto.
 
 ## Historial
 
 Las versiones anteriores se conservan públicamente:
 
 - [v2.0.2 — estable actual](https://github.com/LORDMANUEL/milyvoicetraductor/releases/tag/v2.0.2)
+- [v2.1.0 — beta histórica](https://github.com/LORDMANUEL/milyvoicetraductor/releases/tag/v2.1.0)
 - [v2.0.1 — histórica estable](https://github.com/LORDMANUEL/milyvoicetraductor/releases/tag/v2.0.1)
 - [v2.0.0 — histórica](https://github.com/LORDMANUEL/milyvoicetraductor/releases/tag/v2.0.0)
 - [v1.0.5 — histórica](https://github.com/LORDMANUEL/milyvoicetraductor/releases/tag/v1.0.5)
@@ -110,7 +119,7 @@ El registro técnico completo está en [VERSION_HISTORY.md](docs/release/VERSION
 - [Privacidad](docs/privacy/PRIVACY.md)
 - [Seguridad](SECURITY.md)
 - [Notas estable 2.0.2](docs/release/RELEASE_NOTES_2.0.2.md)
-- [Notas beta 2.1.0](docs/release/RELEASE_NOTES_2.1.0.md)
+- [Notas beta 2.1.1](docs/release/RELEASE_NOTES_2.1.1.md)
 
 ## Licencia
 
@@ -119,6 +128,6 @@ El código propio de MilyVoiceTraductor se distribuye bajo licencia MIT. Modelos
 ---
 
 <p align="center">
-  <strong>2.0.2 estable · 2.1.0 beta pública</strong><br />
+  <strong>2.0.2 estable · 2.1.1 beta</strong><br />
   IA local · Audio universal · Realtime · Privacidad por diseño
 </p>
